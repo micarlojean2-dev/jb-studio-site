@@ -1,0 +1,17 @@
+PEGA AQUÍ LA IMAGEN REAL DE FLOWBOOK / GOOGLE PLAY.
+
+Nombre obligatorio:
+
+google-play-flowbook.png
+
+Ruta final esperada:
+
+assets/flowbook/google-play-flowbook.png
+
+Reglas:
+- Usa la imagen real que quieres mostrar.
+- No cambies el color.
+- No cambies el diseño.
+- No uses imágenes remotas.
+- No reemplaces la imagen por otra.
+- El HTML ya apunta a esta ruta.

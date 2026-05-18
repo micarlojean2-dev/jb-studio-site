@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Template Preview — Mike Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --green: #006b55;
+        --green-dark: #004f40;
+        --bar-h: 58px;
+      }
+
+      body {
+        font-family: "IBM Plex Mono", "Roboto Condensed", monospace;
+        background: #0d1f16;
+        color: #fff;
+        overflow: hidden;
+      }
+
+      /* ── Top bar ─────────────────────────────────── */
+      .preview-bar {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        height: var(--bar-h);
+        background: var(--green);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 22px;
+        gap: 14px;
+        z-index: 100;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+      }
+
+      .bar-back {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+        color: rgba(255, 255, 255, 0.82);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        text-decoration: none;
+        transition: color 180ms ease;
+      }
+      .bar-back:hover { color: #fff; }
+
+      .bar-title {
+        flex: 1;
+        text-align: center;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .bar-request {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        padding: 8px 18px;
+        border-radius: 999px;
+        background: #fff;
+        color: var(--green);
+        font-family: inherit;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: opacity 180ms ease, transform 180ms ease;
+      }
+      .bar-request:hover { opacity: 0.9; transform: translateY(-1px); }
+
+      /* ── Main content area ───────────────────────── */
+      .preview-stage {
+        position: fixed;
+        top: var(--bar-h);
+        left: 0; right: 0; bottom: 0;
+      }
+
+      /* ── Loading spinner ─────────────────────────── */
+      .state-loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        color: rgba(255, 255, 255, 0.5);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid rgba(255, 255, 255, 0.12);
+        border-top-color: var(--green);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      /* ── Iframe ──────────────────────────────────── */
+      #live-iframe {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: none;
+        opacity: 0;
+        transition: opacity 380ms ease;
+      }
+
+      #live-iframe.is-visible { opacity: 1; }
+
+      /* ── Fallback states ─────────────────────────── */
+      .state-msg {
+        position: absolute;
+        inset: 0;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        padding: 40px 24px;
+        text-align: center;
+      }
+
+      .state-msg.is-shown { display: flex; }
+
+      .state-icon {
+        font-size: 52px;
+        line-height: 1;
+        opacity: 0.55;
+      }
+
+      .state-heading {
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #fff;
+      }
+
+      .state-body {
+        max-width: 380px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.65;
+        color: rgba(255, 255, 255, 0.55);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
+      .state-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 12px 24px;
+        border-radius: 999px;
+        border: none;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        text-decoration: none;
+        transition: background-color 180ms ease, transform 180ms ease;
+      }
+
+      .state-btn-primary {
+        background: var(--green);
+        color: #fff;
+        box-shadow: 0 8px 22px rgba(0, 107, 85, 0.35);
+      }
+      .state-btn-primary:hover {
+        background: var(--green-dark);
+        transform: translateY(-2px);
+      }
+
+      .state-btn-ghost {
+        background: rgba(255, 255, 255, 0.1);
+        color: rgba(255, 255, 255, 0.72);
+      }
+      .state-btn-ghost:hover {
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+      }
+
+      /* ── Mobile ──────────────────────────────────── */
+      @media (max-width: 600px) {
+        .preview-bar { padding: 0 14px; gap: 10px; }
+        .bar-title { font-size: 10px; }
+        .bar-request { padding: 7px 12px; font-size: 9px; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Top bar -->
+    <header class="preview-bar">
+      <a class="bar-back" href="index.html#designs">← Catálogo</a>
+      <span class="bar-title" id="bar-title">Cargando...</span>
+      <a class="bar-request" href="index.html#contact">SOLICITAR PLANTILLA →</a>
+    </header>
+
+    <!-- Stage -->
+    <div class="preview-stage">
+
+      <!-- Loading -->
+      <div class="state-loading" id="state-loading">
+        <div class="spinner"></div>
+        <span>Cargando demo...</span>
+      </div>
+
+      <!-- Iframe -->
+      <iframe id="live-iframe" title="Template live preview" loading="lazy"></iframe>
+
+      <!-- Empty: liveUrl not set yet -->
+      <div class="state-msg" id="state-empty">
+        <div class="state-icon">🔜</div>
+        <p class="state-heading">Demo no disponible todavía</p>
+        <p class="state-body">
+          Estamos preparando la versión en vivo de esta plantilla.<br />
+          Solicita más información y te avisamos cuando esté lista.
+        </p>
+        <a class="state-btn state-btn-primary" href="index.html#contact">
+          SOLICITAR ESTA PLANTILLA →
+        </a>
+      </div>
+
+      <!-- Blocked: iframe rejected by X-Frame-Options -->
+      <div class="state-msg" id="state-blocked">
+        <div class="state-icon">🚫</div>
+        <p class="state-heading">Esta demo no puede mostrarse dentro del visor</p>
+        <p class="state-body">
+          La demo está disponible pero debe abrirse en una ventana separada.
+          Tu dominio siempre será el visible en el catálogo.
+        </p>
+        <button class="state-btn state-btn-ghost" id="open-tab-btn">
+          Abrir demo en nueva pestaña →
+        </button>
+        <a class="state-btn state-btn-primary" href="index.html#contact">
+          SOLICITAR ESTA PLANTILLA →
+        </a>
+      </div>
+
+      <!-- Not found -->
+      <div class="state-msg" id="state-notfound">
+        <div class="state-icon">❓</div>
+        <p class="state-heading">Plantilla no encontrada</p>
+        <p class="state-body">El enlace que seguiste no corresponde a ninguna plantilla del catálogo.</p>
+        <a class="state-btn state-btn-primary" href="index.html#designs">
+          VER CATÁLOGO →
+        </a>
+      </div>
+
+    </div>
+
+    <script>
+      // ── Template catalog: slug → name + liveUrl ────────────────
+      // Para agregar un link real: cambia liveUrl: "" por liveUrl: "https://tu-link.framer.website"
+      const CATALOG = {
+        "agency-landing":             { name: "Agency Landing Page",           liveUrl: "https://damas.framer.website/"},
+        "social-media-agency":        { name: "Social Media Agency Landing",   liveUrl: "https://viral-sma.framer.website/?via=hxmzaehsan&utm_source=framer"},
+        "agency-pro":                 { name: "Agency Pro",                    liveUrl: "https://neutra.framer.website/"},
+        "sonic-product":              { name: "Sonic Product Landing",         liveUrl: "https://sonic.framer.media/#about"},
+        "clover-product":             { name: "Clover Product Landing",        liveUrl: "https://greenclover.framer.website/#product"},
+        "brandora-agency":            { name: "Brandora Agency",               liveUrl: "https://brandora.framer.website/"},
+        "cafe-premium":               { name: "Cafe Premium",                  liveUrl: "https://cafen-wbs.framer.website/menu"},
+        "hair-salon":                 { name: "Hair Salon Website",            liveUrl: "https://velvera.framer.website/"},
+        "yoga-wellness":              { name: "Yoga / Wellness Website",       liveUrl: "https://asana.framer.website/"},
+        "fitness-product":            { name: "Fitness Product Website",       liveUrl: "https://fitflow-template.framer.website/?utm_source=framer&utm_medium=preview_button"},
+        "consulting-business":        { name: "Consulting Business Website",   liveUrl: "https://consulting.framer.media/"},
+        "medical-service":            { name: "Medical Service Website",       liveUrl: "https://vitalflow.framer.website/"},
+        "business-consulting":        { name: "Business Consulting Website",   liveUrl: "https://stratex.framer.website/#services"},
+        "business-consultancy":       { name: "Business Consultancy",          liveUrl: "https://archio-template.framer.website/#hero"},
+        "pet-grooming":               { name: "Pet Grooming Website",          liveUrl: "https://groomix.framer.website/"},
+        "minimal-product-portfolio":  { name: "Minimal Product Portfolio",     liveUrl: "https://lluno.framer.website/"},
+        "dark-designer-portfolio":    { name: "Dark Designer Portfolio",       liveUrl: "https://portfolo.framer.website/#testimonials"},
+        "dark-creative-portfolio":    { name: "Dark Creative Portfolio",       liveUrl: "https://matte.framer.media/"},
+        "luxury-brand-portfolio":     { name: "Luxury Brand Portfolio",        liveUrl: "https://billie-duvalle.framer.website/?via=gustaveflowbert"},
+        "minimal-personal-portfolio": { name: "Minimal Personal Portfolio",    liveUrl: "https://writeme.framer.website/about"},
+        "digital-designer-portfolio": { name: "Digital Designer Portfolio",    liveUrl: "https://portavia.framer.website/"},
+      };
+
+      // ── DOM refs ───────────────────────────────────────────────
+      const barTitle     = document.getElementById("bar-title");
+      const iframe       = document.getElementById("live-iframe");
+      const stLoading    = document.getElementById("state-loading");
+      const stEmpty      = document.getElementById("state-empty");
+      const stBlocked    = document.getElementById("state-blocked");
+      const stNotFound   = document.getElementById("state-notfound");
+      const openTabBtn   = document.getElementById("open-tab-btn");
+
+      // ── State machine ──────────────────────────────────────────
+      function showState(state) {
+        stLoading.style.display  = "none";
+        stEmpty.classList.remove("is-shown");
+        stBlocked.classList.remove("is-shown");
+        stNotFound.classList.remove("is-shown");
+        iframe.classList.remove("is-visible");
+
+        if (state === "loading") stLoading.style.display = "flex";
+        if (state === "empty")   stEmpty.classList.add("is-shown");
+        if (state === "blocked") stBlocked.classList.add("is-shown");
+        if (state === "notfound") stNotFound.classList.add("is-shown");
+        if (state === "loaded")  iframe.classList.add("is-visible");
+      }
+
+      // ── Read template slug from URL ────────────────────────────
+      const params   = new URLSearchParams(window.location.search);
+      const slug     = params.get("template") || "";
+      const template = CATALOG[slug];
+
+      if (!template) {
+        barTitle.textContent = "Plantilla no encontrada";
+        showState("notfound");
+
+      } else {
+        barTitle.textContent = template.name;
+        document.title = template.name + " — Mike Studio";
+
+        if (!template.liveUrl) {
+          showState("empty");
+
+        } else {
+          showState("loading");
+
+          // Timeout fallback: if iframe doesn't respond in 10s, assume blocked
+          let loadTimer = setTimeout(() => showState("blocked"), 10000);
+
+          iframe.addEventListener("load", function onLoad() {
+            clearTimeout(loadTimer);
+            try {
+              // If this line throws a SecurityError → cross-origin content
+              // loaded successfully (the Framer site is in the iframe).
+              // If it doesn't throw → same-origin error page → blocked.
+              const href = iframe.contentWindow.location.href;
+              if (href && href !== "about:blank") {
+                showState("blocked");
+              } else {
+                showState("loaded");
+              }
+            } catch (e) {
+              // SecurityError = external domain loaded = success
+              showState("loaded");
+            }
+          });
+
+          // Set src — this triggers the load attempt (URL never visible in HTML)
+          iframe.src = template.liveUrl;
+
+          // "Open in new tab" button: opens URL without exposing it in markup
+          openTabBtn.addEventListener("click", function () {
+            window.open(template.liveUrl, "_blank", "noopener,noreferrer");
+          });
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mike Portfolio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&family=Pacifico&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="site-frame">
+      <section class="hero" id="top">
+        <header class="hero-header">
+          <a class="brand notranslate" href="#top" translate="no">Mike</a>
+          <nav class="nav-pill" aria-label="Primary navigation">
+            <a href="#designs">Designs</a>
+            <a href="#about">About Me</a>
+            <a href="#flowbook">Booking App</a>
+            <a href="#contact">Contact</a>
+          </nav>
+          <div class="hero-social-icons" aria-label="Social links">
+            <a
+              class="hero-social-icon"
+              href="#"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Instagram"
+            >
+              <img
+                src="assets/social/instagram.png"
+                alt="Instagram"
+              />
+            </a>
+
+            <a
+              class="hero-social-icon"
+              href="#"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="TikTok"
+            >
+              <img
+                src="assets/social/tiktok.png"
+                alt="TikTok"
+              />
+            </a>
+          </div>
+        </header>
+
+        <div class="wave wave-hero-one"></div>
+        <div class="wave wave-hero-two"></div>
+
+        <p class="intro" translate="no"
+           data-en="Hi There, We're Mike Studio"
+           data-es="Hola, Somos Mike Studio">Hi There, We're Mike Studio</p>
+        <div class="hero-title hero-title-back" aria-hidden="true">
+          <span translate="no" data-en="Modern Web" data-es="Diseño Web">Modern Web</span>
+          <span translate="no" data-en="Design" data-es="Profesional">Design</span>
+        </div>
+        <img
+          src="assets/hero/person-2.png"
+          alt=""
+          aria-hidden="true"
+          class="hero-person hero-person-2"
+          onerror="this.style.display='none'"
+        />
+        <img
+          src="assets/person.png"
+          alt="Mike portrait"
+          class="hero-person hero-person-base"
+        />
+        <div class="hero-title-front" aria-hidden="true">
+          <span class="front-mask-developer" translate="no" data-en="Design" data-es="Profesional">Design</span>
+        </div>
+        <img
+          src="assets/person.png"
+          alt=""
+          aria-hidden="true"
+          class="hero-person hero-person-head"
+        />
+        <div class="code-mark">&lt;/&gt;</div>
+        <p class="hero-note">
+          We design modern websites for businesses that want to look more
+          professional and get more clients online.
+        </p>
+      </section>
+
+      <section class="works section-reveal" id="designs">
+        <div class="section-kicker">TEMPLATE CATEGORIES</div>
+        <div class="works-head">
+          <h2><span>WEBSITE</span><span>TEMPLATES</span></h2>
+          <p class="works-side">
+            Choose a template and we’ll customize it with your brand, colors,
+            images and content.
+            <span
+              >Need a custom website? We can build one from scratch.</span
+            >
+          </p>
+        </div>
+
+        <div class="category-block">
+          <div class="category-title" data-category-title>LANDING PAGES</div>
+          <div class="category-note">
+            Choose a category to preview three static template options.
+          </div>
+        </div>
+
+        <div class="category-roadmap" aria-label="Template categories">
+          <button class="category-chip is-active" type="button" data-category="landing">LANDING PAGES</button>
+          <button class="category-chip" type="button" data-category="business">BUSINESS WEBSITES</button>
+          <button class="category-chip" type="button" data-category="restaurant">RESTAURANT WEBSITES</button>
+          <button class="category-chip" type="button" data-category="barbershop">BARBERSHOP / SALON</button>
+          <button class="category-chip" type="button" data-category="portfolio">PORTFOLIO WEBSITE</button>
+        </div>
+
+        <div class="work-layout" data-template-grid></div>
+
+        <a class="oval-button" href="#contact">NEED A CUSTOM WEBSITE? →</a>
+      </section>
+
+      <section class="request section-reveal" id="about">
+        <div class="request-header" data-request-reveal>
+          <div class="request-kicker">REQUEST PROJECT</div>
+          <h2 class="request-title">WANT A WEBSITE LIKE THESE?</h2>
+          <p class="request-subtitle">Choose a template, answer 3 quick questions, and continue on WhatsApp.</p>
+          <p class="request-lead">If your project fits, I&rsquo;ll reply to move forward with the details.</p>
+        </div>
+
+        <div class="request-layout">
+          <div class="request-options" data-request-reveal>
+            <p class="options-heading">TWO WAYS TO WORK</p>
+
+            <div class="option-card">
+              <div class="option-badge">01</div>
+              <h3>ADAPT A TEMPLATE</h3>
+              <p>Choose a design from the catalog and I&rsquo;ll customize it with your colors, text, images, and business details. This is the fastest option.</p>
+            </div>
+
+            <div class="option-card">
+              <div class="option-badge option-badge-alt">02</div>
+              <h3>DESIGN FROM SCRATCH</h3>
+              <p>If you need something fully custom, I can quote it separately depending on pages, sections, animations, and features.</p>
+            </div>
+          </div>
+
+          <div class="req-card" data-request-reveal>
+            <div class="req-form" id="request-form">
+              <div class="req-field">
+                <label for="req-type">PROJECT TYPE <span class="req-star" aria-label="required">*</span></label>
+                <select id="req-type" name="tipo_proyecto">
+                  <option value="">Select an option</option>
+                  <option value="Adapt a template">Adapt a template</option>
+                  <option value="Design from scratch">Design from scratch</option>
+                  <option value="Not sure yet">Not sure yet</option>
+                </select>
+              </div>
+
+              <div class="req-template-block" id="req-template-block">
+                <div class="req-field">
+                  <label for="req-template">TEMPLATE YOU LIKED <span class="req-star" aria-label="required">*</span></label>
+                  <p class="req-template-helper">Open the selected template to confirm it&rsquo;s the right design.</p>
+                  <select id="req-template" name="plantilla">
+                    <option value="">Select a template</option>
+                    <option value="not-sure-yet">Not sure yet</option>
+                    <option value="design-from-scratch">I want a design from scratch</option>
+                  </select>
+                  <button type="button" class="req-btn-preview" id="req-preview-btn" disabled>VIEW SELECTED DESIGN →</button>
+                  <p class="req-template-hint" id="req-template-hint">SELECT A TEMPLATE FIRST</p>
+                </div>
+              </div>
+
+              <div class="req-field">
+                <label for="req-budget">APPROXIMATE BUDGET <span class="req-star" aria-label="required">*</span></label>
+                <select id="req-budget" name="presupuesto">
+                  <option value="">Select an option</option>
+                  <option>Less than $300</option>
+                  <option>$300 - $500</option>
+                  <option>$500 - $1,000</option>
+                  <option>More than $1,000</option>
+                  <option>Not sure yet</option>
+                </select>
+              </div>
+
+              <p class="req-error-msg" id="req-error" aria-live="polite" hidden>Please complete the required questions before continuing.</p>
+
+              <div class="req-actions" data-request-reveal>
+                <button type="button" class="req-btn-wa" id="req-wa-btn">CONTINUE ON WHATSAPP →</button>
+                <button type="button" class="req-btn-ig" id="req-ig-btn">CONTINUE ON INSTAGRAM →</button>
+              </div>
+
+              <p class="req-ig-note" id="req-ig-note" hidden>On Instagram, send me the word <strong>WEB</strong> to start.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workstation section-reveal">
+        <div class="wave wave-station"></div>
+        <p class="station-note note-left">
+          Lines are not only decoration. They guide focus, tools and movement.
+        </p>
+        <p class="station-note note-top">
+          Spaces, screens and references that shape every website I design.
+        </p>
+
+        <h2>Workstation</h2>
+
+        <div class="image-placeholder desk desk-one">IMAGE DESK 1</div>
+        <div class="image-placeholder desk desk-two">IMAGE DESK 2</div>
+        <div class="image-placeholder desk desk-three">IMAGE DESK 3</div>
+        <div class="image-placeholder desk desk-four">IMAGE DESK 4</div>
+
+        <div class="gear-copy">
+          <h3>My Workflow</h3>
+          <p>
+            Clear structure, strong visual direction and clean execution for
+            modern websites that feel simple, fast and professional.
+          </p>
+        </div>
+      </section>
+
+      <section class="testimonials section-reveal" id="flowbook">
+        <h2 class="flowbook-title">
+          <span>A Real App</span>
+          <span>For Bookings</span>
+        </h2>
+        <p class="flowbook-audience">
+          <span>Barbershops, Nail Salons, Spas</span>
+          <span>And Appointment-Based Businesses</span>
+        </p>
+        <p class="flowbook-question-small">
+          Need A Simpler Way To Manage Bookings?
+        </p>
+        <button
+          class="flowbook-explore"
+          type="button"
+          data-flowbook-toggle
+          aria-expanded="false"
+          aria-controls="flowbook-details"
+        >
+          Explore FlowBook ↓
+        </button>
+
+        <div id="flowbook-details" class="flowbook-details">
+          <div class="flowbook-layout">
+            <article class="flowbook-item flowbook-item-one">
+              <figure class="flowbook-shot flowbook-app-image-frame">
+                <img
+                  class="flowbook-app-image"
+                  src="assets/flowbook/google-play-flowbook.png.png"
+                  alt="FlowBook on Google Play"
+                  onload="this.closest('.flowbook-app-image-frame').classList.add('has-image')"
+                  onerror="this.remove()"
+                />
+                <figcaption>Paste Image Here</figcaption>
+              </figure>
+              <div class="flowbook-copy">
+                <h3>App On Google Play</h3>
+                <p>
+                  FlowBook is a real product designed and developed by our team
+                  for service businesses.
+                </p>
+              </div>
+            </article>
+
+            <article class="flowbook-item flowbook-item-two">
+              <figure class="flowbook-shot flowbook-app-image-frame">
+                <img
+                  class="flowbook-app-image"
+                  src="assets/flowbook/public-booking-page.png"
+                  alt="FlowBook public booking page"
+                  onload="this.closest('.flowbook-app-image-frame').classList.add('has-image')"
+                  onerror="this.remove()"
+                />
+                <figcaption>Paste Image Here</figcaption>
+              </figure>
+              <div class="flowbook-copy">
+                <h3>Public Booking Page</h3>
+                <p>
+                  Clients can choose a service, pick a time and book from a
+                  clean link.
+                </p>
+              </div>
+            </article>
+
+            <article class="flowbook-item flowbook-item-three">
+              <figure class="flowbook-shot flowbook-app-image-frame">
+                <img
+                  class="flowbook-app-image"
+                  src="assets/flowbook/google-play-flowbook.png"
+                  alt="FlowBook dashboard"
+                  onload="this.closest('.flowbook-app-image-frame').classList.add('has-image')"
+                  onerror="this.remove()"
+                />
+                <figcaption>Paste Image Here</figcaption>
+              </figure>
+              <div class="flowbook-copy">
+                <h3>Simple Dashboard</h3>
+                <p>
+                  Manage services, appointments and daily availability in one
+                  place.
+                </p>
+              </div>
+            </article>
+          </div>
+
+          <a class="oval-button flowbook-button" href="https://flowbookapp.co">View FlowBook ↗</a>
+        </div>
+      </section>
+
+      <section class="contact section-reveal" id="contact">
+        <div class="wave wave-contact"></div>
+        <div class="contact-row top">
+          <h2>
+            <span>Need A Better</span>
+            <span>Website For Your</span>
+            <span>Business?</span>
+          </h2>
+          <p class="contact-note">
+            Want to update your business portfolio, landing page or website?
+            Send us a message on Instagram and tell us what you need.
+          </p>
+          <a class="request-button instagram-request-button" href="#">
+            <img src="assets/social/instagram.png" alt="" aria-hidden="true" />
+            <span>Message On Instagram</span>
+          </a>
+        </div>
+      </section>
+
+    </main>
+    <script src="main.js"></script>
+  </body>
+</html>

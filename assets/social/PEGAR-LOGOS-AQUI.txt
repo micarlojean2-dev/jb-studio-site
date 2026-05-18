@@ -1,0 +1,20 @@
+PEGA AQUÍ LOS LOGOS EXACTOS QUE QUIERES USAR.
+
+Nombres obligatorios:
+
+instagram.png
+tiktok.png
+
+Reglas:
+- No uses capturas con fondo blanco.
+- No uses imágenes con watermark.
+- No uses imágenes con fondo cuadriculado visible.
+- Usa PNG limpio si es posible.
+- No cambies el color.
+- No cambies el diseño.
+- No reemplaces los logos por otros.
+- Después de pegar las imágenes aquí, el HTML debe usar exactamente:
+  assets/social/instagram.png
+  assets/social/tiktok.png
+
+Cuando yo pegue las imágenes con esos nombres, debes usar SOLO esos archivos.

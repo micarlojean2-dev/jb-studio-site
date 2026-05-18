@@ -1,0 +1,5 @@
+.DS_Store
+.claude/
+.claude-plugin/
+README.skill.md
+skill.json
