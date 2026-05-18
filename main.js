@@ -373,9 +373,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
       <h3>${card.title}</h3>
       <p>${card.description}</p>
       <div class="card-actions">
-        <a class="btn-expand" href="${card.href}" target="_blank" rel="noopener noreferrer">AMPLIAR VISTA PREVIA</a>
-        <a class="btn-live" href="preview.html?template=${card.slug}">VER SITIO EN VIVO →</a>
-        <a class="btn-request" href="#about" data-req-title="${card.title}" data-req-slug="${card.slug}">SOLICITAR →</a>
+        <a class="btn-expand" href="${card.href}" target="_blank" rel="noopener noreferrer">EXPAND PREVIEW</a>
+        <a class="btn-live" href="preview.html?template=${card.slug}">VIEW LIVE SITE →</a>
+        <a class="btn-request" href="#about" data-req-title="${card.title}" data-req-slug="${card.slug}">REQUEST →</a>
       </div>
     </article>
   `;
@@ -522,7 +522,7 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
     if (!animDone) return;
     const es = isEs();
     const key = es ? "es" : "en";
-    intro.innerHTML = es ? "Hola, Somos " + BRAND + " Studio" : "Hi there, we're " + BRAND + " Studio";
+    intro.innerHTML = "Hi there, we're " + BRAND + " Studio";
     if (frontEnd) frontEnd.textContent = frontEnd.getAttribute("data-" + key);
     if (devBack)  devBack.textContent  = devBack.getAttribute("data-" + key);
     if (devFront) devFront.textContent = devFront.getAttribute("data-" + key);

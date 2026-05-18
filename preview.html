@@ -225,9 +225,9 @@
   <body>
     <!-- Top bar -->
     <header class="preview-bar">
-      <a class="bar-back" href="index.html#designs">← Catálogo</a>
-      <span class="bar-title" id="bar-title">Cargando...</span>
-      <a class="bar-request" href="index.html#contact">SOLICITAR PLANTILLA →</a>
+      <a class="bar-back" href="index.html#designs">← Catalog</a>
+      <span class="bar-title" id="bar-title">Loading...</span>
+      <a class="bar-request" href="index.html#contact">REQUEST TEMPLATE →</a>
     </header>
 
     <!-- Stage -->
@@ -236,7 +236,7 @@
       <!-- Loading -->
       <div class="state-loading" id="state-loading">
         <div class="spinner"></div>
-        <span>Cargando demo...</span>
+        <span>Loading preview...</span>
       </div>
 
       <!-- Iframe -->
@@ -245,39 +245,39 @@
       <!-- Empty: liveUrl not set yet -->
       <div class="state-msg" id="state-empty">
         <div class="state-icon">🔜</div>
-        <p class="state-heading">Demo no disponible todavía</p>
+        <p class="state-heading">Preview not available yet</p>
         <p class="state-body">
-          Estamos preparando la versión en vivo de esta plantilla.<br />
-          Solicita más información y te avisamos cuando esté lista.
+          We are preparing the live version of this template.<br />
+          Request more details and we will notify you when it is ready.
         </p>
         <a class="state-btn state-btn-primary" href="index.html#contact">
-          SOLICITAR ESTA PLANTILLA →
+          REQUEST THIS TEMPLATE →
         </a>
       </div>
 
       <!-- Blocked: iframe rejected by X-Frame-Options -->
       <div class="state-msg" id="state-blocked">
         <div class="state-icon">🚫</div>
-        <p class="state-heading">Esta demo no puede mostrarse dentro del visor</p>
+        <p class="state-heading">This preview cannot be shown inside the viewer</p>
         <p class="state-body">
-          La demo está disponible pero debe abrirse en una ventana separada.
-          Tu dominio siempre será el visible en el catálogo.
+          The demo is available but needs to open in a separate tab.
+          Your domain will remain the one shown in the catalog.
         </p>
         <button class="state-btn state-btn-ghost" id="open-tab-btn">
-          Abrir demo en nueva pestaña →
+          Open demo in new tab →
         </button>
         <a class="state-btn state-btn-primary" href="index.html#contact">
-          SOLICITAR ESTA PLANTILLA →
+          REQUEST THIS TEMPLATE →
         </a>
       </div>
 
       <!-- Not found -->
       <div class="state-msg" id="state-notfound">
         <div class="state-icon">❓</div>
-        <p class="state-heading">Plantilla no encontrada</p>
-        <p class="state-body">El enlace que seguiste no corresponde a ninguna plantilla del catálogo.</p>
+        <p class="state-heading">Template not found</p>
+        <p class="state-body">The link you opened does not match any template in the catalog.</p>
         <a class="state-btn state-btn-primary" href="index.html#designs">
-          VER CATÁLOGO →
+          VIEW CATALOG →
         </a>
       </div>
 
@@ -285,7 +285,7 @@
 
     <script>
       // ── Template catalog: slug → name + liveUrl ────────────────
-      // Para agregar un link real: cambia liveUrl: "" por liveUrl: "https://tu-link.framer.website"
+      // To add a real link: change liveUrl: "" to liveUrl: "https://your-link.framer.website"
       const CATALOG = {
         "agency-landing":             { name: "Agency Landing Page",           liveUrl: "https://damas.framer.website/"},
         "social-media-agency":        { name: "Social Media Agency Landing",   liveUrl: "https://viral-sma.framer.website/?via=hxmzaehsan&utm_source=framer"},
@@ -340,12 +340,12 @@
       const template = CATALOG[slug];
 
       if (!template) {
-        barTitle.textContent = "Plantilla no encontrada";
+        barTitle.textContent = "Template not found";
         showState("notfound");
 
       } else {
         barTitle.textContent = template.name;
-        document.title = template.name + " — Mike Studio";
+        document.title = template.name + " — JB Studio";
 
         if (!template.liveUrl) {
           showState("empty");
