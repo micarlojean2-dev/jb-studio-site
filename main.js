@@ -25,6 +25,81 @@ if (prefersReducedMotion) {
   revealItems.forEach((item) => item.classList.add("is-visible"));
 }
 
+function setStaggerDelays(selector, step = 70, maxDelay = 240) {
+  document.querySelectorAll(selector).forEach((item, index) => {
+    item.classList.add("stagger-item");
+    const delay = Math.min(index * step, maxDelay);
+    item.style.setProperty("--stagger-delay", `${delay}ms`);
+  });
+}
+
+function initPremiumMotion() {
+  const premiumSelectors = [
+    ".option-card",
+    ".about-team-card",
+    ".booking-problem-card",
+    ".booking-showcase-card",
+    ".booking-hero-shot",
+    ".contact-btn",
+    ".req-btn-wa",
+    ".req-btn-ig",
+    ".req-btn-preview",
+    ".template-card",
+  ];
+
+  premiumSelectors.forEach((selector) => {
+    document.querySelectorAll(selector).forEach((el) => el.classList.add("premium-card"));
+  });
+
+  [
+    ".about-team-card",
+    ".booking-showcase-card",
+    ".booking-hero-shot",
+    ".template-card",
+  ].forEach((selector) => {
+    document.querySelectorAll(selector).forEach((el) => el.classList.add("tilt-card"));
+  });
+
+  [".booking-showcase-card", ".booking-hero-shot", ".template-card"].forEach((selector) => {
+    document.querySelectorAll(selector).forEach((el) => el.classList.add("mockup-card"));
+  });
+
+  setStaggerDelays(".about-team-grid .about-team-card", 120, 240);
+  setStaggerDelays(".booking-problem-grid .booking-problem-card", 70, 240);
+  setStaggerDelays(".booking-showcase-grid .booking-showcase-card", 120, 240);
+  setStaggerDelays(".request-options .option-card", 90, 240);
+
+  const canTilt =
+    !prefersReducedMotion &&
+    window.innerWidth > 860 &&
+    window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+  document.querySelectorAll(".tilt-card").forEach((card) => {
+    if (card.dataset.tiltBound === "true") return;
+    card.dataset.tiltBound = "true";
+    card.style.setProperty("--tilt-x", "0deg");
+    card.style.setProperty("--tilt-y", "0deg");
+    if (!canTilt) return;
+
+    card.addEventListener("mousemove", (event) => {
+      const rect = card.getBoundingClientRect();
+      const relX = (event.clientX - rect.left) / rect.width;
+      const relY = (event.clientY - rect.top) / rect.height;
+      const rotateY = (relX - 0.5) * 4;
+      const rotateX = (0.5 - relY) * 4;
+      card.style.setProperty("--tilt-x", `${rotateX.toFixed(2)}deg`);
+      card.style.setProperty("--tilt-y", `${rotateY.toFixed(2)}deg`);
+    });
+
+    card.addEventListener("mouseleave", () => {
+      card.style.setProperty("--tilt-x", "0deg");
+      card.style.setProperty("--tilt-y", "0deg");
+    });
+  });
+}
+
+initPremiumMotion();
+
 const flowbookTrigger = document.querySelector("[data-flowbook-toggle]");
 const flowbookDetails = document.querySelector("#flowbook-details");
 
@@ -289,7 +364,7 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
   const prefersReduced = prefersReducedMotion;
 
   const buildCard = (card) => `
-    <article class="project template-card" data-card-title="${card.title}" data-card-slug="${card.slug}" data-card-image="${card.image}" data-card-live-url="${card.liveUrl}">
+    <article class="project template-card premium-card tilt-card mockup-card" data-card-title="${card.title}" data-card-slug="${card.slug}" data-card-image="${card.image}" data-card-live-url="${card.liveUrl}">
       <figure class="project-preview">
         <img src="${card.image}" alt="${card.alt}" onload="this.parentElement.classList.add('has-image')" onerror="this.remove()" />
         <figcaption>IMAGE PREVIEW</figcaption>
@@ -332,6 +407,7 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
 
     if (prefersReduced) {
       templateGrid.innerHTML = category.cards.map(buildCard).join("");
+      initPremiumMotion();
       templateGrid
         .querySelectorAll(".template-card")
         .forEach((card) => card.classList.remove("template-enter", "is-in"));
@@ -341,6 +417,7 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
     templateGrid.classList.add("is-updating");
     setTimeout(() => {
       templateGrid.innerHTML = category.cards.map(buildCard).join("");
+      initPremiumMotion();
       templateGrid.classList.remove("is-updating");
       animateInCards();
     }, 170);
@@ -435,7 +512,7 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
   if (!intro || !frontEnd) return;
 
   let animDone = false;
-  const MIKE = '<span class="notranslate" translate="no">Mike</span>';
+  const BRAND = '<span class="notranslate" translate="no">JB</span>';
 
   function isEs() {
     return (document.documentElement.lang || "").toLowerCase().startsWith("es");
@@ -445,7 +522,7 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
     if (!animDone) return;
     const es = isEs();
     const key = es ? "es" : "en";
-    intro.innerHTML = es ? "Hola, Somos " + MIKE + " Studio" : "Hi There, We're " + MIKE + " Studio";
+    intro.innerHTML = es ? "Hola, Somos " + BRAND + " Studio" : "Hi there, we're " + BRAND + " Studio";
     if (frontEnd) frontEnd.textContent = frontEnd.getAttribute("data-" + key);
     if (devBack)  devBack.textContent  = devBack.getAttribute("data-" + key);
     if (devFront) devFront.textContent = devFront.getAttribute("data-" + key);
@@ -494,12 +571,29 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
   }
 
   setTimeout(() => {
-    type(intro, "Hi There, We're Mike Studio", 700, () => {
+    type(intro, "Hi there, we're JB Studio", 700, () => {
       type(frontEnd, "Modern Web", 900, () => {
         type([devBack, devFront].filter(Boolean), "Design", 900, finish);
       });
     });
   }, 200);
+})();
+
+// ── Contact CTA Buttons ───────────────────────────────
+(function () {
+  const contactWaBtn = document.getElementById("contact-wa-btn");
+  if (!contactWaBtn) return;
+
+  contactWaBtn.addEventListener("click", (event) => {
+    event.preventDefault();
+    const message = "Hi, I’m interested in a website for my business. I’d like to know more.";
+    const encoded = encodeURIComponent(message);
+    const num = CONTACT_WHATSAPP;
+    const url = num
+      ? "https://wa.me/" + num + "?text=" + encoded
+      : "https://wa.me/?text=" + encoded;
+    window.open(url, "_blank", "noopener,noreferrer");
+  });
 })();
 
 // ── Quick Request Buttons (WA + IG) ───────────────────
@@ -655,7 +749,7 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
       if (!data) return;
       if (igNote) igNote.hidden = false;
       window.open(
-        "https://ig.me/m/" + CONTACT_INSTAGRAM,
+        "https://www.instagram.com/jb__studiodesing/",
         "_blank",
         "noopener,noreferrer"
       );
