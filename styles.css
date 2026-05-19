@@ -1154,16 +1154,36 @@ a {
 }
 
 .about-photo-frame {
+  width: 260px;
+  max-width: 260px;
+  height: 325px;
+  max-height: 325px;
+  border-radius: 24px;
   overflow: hidden;
+  border: 1px solid rgba(0, 107, 85, 0.22);
+  background: rgba(255, 255, 255, 0.55);
+  flex: 0 0 260px;
+  position: relative;
   padding: 0;
 }
 
 .about-photo-image {
-  display: block;
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
   object-fit: cover;
-  object-position: center;
+  object-position: center center;
+  position: static;
+}
+
+.about-photo-image-mike {
+  object-position: center 28%;
+}
+
+.about-photo-image-bryan {
+  object-position: center 20%;
 }
 
 .about-member-copy {
@@ -1221,6 +1241,15 @@ a {
 
 .about-team-card-brayan {
   grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 48px;
+  align-items: center;
+}
+
+.about-card {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 48px;
+  align-items: center;
 }
 
 .testimonials {
@@ -1993,6 +2022,10 @@ a {
     gap: 14px;
   }
 
+  .about-card {
+    grid-template-columns: 1fr;
+  }
+
   .about-team-card-brayan .about-member-copy {
     order: 2;
   }
@@ -2003,7 +2036,16 @@ a {
 
   .about-photo-placeholder {
     width: 100%;
-    max-width: 280px;
+    max-width: 320px;
+    margin-inline: auto;
+  }
+
+  .about-photo-frame {
+    width: min(260px, 100%);
+    max-width: 260px;
+    height: 325px;
+    margin-inline: auto;
+    flex-basis: auto;
   }
 
   .flowbook-layout {
