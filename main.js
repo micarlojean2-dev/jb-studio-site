@@ -45,7 +45,6 @@ function initPremiumMotion() {
     ".req-btn-ig",
     ".req-btn-preview",
     ".template-card",
-    ".pricing-card",
   ];
 
   premiumSelectors.forEach((selector) => {
@@ -57,7 +56,6 @@ function initPremiumMotion() {
     ".booking-showcase-card",
     ".booking-hero-shot",
     ".template-card",
-    ".pricing-card",
   ].forEach((selector) => {
     document.querySelectorAll(selector).forEach((el) => el.classList.add("tilt-card"));
   });
@@ -66,15 +64,10 @@ function initPremiumMotion() {
     document.querySelectorAll(selector).forEach((el) => el.classList.add("mockup-card"));
   });
 
-  [".pricing-card"].forEach((selector) => {
-    document.querySelectorAll(selector).forEach((el) => el.classList.add("mockup-card"));
-  });
-
   setStaggerDelays(".about-team-grid .about-team-card", 120, 240);
   setStaggerDelays(".booking-problem-grid .booking-problem-card", 70, 240);
   setStaggerDelays(".booking-showcase-grid .booking-showcase-card", 120, 240);
   setStaggerDelays(".request-options .option-card", 90, 240);
-  setStaggerDelays(".pricing-grid .pricing-card", 90, 240);
 
   const canTilt =
     !prefersReducedMotion &&
@@ -138,6 +131,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 01",
           title: "AGENCY LANDING PAGE",
           description: "A bold page for agencies, campaigns and service offers.",
+          starterPrice: "$289",
+          minimumPrice: "$240",
+          moreChangesPrice: "$450+",
           image: "assets/designs/landing-page-01.png",
           alt: "Agency landing page template preview",
           href: "templates/landing-page-01.html",
@@ -148,6 +144,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 02",
           title: "SOCIAL MEDIA AGENCY LANDING PAGE",
           description: "A clean landing page for agencies, creators and content-driven service brands.",
+          starterPrice: "$319",
+          minimumPrice: "$260",
+          moreChangesPrice: "$500+",
           image: "assets/designs/landing-page-02.png",
           alt: "Social media agency landing page template preview",
           href: "templates/landing-page-02.html",
@@ -158,6 +157,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 03",
           title: "AGENCY PRO",
           description: "A polished website for modern agencies and service-focused teams.",
+          starterPrice: "$349",
+          minimumPrice: "$290",
+          moreChangesPrice: "$590+",
           image: "assets/designs/agency-pro.png",
           alt: "Agency Pro website template preview",
           href: "templates/agency-pro.html",
@@ -168,6 +170,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 04",
           title: "SONIC PRODUCT LANDING",
           description: "A sharp landing page for product launches, features and conversion goals.",
+          starterPrice: "$339",
+          minimumPrice: "$280",
+          moreChangesPrice: "$560+",
           image: "assets/designs/sonic-product-landing.png",
           alt: "Sonic product landing template preview",
           href: "templates/sonic-product-landing.html",
@@ -178,6 +183,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 05",
           title: "CLOVER PRODUCT LANDING",
           description: "An energetic product landing page for fintech apps, savings tools and cashback offers.",
+          starterPrice: "$349",
+          minimumPrice: "$290",
+          moreChangesPrice: "$590+",
           image: "assets/designs/business-consultancy.png",
           alt: "Clover product landing template preview",
           href: "templates/clover-product-landing.html",
@@ -188,6 +196,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 06",
           title: "BRANDORA AGENCY",
           description: "A modern agency landing page for branding studios and creative service teams.",
+          starterPrice: "$359",
+          minimumPrice: "$300",
+          moreChangesPrice: "$620+",
           image: "assets/designs/digital-designer-portfolio.png",
           alt: "Brandora agency template preview",
           href: "templates/brandora-agency.html",
@@ -203,6 +214,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 01",
           title: "CAFE PREMIUM",
           description: "A premium cafe website focused on ambience, menu highlights and reservations.",
+          starterPrice: "$379",
+          minimumPrice: "$320",
+          moreChangesPrice: "$650+",
           image: "assets/designs/cafe-premium.png",
           alt: "Cafe premium website template preview",
           href: "templates/cafe-premium.html",
@@ -218,6 +232,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 01",
           title: "HAIR SALON WEBSITE",
           description: "A soft and elegant website for hair salons, beauty services and appointments.",
+          starterPrice: "$389",
+          minimumPrice: "$320",
+          moreChangesPrice: "$670+",
           image: "assets/designs/service-business-04.png",
           alt: "Hair salon and beauty website template preview",
           href: "templates/barbershop-salon-02.html",
@@ -233,6 +250,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 01",
           title: "YOGA / WELLNESS WEBSITE",
           description: "A calm website for wellness studios, yoga classes and appointment-based services.",
+          starterPrice: "$299",
+          minimumPrice: "$250",
+          moreChangesPrice: "$500+",
           image: "assets/designs/service-business-01.png",
           alt: "Yoga and wellness website template preview",
           href: "templates/service-business-01.html",
@@ -243,6 +263,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 02",
           title: "FITNESS PRODUCT WEBSITE",
           description: "A modern landing page for fitness products, apps and active lifestyle brands.",
+          starterPrice: "$339",
+          minimumPrice: "$280",
+          moreChangesPrice: "$560+",
           image: "assets/designs/service-business-02.png",
           alt: "Fitness product website template preview",
           href: "templates/service-business-02.html",
@@ -253,6 +276,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 03",
           title: "CONSULTING BUSINESS WEBSITE",
           description: "A clean business website for consultants, agencies and professional services.",
+          starterPrice: "$349",
+          minimumPrice: "$290",
+          moreChangesPrice: "$590+",
           image: "assets/designs/service-business-03.png",
           alt: "Consulting business website template preview",
           href: "templates/service-business-03.html",
@@ -263,6 +289,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 04",
           title: "MEDICAL SERVICE WEBSITE",
           description: "A clean healthcare website for clinics, doctors, dental care and patient services.",
+          starterPrice: "$399",
+          minimumPrice: "$340",
+          moreChangesPrice: "$700+",
           image: "assets/designs/portfolio-website-01.png",
           alt: "Medical service website template preview",
           href: "templates/service-business-04.html",
@@ -273,6 +302,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 05",
           title: "BUSINESS CONSULTING WEBSITE",
           description: "A professional website for consultants, advisors and business service brands.",
+          starterPrice: "$369",
+          minimumPrice: "$310",
+          moreChangesPrice: "$630+",
           image: "assets/designs/barbershop-salon-02.png",
           alt: "Business consulting website template preview",
           href: "templates/service-business-05.html",
@@ -283,6 +315,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 06",
           title: "BUSINESS CONSULTANCY",
           description: "A conversion-focused consultancy website for business growth and advisory services.",
+          starterPrice: "$369",
+          minimumPrice: "$310",
+          moreChangesPrice: "$650+",
           image: "assets/designs/clover-product-landing.png",
           alt: "Business consultancy template preview",
           href: "templates/business-consultancy.html",
@@ -293,6 +328,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 07",
           title: "PET GROOMING WEBSITE",
           description: "A friendly service website for pet grooming, bookings and customer trust.",
+          starterPrice: "$319",
+          minimumPrice: "$260",
+          moreChangesPrice: "$540+",
           image: "assets/designs/minimal-personal-portfolio.png",
           alt: "Pet grooming website template preview",
           href: "templates/pet-grooming-website.html",
@@ -308,6 +346,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 01",
           title: "MINIMAL PRODUCT PORTFOLIO",
           description: "A clean portfolio for product designers, makers and modern creative work.",
+          starterPrice: "$299",
+          minimumPrice: "$250",
+          moreChangesPrice: "$500+",
           image: "assets/designs/service-business-05.png",
           alt: "Minimal product portfolio template preview",
           href: "templates/portfolio-website-01.html",
@@ -318,6 +359,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 02",
           title: "DARK DESIGNER PORTFOLIO",
           description: "A bold dark portfolio for designers, creatives and visual professionals.",
+          starterPrice: "$349",
+          minimumPrice: "$290",
+          moreChangesPrice: "$590+",
           image: "assets/designs/portfolio-website-02.png",
           alt: "Dark designer portfolio template preview",
           href: "templates/portfolio-website-02.html",
@@ -328,6 +372,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 03",
           title: "DARK CREATIVE PORTFOLIO",
           description: "A cinematic dark layout for creative portfolios and bold visual storytelling.",
+          starterPrice: "$379",
+          minimumPrice: "$320",
+          moreChangesPrice: "$670+",
           image: "assets/designs/dark-creative-portfolio.png",
           alt: "Dark creative portfolio template preview",
           href: "templates/dark-creative-portfolio.html",
@@ -338,6 +385,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 04",
           title: "LUXURY BRAND PORTFOLIO",
           description: "An elegant premium portfolio for luxury brands and high-end creative showcases.",
+          starterPrice: "$469",
+          minimumPrice: "$390",
+          moreChangesPrice: "$850+",
           image: "assets/designs/luxury-brand-portfolio.png",
           alt: "Luxury brand portfolio template preview",
           href: "templates/luxury-brand-portfolio.html",
@@ -348,6 +398,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 05",
           title: "MINIMAL PERSONAL PORTFOLIO",
           description: "A soft minimalist portfolio for personal brands, blogs and independent creatives.",
+          starterPrice: "$299",
+          minimumPrice: "$250",
+          moreChangesPrice: "$500+",
           image: "assets/designs/pet-grooming-website.png",
           alt: "Minimal personal portfolio template preview",
           href: "templates/minimal-personal-portfolio.html",
@@ -358,6 +411,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
           label: "TEMPLATE 06",
           title: "DIGITAL DESIGNER PORTFOLIO",
           description: "A clean digital portfolio for designers, visual work and case-study storytelling.",
+          starterPrice: "$359",
+          minimumPrice: "$300",
+          moreChangesPrice: "$620+",
           image: "assets/designs/brandora-agency.png",
           alt: "Digital designer portfolio template preview",
           href: "templates/digital-designer-portfolio.html",
@@ -379,6 +435,10 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
       <div class="project-meta">${card.label}</div>
       <h3>${card.title}</h3>
       <p>${card.description}</p>
+      <div class="template-price">
+        <p class="template-price-label">Starting at <span>${card.starterPrice || "$299"}</span></p>
+        <p class="template-price-note">Final price depends on changes.</p>
+      </div>
       <div class="card-actions">
         <a class="btn-expand" href="${card.href}" target="_blank" rel="noopener noreferrer">EXPAND PREVIEW</a>
         <a class="btn-live" href="preview.html?template=${card.slug}">VIEW LIVE SITE →</a>
@@ -489,6 +549,7 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
         const opt = document.createElement("option");
         opt.value = card.slug;
         opt.dataset.title = card.title;
+        opt.dataset.starterPrice = card.starterPrice || "";
         opt.textContent = card.title;
         reqTemplateSel.appendChild(opt);
       });
@@ -625,6 +686,12 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
     return selected ? selected.textContent.trim() : "";
   }
 
+  function getTemplateStarterPrice() {
+    if (!templateSelect) return "";
+    const selected = templateSelect.options[templateSelect.selectedIndex];
+    return selected ? (selected.dataset.starterPrice || "") : "";
+  }
+
   function updatePreviewButtonState() {
     if (!templateSelect || !previewBtn) return;
     const typeValue = (typeSelect || {}).value || "";
@@ -685,10 +752,12 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
     const templateValue = (templateSelect || {}).value || "";
     const budget   = (document.getElementById("req-budget")   || {}).value || "";
     let template = getTemplateLabel();
+    let starterPrice = getTemplateStarterPrice();
     let hasTemplate = Boolean(templateValue);
 
     if (type === "Design from scratch") {
       template = "Design from scratch";
+      starterPrice = "Custom quote";
       hasTemplate = true;
     }
 
@@ -696,6 +765,7 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
       if (!templateValue) {
         template = "Not sure yet";
       }
+      starterPrice = templateValue ? (starterPrice || "To be confirmed") : "To be confirmed";
       hasTemplate = true;
     }
 
@@ -715,7 +785,7 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
       return null;
     }
     if (errMsg) errMsg.hidden = true;
-    return { type, template, budget };
+    return { type, template, starterPrice, budget };
   }
 
   function buildMessage(data) {
@@ -729,6 +799,9 @@ if (templateGrid && categoryTitle && categoryButtons.length) {
       "",
       "Template I liked:",
       data.template,
+      "",
+      "Starting price:",
+      data.starterPrice || "To be confirmed",
       "",
       "Approximate budget:",
       data.budget,
