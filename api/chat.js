@@ -10,8 +10,8 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'messages must be a non-empty array' });
   }
 
-  if (messages.length > 20) {
-    return res.status(400).json({ error: 'Too many messages (max 20)' });
+  if (messages.length > 30) {
+    return res.status(400).json({ error: 'Too many messages (max 30)' });
   }
 
   for (const msg of messages) {
