@@ -3,3 +3,9 @@
 .claude-plugin/
 README.skill.md
 skill.json
+
+# Environment variables — never commit these
+.env
+.env.local
+.env.*.local
+.env.production.local

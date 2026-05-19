@@ -563,6 +563,7 @@
         // cuando el bot envía { type: 'jb-preview', slug } se navega a preview.html,
         // replicando el mismo comportamiento que el botón .btn-live del catálogo.
         window.addEventListener('message', (e) => {
+          if (e.origin !== window.location.origin) return;
           if (e.data?.type === 'jb-preview' && e.data.slug) {
             window.location.href = 'preview.html?template=' + encodeURIComponent(e.data.slug);
           }
