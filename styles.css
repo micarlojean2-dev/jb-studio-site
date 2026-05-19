@@ -1176,10 +1176,7 @@ a {
   object-fit: cover;
   object-position: center center;
   position: static;
-}
-
-.about-photo-image-mike {
-  object-position: center 28%;
+  transform: none;
 }
 
 .about-photo-image-bryan {
