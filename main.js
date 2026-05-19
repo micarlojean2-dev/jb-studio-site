@@ -45,6 +45,7 @@ function initPremiumMotion() {
     ".req-btn-ig",
     ".req-btn-preview",
     ".template-card",
+    ".pricing-card",
   ];
 
   premiumSelectors.forEach((selector) => {
@@ -56,6 +57,7 @@ function initPremiumMotion() {
     ".booking-showcase-card",
     ".booking-hero-shot",
     ".template-card",
+    ".pricing-card",
   ].forEach((selector) => {
     document.querySelectorAll(selector).forEach((el) => el.classList.add("tilt-card"));
   });
@@ -64,10 +66,15 @@ function initPremiumMotion() {
     document.querySelectorAll(selector).forEach((el) => el.classList.add("mockup-card"));
   });
 
+  [".pricing-card"].forEach((selector) => {
+    document.querySelectorAll(selector).forEach((el) => el.classList.add("mockup-card"));
+  });
+
   setStaggerDelays(".about-team-grid .about-team-card", 120, 240);
   setStaggerDelays(".booking-problem-grid .booking-problem-card", 70, 240);
   setStaggerDelays(".booking-showcase-grid .booking-showcase-card", 120, 240);
   setStaggerDelays(".request-options .option-card", 90, 240);
+  setStaggerDelays(".pricing-grid .pricing-card", 90, 240);
 
   const canTilt =
     !prefersReducedMotion &&
