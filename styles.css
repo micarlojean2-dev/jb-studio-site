@@ -1153,6 +1153,19 @@ a {
   text-transform: uppercase;
 }
 
+.about-photo-frame {
+  overflow: hidden;
+  padding: 0;
+}
+
+.about-photo-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
 .about-member-copy {
   display: grid;
   align-content: center;

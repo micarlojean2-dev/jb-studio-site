@@ -212,28 +212,30 @@
             <div class="about-photo-placeholder">MIKE PHOTO</div>
             <div class="about-member-copy">
               <h3>Mike</h3>
-              <p class="about-role">Web Direction &amp; Client Experience</p>
+              <p class="about-role">WEB DIRECTION &amp; CLIENT EXPERIENCE</p>
               <p class="about-member-text">Mike focuses on the structure, message, and overall direction of each website. His goal is to make sure every page is clear, easy to navigate, and built around what the business actually needs.</p>
               <ul class="about-member-list">
-                <li>Website structure</li>
-                <li>Client communication</li>
-                <li>Brand presentation</li>
+                <li>WEBSITE STRUCTURE</li>
+                <li>CLIENT COMMUNICATION</li>
+                <li>BRAND PRESENTATION</li>
               </ul>
             </div>
           </article>
 
           <article class="about-team-card about-team-card-brayan">
             <div class="about-member-copy">
-              <h3>Brayan</h3>
-              <p class="about-role">Visual Design &amp; Website Adaptation</p>
-              <p class="about-member-text">Brayan focuses on adapting each template into a polished website that matches the client&rsquo;s brand. He works on layout details, visual consistency, content placement, and overall presentation.</p>
+              <h3>Brian</h3>
+              <p class="about-role">VISUAL DESIGN &amp; WEBSITE ADAPTATION</p>
+              <p class="about-member-text">Brian focuses on adapting each template into a polished website that matches the client&rsquo;s brand. He works on layout details, visual consistency, content placement, and overall presentation.</p>
               <ul class="about-member-list">
-                <li>Template customization</li>
-                <li>Visual refinement</li>
-                <li>Content layout</li>
+                <li>TEMPLATE CUSTOMIZATION</li>
+                <li>VISUAL REFINEMENT</li>
+                <li>CONTENT LAYOUT</li>
               </ul>
             </div>
-            <div class="about-photo-placeholder">BRAYAN PHOTO</div>
+            <div class="about-photo-placeholder about-photo-frame">
+              <img class="about-photo-image" src="assets/team/brian.png" alt="Brian portrait" onerror="this.parentElement.textContent='BRIAN PHOTO'" />
+            </div>
           </article>
         </div>
       </section>
@@ -351,5 +353,220 @@
 
     </main>
     <script src="main.js"></script>
+
+    <!-- ── Chat widget flotante ───────────────────────────────────────────── -->
+    <style>
+      /* Botón flotante */
+      #chat-fab {
+        position: fixed;
+        bottom: 28px;
+        right: 28px;
+        z-index: 9000;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: #6C5FFF;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 6px 24px rgba(108, 95, 255, 0.45);
+        transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+      }
+
+      #chat-fab:hover {
+        background: #7D71FF;
+        transform: translateY(-2px);
+        box-shadow: 0 10px 32px rgba(108, 95, 255, 0.55);
+      }
+
+      #chat-fab:active { transform: translateY(0) scale(0.95); }
+
+      #chat-fab svg { width: 24px; height: 24px; flex-shrink: 0; }
+
+      /* Punto de notificación (desaparece al abrir por primera vez) */
+      #chat-fab-dot {
+        position: absolute;
+        top: 3px;
+        right: 3px;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: #1FD98A;
+        border: 2px solid #0B0C12;
+        animation: fab-dot-pulse 2s infinite;
+      }
+
+      @keyframes fab-dot-pulse {
+        0%, 100% { transform: scale(1);    opacity: 1;   }
+        50%       { transform: scale(1.25); opacity: 0.7; }
+      }
+
+      /* Overlay oscuro detrás del panel */
+      #chat-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 9001;
+        background: rgba(0, 0, 0, 0.45);
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
+        animation: overlay-in 0.18s ease forwards;
+      }
+
+      #chat-overlay.is-open { display: block; }
+
+      @keyframes overlay-in {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+
+      /* Panel del chatbot */
+      #chat-panel {
+        position: fixed;
+        bottom: 96px;
+        right: 28px;
+        z-index: 9002;
+        width: 420px;
+        height: 600px;
+        border-radius: 20px;
+        overflow: hidden;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
+        /* Estado cerrado */
+        opacity: 0;
+        transform: translateY(16px) scale(0.97);
+        pointer-events: none;
+        transition: opacity 0.22s ease, transform 0.22s ease;
+        transform-origin: bottom right;
+      }
+
+      #chat-panel.is-open {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+      }
+
+      /* El iframe ocupa todo el panel */
+      #chat-panel iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        display: block;
+        border-radius: 20px;
+      }
+
+      /* Responsive: en móvil el panel ocupa casi toda la pantalla */
+      @media (max-width: 500px) {
+        #chat-panel {
+          width: calc(100vw - 24px);
+          height: calc(100dvh - 110px);
+          bottom: 88px;
+          right: 12px;
+          left: 12px;
+          border-radius: 16px;
+        }
+
+        #chat-fab {
+          bottom: 20px;
+          right: 20px;
+        }
+      }
+    </style>
+
+    <!-- Botón flotante -->
+    <button id="chat-fab" aria-label="Abrir asistente de chat" aria-expanded="false">
+      <!-- Ícono chat (estado cerrado) -->
+      <svg id="fab-icon-chat" viewBox="0 0 24 24" fill="none"
+           stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+      </svg>
+      <!-- Ícono X (estado abierto, oculto por defecto) -->
+      <svg id="fab-icon-close" viewBox="0 0 24 24" fill="none"
+           stroke="white" stroke-width="2.2" stroke-linecap="round" style="display:none">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+      <span id="chat-fab-dot" aria-hidden="true"></span>
+    </button>
+
+    <!-- Overlay que cierra el panel al hacer clic fuera -->
+    <div id="chat-overlay" aria-hidden="true"></div>
+
+    <!-- Panel del iframe -->
+    <div id="chat-panel" role="dialog" aria-label="Asistente de JB Studio" aria-modal="true">
+      <iframe
+        id="chat-iframe"
+        src=""
+        title="Asistente de JB Studio"
+        loading="lazy"
+        allow="clipboard-write"
+      ></iframe>
+    </div>
+
+    <script>
+      (function () {
+        const fab      = document.getElementById('chat-fab');
+        const panel    = document.getElementById('chat-panel');
+        const overlay  = document.getElementById('chat-overlay');
+        const iframe   = document.getElementById('chat-iframe');
+        const iconChat = document.getElementById('fab-icon-chat');
+        const iconX    = document.getElementById('fab-icon-close');
+        const dot      = document.getElementById('chat-fab-dot');
+
+        let isOpen    = false;
+        let loaded    = false; // el iframe solo se carga una vez
+
+        function openPanel() {
+          if (isOpen) return;
+          isOpen = true;
+
+          // Carga el iframe la primera vez que se abre (lazy)
+          if (!loaded) {
+            iframe.src = 'chatbot.html';
+            loaded = true;
+          }
+
+          panel.classList.add('is-open');
+          overlay.classList.add('is-open');
+          fab.setAttribute('aria-expanded', 'true');
+          iconChat.style.display = 'none';
+          iconX.style.display    = '';
+          dot.style.display      = 'none'; // oculta el punto tras el primer clic
+        }
+
+        function closePanel() {
+          if (!isOpen) return;
+          isOpen = false;
+
+          panel.classList.remove('is-open');
+          overlay.classList.remove('is-open');
+          fab.setAttribute('aria-expanded', 'false');
+          iconChat.style.display = '';
+          iconX.style.display    = 'none';
+        }
+
+        // Clic en el botón flotante: alterna abierto/cerrado
+        fab.addEventListener('click', () => (isOpen ? closePanel() : openPanel()));
+
+        // Clic en el overlay: cierra
+        overlay.addEventListener('click', closePanel);
+
+        // Escape: cierra
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && isOpen) closePanel();
+        });
+
+        // Mensajes del iframe del chatbot:
+        // cuando el bot envía { type: 'jb-preview', slug } se navega a preview.html,
+        // replicando el mismo comportamiento que el botón .btn-live del catálogo.
+        window.addEventListener('message', (e) => {
+          if (e.data?.type === 'jb-preview' && e.data.slug) {
+            window.location.href = 'preview.html?template=' + encodeURIComponent(e.data.slug);
+          }
+        });
+      })();
+    </script>
+    <!-- ── Fin chat widget flotante ───────────────────────────────────────── -->
   </body>
 </html>
