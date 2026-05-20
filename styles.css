@@ -1183,6 +1183,17 @@ a {
   object-position: center 20%;
 }
 
+.about-photo-frame,
+.about-photo-image {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.about-photo-image {
+  pointer-events: none;
+}
+
 .about-member-copy {
   display: grid;
   align-content: center;
