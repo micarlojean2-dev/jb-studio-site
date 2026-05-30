@@ -1134,9 +1134,6 @@ a {
   transition: opacity 520ms ease, transform 520ms ease, box-shadow 240ms ease, border-color 240ms ease;
 }
 
-.workstation.is-visible .about-team-card:nth-child(2) {
-  transition-delay: 100ms;
-}
 
 .about-photo-placeholder {
   display: grid;
