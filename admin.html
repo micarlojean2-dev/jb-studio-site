@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JB Studio — Admin</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0B0C12;
+      color: #fff;
+      font-family: 'IBM Plex Mono', monospace;
+      min-height: 100vh;
+    }
+
+    /* ── Login ──────────────────────────────────────────────────────────────── */
+    #login-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .login-card {
+      background: #0f0f18;
+      border: 1px solid rgba(108, 99, 255, 0.25);
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .login-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2rem;
+      letter-spacing: 2px;
+      margin-bottom: 6px;
+    }
+
+    .login-title span { color: #6C63FF; }
+
+    .login-sub {
+      font-size: 0.72rem;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 28px;
+      letter-spacing: 0.5px;
+    }
+
+    .login-input {
+      width: 100%;
+      background: #13131f;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #fff;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.875rem;
+      outline: none;
+      margin-bottom: 14px;
+      transition: border-color 0.2s;
+    }
+
+    .login-input:focus { border-color: #6C63FF; }
+
+    .login-btn {
+      width: 100%;
+      background: #6C63FF;
+      border: none;
+      border-radius: 8px;
+      padding: 13px;
+      color: #fff;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.1rem;
+      letter-spacing: 1.5px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .login-btn:hover { background: #7D71FF; }
+    .login-btn:disabled { background: rgba(108,99,255,0.4); cursor: not-allowed; }
+
+    .login-error {
+      font-size: 0.75rem;
+      color: #FF6B6B;
+      margin-top: 12px;
+      display: none;
+      text-align: center;
+    }
+
+    /* ── Admin Panel ────────────────────────────────────────────────────────── */
+    #admin-panel { display: none; }
+
+    .admin-header {
+      background: #0f0f18;
+      border-bottom: 1px solid rgba(108, 99, 255, 0.15);
+      padding: 18px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .admin-brand {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.4rem;
+      letter-spacing: 2px;
+    }
+
+    .admin-brand span { color: #6C63FF; }
+
+    .admin-logout {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 6px;
+      padding: 6px 14px;
+      color: rgba(255,255,255,0.5);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .admin-logout:hover { border-color: #FF6B6B; color: #FF6B6B; }
+
+    .admin-body {
+      padding: 32px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    /* Stats */
+    .admin-stats {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+
+    .stat-card {
+      background: #0f0f18;
+      border: 1px solid rgba(108, 99, 255, 0.15);
+      border-radius: 10px;
+      padding: 16px 22px;
+      min-width: 140px;
+    }
+
+    .stat-number {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.4rem;
+      color: #6C63FF;
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 0.68rem;
+      color: rgba(255,255,255,0.35);
+      margin-top: 4px;
+      letter-spacing: 1px;
+    }
+
+    /* Filter */
+    .admin-filter {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 22px;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 5px 16px;
+      color: rgba(255,255,255,0.45);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      letter-spacing: 0.5px;
+    }
+
+    .filter-btn.is-active,
+    .filter-btn:hover {
+      background: rgba(108, 99, 255, 0.18);
+      border-color: #6C63FF;
+      color: #fff;
+    }
+
+    /* Review rows */
+    .reviews-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .rev-row {
+      background: #0f0f18;
+      border: 1px solid rgba(255,255,255,0.07);
+      border-left: 3px solid transparent;
+      border-radius: 10px;
+      padding: 18px 20px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: start;
+      transition: border-color 0.15s;
+    }
+
+    .rev-row.is-public { border-left-color: #1FD98A; }
+    .rev-row.is-hidden { border-left-color: #FF6B6B; }
+
+    .rev-row-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    .rev-name { font-size: 0.875rem; font-weight: 600; }
+
+    .rev-stars { color: #FFD700; font-size: 0.88rem; letter-spacing: 1px; }
+
+    .rev-badge {
+      font-size: 0.62rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .rev-badge.public { background: rgba(31,217,138,0.15); color: #1FD98A; }
+    .rev-badge.hidden { background: rgba(255,107,107,0.15); color: #FF6B6B; }
+
+    .rev-date {
+      font-size: 0.68rem;
+      color: rgba(255,255,255,0.3);
+      margin-left: auto;
+    }
+
+    .rev-comment {
+      font-size: 0.82rem;
+      color: rgba(255,255,255,0.6);
+      line-height: 1.55;
+    }
+
+    .rev-delete {
+      background: none;
+      border: 1px solid rgba(255,107,107,0.3);
+      border-radius: 6px;
+      padding: 6px 12px;
+      color: rgba(255,107,107,0.65);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+      align-self: center;
+    }
+
+    .rev-delete:hover { background: rgba(255,107,107,0.1); color: #FF6B6B; border-color: #FF6B6B; }
+    .rev-delete:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .admin-empty,
+    .admin-loading {
+      text-align: center;
+      color: rgba(255,255,255,0.3);
+      font-size: 0.82rem;
+      padding: 60px 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Login ── -->
+  <div id="login-screen">
+    <div class="login-card">
+      <h1 class="login-title">JB <span>ADMIN</span></h1>
+      <p class="login-sub">REVIEWS MANAGEMENT PANEL</p>
+      <input class="login-input" type="password" id="token-input"
+             placeholder="Enter admin token" autocomplete="current-password">
+      <button class="login-btn" id="login-btn">ACCESS PANEL →</button>
+      <p class="login-error" id="login-error">Invalid token. Please try again.</p>
+    </div>
+  </div>
+
+  <!-- ── Admin Panel ── -->
+  <div id="admin-panel">
+    <header class="admin-header">
+      <div class="admin-brand">JB <span>ADMIN</span></div>
+      <button class="admin-logout" id="logout-btn">LOG OUT</button>
+    </header>
+
+    <div class="admin-body">
+      <div class="admin-stats">
+        <div class="stat-card">
+          <div class="stat-number" id="stat-total">—</div>
+          <div class="stat-label">TOTAL REVIEWS</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stat-public">—</div>
+          <div class="stat-label">PUBLIC (4–5★)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stat-hidden">—</div>
+          <div class="stat-label">HIDDEN (1–3★)</div>
+        </div>
+      </div>
+
+      <div class="admin-filter">
+        <button class="filter-btn is-active" data-filter="all">ALL</button>
+        <button class="filter-btn" data-filter="public">PUBLIC ONLY</button>
+        <button class="filter-btn" data-filter="hidden">HIDDEN ONLY</button>
+      </div>
+
+      <div class="reviews-list" id="admin-list">
+        <div class="admin-loading">Loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    let token      = '';
+    let allReviews = [];
+    let filter     = 'all';
+
+    const loginScreen = document.getElementById('login-screen');
+    const adminPanel  = document.getElementById('admin-panel');
+    const tokenInput  = document.getElementById('token-input');
+    const loginBtn    = document.getElementById('login-btn');
+    const loginError  = document.getElementById('login-error');
+    const logoutBtn   = document.getElementById('logout-btn');
+    const listEl      = document.getElementById('admin-list');
+
+    function stars(n) { return '★'.repeat(n) + '☆'.repeat(5 - n); }
+
+    function fmtDate(iso) {
+      return new Date(iso).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    }
+
+    function updateStats() {
+      document.getElementById('stat-total').textContent  = allReviews.length;
+      document.getElementById('stat-public').textContent = allReviews.filter(r => r.estrellas >= 4).length;
+      document.getElementById('stat-hidden').textContent = allReviews.filter(r => r.estrellas < 4).length;
+    }
+
+    function renderList() {
+      const list = allReviews.filter(r => {
+        if (filter === 'public') return r.estrellas >= 4;
+        if (filter === 'hidden') return r.estrellas < 4;
+        return true;
+      });
+
+      if (!list.length) {
+        listEl.innerHTML = '<div class="admin-empty">No reviews found.</div>';
+        return;
+      }
+
+      listEl.innerHTML = list.map(r => {
+        const pub = r.estrellas >= 4;
+        return `
+          <div class="rev-row ${pub ? 'is-public' : 'is-hidden'}">
+            <div>
+              <div class="rev-row-top">
+                <span class="rev-name">${escHTML(r.nombre)}</span>
+                <span class="rev-stars">${stars(r.estrellas)}</span>
+                <span class="rev-badge ${pub ? 'public' : 'hidden'}">${pub ? 'PUBLIC' : 'HIDDEN'}</span>
+                <span class="rev-date">${fmtDate(r.fecha)}</span>
+              </div>
+              <p class="rev-comment">"${escHTML(r.comentario)}"</p>
+            </div>
+            <button class="rev-delete" data-id="${r.id}">DELETE</button>
+          </div>`;
+      }).join('');
+
+      listEl.querySelectorAll('.rev-delete').forEach(btn => {
+        btn.addEventListener('click', () => deleteReview(btn.dataset.id, btn));
+      });
+    }
+
+    function escHTML(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function loadReviews() {
+      listEl.innerHTML = '<div class="admin-loading">Loading…</div>';
+      const res = await fetch('/api/reviews', {
+        headers: { 'x-admin-token': token }
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      allReviews = await res.json();
+      updateStats();
+      renderList();
+    }
+
+    async function deleteReview(id, btn) {
+      if (!confirm('Delete this review permanently?')) return;
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        const res = await fetch(
+          `/api/reviews?id=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}`,
+          { method: 'DELETE' }
+        );
+        if (!res.ok) throw new Error();
+        allReviews = allReviews.filter(r => r.id !== id);
+        updateStats();
+        renderList();
+      } catch {
+        alert('Failed to delete review.');
+        btn.disabled = false;
+        btn.textContent = 'DELETE';
+      }
+    }
+
+    async function tryLogin() {
+      const t = tokenInput.value.trim();
+      if (!t) return;
+      loginError.style.display = 'none';
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'CHECKING…';
+
+      try {
+        const res = await fetch('/api/reviews', {
+          headers: { 'x-admin-token': t }
+        });
+        if (res.status === 403) throw new Error('bad token');
+        if (!res.ok) throw new Error(`${res.status}`);
+        token = t;
+        allReviews = await res.json();
+        loginScreen.style.display = 'none';
+        adminPanel.style.display  = 'block';
+        updateStats();
+        renderList();
+      } catch {
+        loginError.style.display = 'block';
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'ACCESS PANEL →';
+      }
+    }
+
+    loginBtn.addEventListener('click', tryLogin);
+    tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+
+    logoutBtn.addEventListener('click', () => {
+      token = '';
+      allReviews = [];
+      tokenInput.value = '';
+      loginError.style.display = 'none';
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'ACCESS PANEL →';
+      adminPanel.style.display  = 'none';
+      loginScreen.style.display = 'flex';
+    });
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        filter = btn.dataset.filter;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+        renderList();
+      });
+    });
+  })();
+  </script>
+</body>
+</html>
