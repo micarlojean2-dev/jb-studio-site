@@ -489,9 +489,8 @@
     // CONFIGURACIÓN
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Número de WhatsApp del diseñador (código país + número, sin + ni espacios)
-    // Ejemplo: '15035931690'
     const WA_NUMBER = '15035931690';
+    const IG_USER   = 'jb__studiodesing';
 
     // ─────────────────────────────────────────────────────────────────────────
     // SYSTEM PROMPT — instrucciones del bot
@@ -533,10 +532,25 @@ QUALIFICATION FLOW:
    - Takes appointments → FlowBook or Pro Bot
    - Needs all three → explain the full package
 
-BEFORE giving WhatsApp contact:
-Make sure the person has shown real interest in a specific service. Ask at least 2 questions first. Only give WhatsApp after qualifying.
+CONTACT — INSTAGRAM ONLY:
+NEVER share any contact link proactively. Only share Instagram when the visitor shows a CLEAR purchase signal.
 
-WhatsApp contact: https://wa.me/${WA_NUMBER}
+Purchase signals:
+- English: "I want to hire", "let's do it", "I'm ready", "how do I pay", "sign me up", "I want the plan", "let's get started", "how much in total", "I'll take it", "where do I sign"
+- Spanish: "quiero contratar", "cuándo empezamos", "cómo pago", "me interesa contratarlo", "quiero el plan", "listo lo quiero", "cuánto es en total", "cómo empezamos", "quiero comenzar"
+
+Rules:
+- If they only ask about prices → give prices, do NOT share Instagram.
+- If they ask "how do I contact you?" without a purchase signal → say they can keep asking here, and when they're ready you'll connect them.
+- When you detect a clear purchase signal, respond with ONLY this (match the conversation language):
+
+ENGLISH: "Awesome! Mike will take care of everything. Contact him directly on Instagram to get started:
+👉 instagram.com/${IG_USER}
+He usually replies within a few hours. Just tell him what you need and he'll send you all the details!"
+
+SPANISH: "¡Perfecto! Mike se encarga de todo. Escríbele directo por Instagram para comenzar:
+👉 instagram.com/${IG_USER}
+Suele responder en pocas horas. Solo cuéntale qué necesitas y él te manda todos los detalles."
 
 TONE: Friendly, professional, concise. No long paragraphs. Max 3 sentences per response.
 Never say services are free. Never make up prices.`;
@@ -545,16 +559,16 @@ Never say services are free. Never make up prices.`;
     // ESTADO DE LA CONVERSACIÓN
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Historial completo de mensajes (se envía íntegro a la API en cada turno)
     let messages  = [];
-    // Bloquea el envío mientras espera respuesta
     let isLoading = false;
+    let userLang  = null; // 'en' | 'es' — set by language picker, locked for the session
 
     // ─────────────────────────────────────────────────────────────────────────
     // CLAVES DE PERSISTENCIA
     // ─────────────────────────────────────────────────────────────────────────
-    const LS_HISTORY = 'jb-chat-history'; // array messages[] serializado
-    const LS_BUBBLES = 'jb-chat-bubbles'; // innerHTML del área de mensajes
+    const LS_HISTORY = 'jb-chat-history';
+    const LS_BUBBLES = 'jb-chat-bubbles';
+    const LS_LANG    = 'jb-chat-lang';
 
     // ─────────────────────────────────────────────────────────────────────────
     // REFERENCIAS AL DOM
@@ -573,8 +587,9 @@ Never say services are free. Never make up prices.`;
       try {
         localStorage.setItem(LS_HISTORY, JSON.stringify(messages));
         localStorage.setItem(LS_BUBBLES, chatMessages.innerHTML);
+        if (userLang) localStorage.setItem(LS_LANG, userLang);
       } catch (e) {
-        console.warn('[chatbot] No se pudo guardar en localStorage:', e);
+        console.warn('[chatbot] Could not save to localStorage:', e);
       }
     }
 
@@ -584,7 +599,9 @@ Never say services are free. Never make up prices.`;
     function resetChat() {
       localStorage.removeItem(LS_HISTORY);
       localStorage.removeItem(LS_BUBBLES);
-      messages = [];
+      localStorage.removeItem(LS_LANG);
+      messages  = [];
+      userLang  = null;
       chatMessages.innerHTML = '';
       chatInput.disabled = true;
       sendBtn.disabled   = true;
@@ -806,6 +823,13 @@ Never say services are free. Never make up prices.`;
     // LLAMADA A LA API DE ANTHROPIC
     // Envía el historial completo + system prompt y retorna el texto de Claude.
     // ─────────────────────────────────────────────────────────────────────────
+    function getSystemPrompt(lang) {
+      const lock = (lang === 'es')
+        ? 'IDIOMA BLOQUEADO: El usuario eligió español. Responde SIEMPRE en español, sin excepción. Nunca cambies al inglés.'
+        : 'LANGUAGE LOCKED: The user chose English. ALWAYS respond in English, no exceptions. Never switch to Spanish.';
+      return lock + '\n\n' + SYSTEM_PROMPT;
+    }
+
     async function callAPI(userContent) {
       // Agrega el mensaje del usuario al historial antes de llamar
       messages.push({ role: 'user', content: userContent });
@@ -821,7 +845,7 @@ Never say services are free. Never make up prices.`;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages,
-          systemPrompt: SYSTEM_PROMPT,
+          systemPrompt: getSystemPrompt(userLang),
         }),
       });
 
@@ -887,34 +911,53 @@ Never say services are free. Never make up prices.`;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // QUICK REPLIES
+    // QUICK REPLIES — language picker + service chips
     // ─────────────────────────────────────────────────────────────────────────
-    function showQuickReplies() {
-      const chips = [
-        { label: '🌐 I need a website',        text: 'I need a website' },
-        { label: '🤖 I want a chatbot',         text: 'I want a chatbot' },
-        { label: '📅 Booking app (FlowBook)',   text: 'Tell me about FlowBook' },
-      ];
+    function removeQuickReplies() {
+      const el = document.getElementById('quickReplies');
+      if (el) el.remove();
+    }
 
+    function renderChips(chips) {
       const row = document.createElement('div');
       row.className = 'quick-replies';
       row.id = 'quickReplies';
-
-      chips.forEach(chip => {
+      chips.forEach(({ label, onClick }) => {
         const btn = document.createElement('button');
         btn.className   = 'qr-chip';
-        btn.textContent = chip.label;
-        btn.addEventListener('click', () => sendQuickReply(chip.text));
+        btn.textContent = label;
+        btn.addEventListener('click', onClick);
         row.appendChild(btn);
       });
-
       chatMessages.appendChild(row);
       scrollToBottom();
     }
 
-    function removeQuickReplies() {
-      const el = document.getElementById('quickReplies');
-      if (el) el.remove();
+    function showLangPicker() {
+      renderChips([
+        { label: '🇺🇸 English', onClick: () => selectLanguage('en') },
+        { label: '🇪🇸 Español', onClick: () => selectLanguage('es') },
+      ]);
+    }
+
+    function selectLanguage(lang) {
+      userLang = lang;
+      removeQuickReplies();
+      if (lang === 'en') {
+        addMessage('bot', 'Perfect! What can I help you with today?');
+        renderChips([
+          { label: '🌐 I need a website',        onClick: () => sendQuickReply('I need a website') },
+          { label: '🤖 I want a chatbot',         onClick: () => sendQuickReply('I want a chatbot') },
+          { label: '📅 Booking app (FlowBook)',   onClick: () => sendQuickReply('Tell me about FlowBook') },
+        ]);
+      } else {
+        addMessage('bot', '¡Perfecto! ¿En qué te puedo ayudar hoy?');
+        renderChips([
+          { label: '🌐 Necesito una página web',    onClick: () => sendQuickReply('Necesito una página web') },
+          { label: '🤖 Quiero un chatbot',           onClick: () => sendQuickReply('Quiero un chatbot') },
+          { label: '📅 App de reservas (FlowBook)',  onClick: () => sendQuickReply('Cuéntame sobre FlowBook') },
+        ]);
+      }
     }
 
     async function sendQuickReply(text) {
@@ -941,11 +984,9 @@ Never say services are free. Never make up prices.`;
 
     // ─────────────────────────────────────────────────────────────────────────
     // INICIO DEL CHAT
-    // 1. Si hay historial guardado → restaura y no repite el saludo.
-    // 2. Si no hay historial → muestra saludo fijo + botones de respuesta rápida.
     // ─────────────────────────────────────────────────────────────────────────
     function initChat() {
-      // ── Intentar restaurar historial guardado ──────────────────────────────
+      // ── Restore saved session ─────────────────────────────────────────────
       const savedHistory = localStorage.getItem(LS_HISTORY);
       const savedBubbles = localStorage.getItem(LS_BUBBLES);
 
@@ -954,6 +995,7 @@ Never say services are free. Never make up prices.`;
           const parsed = JSON.parse(savedHistory);
           if (Array.isArray(parsed) && parsed.length > 0) {
             messages = parsed;
+            userLang = localStorage.getItem(LS_LANG) || 'en';
             chatMessages.innerHTML = savedBubbles;
             scrollToBottom();
             unlockUI();
@@ -963,12 +1005,13 @@ Never say services are free. Never make up prices.`;
           console.warn('[chatbot] Corrupted history, starting fresh:', e);
           localStorage.removeItem(LS_HISTORY);
           localStorage.removeItem(LS_BUBBLES);
+          localStorage.removeItem(LS_LANG);
         }
       }
 
-      // ── Fresh start: hardcoded greeting + quick reply buttons ─────────────
-      addMessage('bot', "Hi! 👋 I'm the JB Studio assistant.\nWhat can I help you with today?");
-      showQuickReplies();
+      // ── Fresh start: bilingual greeting + language picker ─────────────────
+      addMessage('bot', "Hi! 👋 / ¡Hola! 👋\nWhat language do you prefer?\n¿En qué idioma prefieres hablar?");
+      showLangPicker();
       unlockUI();
     }
 
