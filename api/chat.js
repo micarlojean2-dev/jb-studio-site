@@ -346,7 +346,7 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         model:      'claude-sonnet-4-6',
-        max_tokens: 512,
+        max_tokens: 300,
         system:     typeof systemPrompt === 'string' ? systemPrompt.slice(0, 12000) : '',
         messages,
       }),
