@@ -2886,19 +2886,33 @@ a {
 .chatbot-logo {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 22px;
+  gap: 20px;
+  margin-bottom: 28px;
 }
 
-.chatbot-logo svg {
-  width: 52px;
-  height: 52px;
+.chatbot-logo-img-wrap {
+  width: 120px;
+  height: 120px;
+  background: #1a4a2e;
+  border-radius: 24px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 8px 32px rgba(26, 74, 46, 0.35);
+}
+
+.chatbot-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .chatbot-logo-label {
   font-family: var(--display);
-  font-size: 22px;
+  font-size: 28px;
   color: var(--green);
   text-transform: uppercase;
   letter-spacing: 0.04em;
