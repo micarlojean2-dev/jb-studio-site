@@ -3,9 +3,13 @@
 .claude-plugin/
 README.skill.md
 skill.json
+node_modules/
+*.bak
 
 # Environment variables — never commit these
 .env
 .env.local
 .env.*.local
 .env.production.local
+.vercel
+.env*

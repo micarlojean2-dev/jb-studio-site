@@ -6,100 +6,109 @@
   <title>Asistente JB Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 
   <style>
     /* ── Reset y variables ───────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:           #0B0C12;
-      --surface:      #13141E;
-      --bubble-bot:   #1A1B25;
-      --bubble-user:  #6C5FFF;
-      --accent:       #6C5FFF;
-      --accent-hover: #7D71FF;
-      --green:        #1FD98A;
+      --bg:           #0d0d0d;
+      --surface:      #0d0d0d;
+      --bubble-bot:   #1a1a1a;
+      --bubble-user:  #1a4a2e;
+      --accent:       #1a4a2e;
+      --accent-hover: #235c3a;
+      --green:        #4ade80;
       --wa-green:     #25D366;
       --wa-hover:     #20C276;
-      --text:         #FFFFFF;
-      --text-soft:    #C5C7D4;
-      --text-muted:   #6B6D82;
-      --border:       rgba(255, 255, 255, 0.07);
-      --radius-lg:    22px;
-      --radius-md:    14px;
+      --text:         #ffffff;
+      --text-soft:    #e0e0e0;
+      --text-muted:   #666666;
+      --border:       #2a2a2a;
+      --border-header: rgba(74, 222, 128, 0.15);
+      --radius-lg:    16px;
+      --radius-md:    12px;
       --radius-sm:    8px;
-      --font:         'DM Sans', system-ui, -apple-system, sans-serif;
+      --font:         'IBM Plex Mono', 'Courier New', monospace;
       --shadow:       0 32px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255,255,255,0.05);
     }
 
-    body {
+    html, body {
       font-family: var(--font);
-      background: var(--bg);
-      /* Patrón de puntos muy sutil en el fondo */
-      background-image: radial-gradient(rgba(108, 95, 255, 0.08) 1px, transparent 1px);
-      background-size: 28px 28px;
-      min-height: 100vh;
+      background: var(--surface);
+      width: 100%;
+      height: 100%;
+      min-height: 100%;
+      margin: 0;
+      padding: 0;
       display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
+      align-items: stretch;
+      justify-content: stretch;
+      overflow: hidden;
     }
 
     /* ── Widget principal ────────────────────────────────────────────────── */
     .chat-widget {
       width: 100%;
-      max-width: 420px;
-      height: 620px;
+      height: 100%;
+      min-height: 100%;
       background: var(--surface);
-      border-radius: var(--radius-lg);
+      border-radius: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: var(--shadow);
     }
 
     /* ── Cabecera ─────────────────────────────────────────────────────────── */
     .chat-header {
-      padding: 16px 18px;
+      padding: 14px 16px;
       background: var(--bg);
       display: flex;
       align-items: center;
-      gap: 12px;
-      border-bottom: 1px solid var(--border);
+      gap: 11px;
+      border-bottom: 1px solid var(--border-header);
       flex-shrink: 0;
     }
 
     .chat-avatar {
-      width: 40px;
-      height: 40px;
+      width: 38px;
+      height: 38px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #6C5FFF 0%, #A89BFF 100%);
+      background: #1a4a2e;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 16px;
       flex-shrink: 0;
-      box-shadow: 0 0 0 3px rgba(108,95,255,0.2);
+      overflow: hidden;
+      box-shadow: 0 0 0 2px rgba(74,222,128,0.2);
     }
 
-    .chat-header-info { flex: 1; }
+    .chat-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      padding: 4px;
+    }
+
+    .chat-header-info { flex: 1; min-width: 0; }
 
     .chat-header-info h3 {
-      font-size: 13.5px;
+      font-size: 13px;
       font-weight: 600;
       color: var(--text);
-      letter-spacing: 0.01em;
+      letter-spacing: 0.02em;
       line-height: 1.3;
     }
 
     .chat-header-status {
-      margin-top: 2px;
-      font-size: 11px;
+      margin-top: 3px;
+      font-size: 10px;
       color: var(--green);
       display: flex;
       align-items: center;
       gap: 5px;
+      letter-spacing: 0.02em;
     }
 
     .status-dot {
@@ -107,23 +116,32 @@
       height: 6px;
       border-radius: 50%;
       background: var(--green);
-      animation: pulse-dot 2s infinite;
+      flex-shrink: 0;
+      animation: pulse-dot 2s ease-in-out infinite;
     }
 
     @keyframes pulse-dot {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.4; }
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.8); }
     }
 
-    .chat-header-badge {
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
+    .chat-close-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       color: var(--text-muted);
-      background: var(--border);
-      padding: 3px 8px;
-      border-radius: 20px;
+      transition: color 0.18s, background 0.18s;
+      flex-shrink: 0;
     }
+
+    .chat-close-btn:hover  { color: #fff; background: rgba(255,255,255,0.08); }
+    .chat-close-btn:active { transform: scale(0.92); }
+    .chat-close-btn svg    { width: 16px; height: 16px; }
 
     /* ── Área de mensajes ─────────────────────────────────────────────────── */
     .chat-messages {
@@ -165,13 +183,20 @@
       width: 26px;
       height: 26px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #6C5FFF, #A89BFF);
+      background: #1a4a2e;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 11px;
       flex-shrink: 0;
       margin-bottom: 2px;
+      overflow: hidden;
+    }
+
+    .bot-avatar-sm img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      padding: 3px;
     }
 
     /* ── Burbujas ─────────────────────────────────────────────────────────── */
@@ -281,8 +306,8 @@
       flex: 1;
       min-height: 44px;
       max-height: 104px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.09);
+      background: #111111;
+      border: 1px solid #2a2a2a;
       border-radius: var(--radius-md);
       padding: 11px 14px;
       color: var(--text);
@@ -295,11 +320,11 @@
       overflow-y: auto;
     }
 
-    .chat-input::placeholder { color: var(--text-muted); }
+    .chat-input::placeholder { color: #666666; }
 
     .chat-input:focus {
-      border-color: rgba(108, 95, 255, 0.55);
-      background: rgba(108, 95, 255, 0.06);
+      border-color: rgba(26, 74, 46, 0.7);
+      background: rgba(26, 74, 46, 0.08);
     }
 
     .chat-input:disabled {
@@ -380,13 +405,13 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #6C5FFF;
+      color: #2d7a4a;
       opacity: 0.65;
       transition: opacity 0.18s, background 0.18s;
       flex-shrink: 0;
     }
 
-    .btn-reset:hover  { opacity: 1; background: rgba(108, 95, 255, 0.1); }
+    .btn-reset:hover  { opacity: 1; background: rgba(26, 74, 46, 0.15); }
     .btn-reset:active { transform: scale(0.92); }
     .btn-reset svg    { width: 16px; height: 16px; }
 
@@ -401,9 +426,9 @@
     .qr-chip {
       padding: 8px 14px;
       background: transparent;
-      border: 1.5px solid rgba(108, 95, 255, 0.45);
+      border: 1.5px solid #1a4a2e;
       border-radius: 999px;
-      color: #A89BFF;
+      color: #1a4a2e;
       font-family: var(--font);
       font-size: 13px;
       font-weight: 500;
@@ -414,23 +439,15 @@
     }
 
     .qr-chip:hover {
-      background: rgba(108, 95, 255, 0.15);
-      border-color: rgba(108, 95, 255, 0.75);
+      background: #1a4a2e;
+      border-color: #1a4a2e;
       color: #fff;
       transform: translateY(-1px);
     }
 
     .qr-chip:active { transform: translateY(0); }
 
-    /* ── Responsive: mobile full screen ─────────────────────────────────── */
-    @media (max-width: 460px) {
-      body { padding: 0; align-items: stretch; }
-      .chat-widget {
-        border-radius: 0;
-        height: 100dvh;
-        max-width: 100%;
-      }
-    }
+    /* Widget ya ocupa 100% — sin responsive extra necesario */
   </style>
 </head>
 
@@ -439,23 +456,28 @@
 
     <!-- Cabecera del widget -->
     <div class="chat-header">
-      <div class="chat-avatar">✦</div>
+      <div class="chat-avatar">
+        <img src="/public/chatbot-logo.png" alt="JB Studio" onerror="this.style.display='none';this.parentElement.textContent='✦'">
+      </div>
       <div class="chat-header-info">
-        <h3>JB Studio Assistant</h3>
+        <h3>JB Studio</h3>
         <div class="chat-header-status">
           <span class="status-dot"></span>
-          Online now
+          <span id="headerStatus">Tu asistente virtual • En línea</span>
         </div>
       </div>
-      <div class="chat-header-badge">IA</div>
-      <button class="btn-reset" id="btnReset" title="New conversation" aria-label="Start a new conversation">
+      <button class="btn-reset" id="btnReset" title="Nueva conversación" aria-label="Nueva conversación">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
              stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"></polyline>
-          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-          <path d="M10 11v6"></path>
-          <path d="M14 11v6"></path>
-          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+          <polyline points="1 4 1 10 7 10"></polyline>
+          <path d="M3.51 15a9 9 0 1 0 .49-3"></path>
+        </svg>
+      </button>
+      <button class="chat-close-btn" id="closeChatBtn" aria-label="Cerrar chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
       </button>
     </div>
@@ -495,65 +517,85 @@
     // ─────────────────────────────────────────────────────────────────────────
     // SYSTEM PROMPT — instrucciones del bot
     // ─────────────────────────────────────────────────────────────────────────
-    const SYSTEM_PROMPT = `You are the virtual assistant for JB Studio (jbstudio.app), a digital services agency run by Mike. You speak English by default, but if the user writes in Spanish, switch to Spanish immediately and stay in Spanish.
+    const SYSTEM_PROMPT = `Eres el asistente de negocio 24/7 de JB Studio (jbstudio.app), creado por Mike. No eres un "chatbot" ni un "bot" — eres el asistente que mantiene vivo el negocio de nuestros clientes mientras duermen.
 
-JB STUDIO OFFERS 3 SERVICES:
+IMPORTANTE: Nunca uses la palabra "chatbot" en tus respuestas. Siempre di "asistente", "tu asistente 24/7" o "asistente virtual". Esta regla no tiene excepciones.
 
-1. WEBSITES
-   - Template-based: starting at $299 (client picks template, Mike customizes it)
-   - Custom: starting at $499 (fully custom design)
-   - Fast delivery, professional, mobile-ready
-   - For local businesses: barbershops, restaurants, salons, clinics, gyms, real estate, etc.
+IDIOMA: Detecta el idioma del usuario desde su primer mensaje real y bloquéate en ese idioma. Por defecto usa español. Nunca mezcles idiomas en una misma respuesta.
 
-2. AI CHATBOTS
-   - Basic Bot: $197 setup + $45/month — Answers FAQs, captures leads, sends them to WhatsApp, works 24/7
-   - Pro Bot: $347 setup + $65/month — Everything in Basic + takes appointment requests + sends email confirmations to client and business + handles multiple services
-   - Premium Bot: $497 setup + $90/month — Everything in Pro + custom flows + priority support + monthly optimization
-   - All chatbots are embedded on the client's website with one line of code
-   - Mike handles everything, client does nothing
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SERVICIOS DE JB STUDIO (SOLO habla de estos 3)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-3. FLOWBOOK APP (flowbookapp.co)
-   - Appointment booking app available on Google Play Store
-   - Designed for small local businesses: barbershops, salons, nail studios, spas, etc.
-   - Features: automated booking, client reminders, payment tracking, multi-staff support
-   - Free trial available, then flat monthly pricing
-   - No commission per booking (unlike competitors)
-   - Download at: flowbookapp.co or search "FlowBook" on Google Play
+1. PÁGINAS WEB PROFESIONALES
+   - Desde plantilla: desde $299 (el cliente elige, Mike personaliza)
+   - Diseño custom: desde $499
+   - Entrega rápida, mobile-ready, SEO optimizado
+   - Para cualquier negocio local: barberías, restaurantes, salones, clínicas, gimnasios, inmobiliarias, etc.
+   - Frase emocional: "Tu negocio merece verse tan bueno como realmente es."
 
-YOUR GOAL:
-Qualify the visitor and guide them to the right service. Ask what type of business they have, then recommend the most relevant service.
+2. ASISTENTES DE IA PARA NEGOCIO
+   - Básico: $197 setup + $45/mes — Responde preguntas 24/7, captura leads, los envía a WhatsApp, nunca duerme
+   - Pro: $347 setup + $65/mes — Todo lo anterior + gestiona citas + confirmaciones por email
+   - Premium: $497 setup + $90/mes — Todo lo anterior + flujos personalizados + soporte prioritario + optimización mensual
+   - Se instala en el sitio web con una sola línea de código. Mike maneja todo.
+   - Frase emocional: "Mientras duermes, tu asistente está cerrando ventas."
 
-QUALIFICATION FLOW:
-1. Ask what type of business they have
-2. Ask if they currently have a website
-3. Based on answers, recommend:
-   - No website → Website service first
-   - Has website, gets many client questions → AI Chatbot
-   - Takes appointments → FlowBook or Pro Bot
-   - Needs all three → explain the full package
+3. FLOWBOOK — App de Reservas
+   - Disponible en Google Play: flowbookapp.co
+   - Para negocios que dan citas: salones, barberías, nail studios, spas
+   - Reservas automáticas, recordatorios a clientes, control de pagos, soporte multiempleado
+   - Sin comisión por reserva (a diferencia de la competencia)
+   - Prueba gratis disponible
+   - Frase emocional: "Deja de perder citas en el caos de WhatsApp."
 
-CONTACT — INSTAGRAM ONLY:
-NEVER share any contact link proactively. Only share Instagram when the visitor shows a CLEAR purchase signal.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FLUJO DE CALIFICACIÓN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Pregunta qué tipo de negocio tiene y cuál es su mayor reto diario
+2. Identifica el dolor (sin presencia online, pierde leads, caos de citas)
+3. Conecta emocionalmente y recomienda el servicio correcto:
+   - Sin web → Página web profesional
+   - Pierde leads o le llueven preguntas → Asistente de IA
+   - Caos de citas → FlowBook o Asistente Pro
+4. Si quiere ver cómo funciona en vivo, ofrece el demo: chatbot-demo-steel-delta.vercel.app
 
-Purchase signals:
-- English: "I want to hire", "let's do it", "I'm ready", "how do I pay", "sign me up", "I want the plan", "let's get started", "how much in total", "I'll take it", "where do I sign"
-- Spanish: "quiero contratar", "cuándo empezamos", "cómo pago", "me interesa contratarlo", "quiero el plan", "listo lo quiero", "cuánto es en total", "cómo empezamos", "quiero comenzar"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FILTRO ESTRICTO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- NUNCA hables de servicios, herramientas o temas fuera de estos 3 servicios
+- Si preguntan por algo que no ofrecemos: "Eso está fuera de mi área — estoy aquí para ayudarte con [web / asistente de IA / FlowBook]. ¿Cuál te interesa más?"
+- Nunca inventes precios ni características
 
-Rules:
-- If they only ask about prices → give prices, do NOT share Instagram.
-- If they ask "how do I contact you?" without a purchase signal → say they can keep asking here, and when they're ready you'll connect them.
-- When you detect a clear purchase signal, respond with ONLY this (match the conversation language):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGLA ANTI-DESVÍO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Si el usuario manda más de 3 mensajes sin mostrar ninguna intención clara ni interés específico en los servicios, redirige amablemente: "Quiero asegurarme de que esto sea útil para ti — ¿cuál es el reto real que enfrenta tu negocio ahora mismo?" Esto mantiene la conversación enfocada y valiosa.
 
-ENGLISH: "Awesome! Mike will take care of everything. Contact him directly on Instagram to get started:
-👉 instagram.com/${IG_USER}
-He usually replies within a few hours. Just tell him what you need and he'll send you all the details!"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CONTACTO — SOLO cuando hay intención clara de contratar
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Señales de compra (español): "quiero contratar", "cuándo empezamos", "cómo pago", "quiero el plan", "listo quiero empezar", "cuánto es en total", "quiero comenzar", "me interesa contratarlo"
+Señales de compra (inglés): "I want to hire", "let's do it", "I'm ready", "how do I pay", "sign me up", "I want to start", "how much total", "where do I sign"
 
-SPANISH: "¡Perfecto! Mike se encarga de todo. Escríbele directo por Instagram para comenzar:
-👉 instagram.com/${IG_USER}
-Suele responder en pocas horas. Solo cuéntale qué necesitas y él te manda todos los detalles."
+Reglas:
+- Si solo preguntan precios → da precios, NO compartas contacto todavía
+- Si preguntan "¿cómo te contacto?" sin señal clara → diles que pueden seguir preguntando aquí, y cuando estén listos los conectas
+- Cuando detectes una señal clara, responde SOLO con esto (en el idioma de la conversación):
 
-TONE: Friendly, professional, concise. No long paragraphs. Max 3 sentences per response.
-Never say services are free. Never make up prices.`;
+ESPAÑOL:
+"¡Vamos a hacerlo! 🚀 Mike se encarga de todo, de principio a fin.
+📲 WhatsApp (escribe 'quiero empezar'): wa.me/${WA_NUMBER}
+📸 Instagram (escribe 'ver más'): instagram.com/${IG_USER}/
+Suele responder en pocas horas. Cuéntale qué necesitas y él te manda todos los detalles."
+
+INGLÉS:
+"Let's make it happen! 🚀 Mike handles everything from start to finish.
+📲 WhatsApp (write 'I want to start'): wa.me/${WA_NUMBER}
+📸 Instagram (write 'show me more'): instagram.com/${IG_USER}/
+He usually replies within a few hours. Tell him what you need and he'll send you all the details."
+
+TONO: Empático, directo, emocionalmente resonante. Habla como alguien que entiende el dolor de manejar un pequeño negocio. Máximo 3-4 oraciones por respuesta. Sin párrafos largos. Sin listas aburridas. Que cada mensaje sienta que viene de alguien que de verdad quiere que el negocio del usuario crezca.`;
 
     // ─────────────────────────────────────────────────────────────────────────
     // ESTADO DE LA CONVERSACIÓN
@@ -758,7 +800,7 @@ Never say services are free. Never make up prices.`;
       if (isBot) {
         const av = document.createElement('div');
         av.className = 'bot-avatar-sm';
-        av.textContent = '✦';
+        av.innerHTML = '<img src="/public/chatbot-logo.png" alt="JB Studio">';
         row.appendChild(av);
       }
 
@@ -798,7 +840,7 @@ Never say services are free. Never make up prices.`;
 
       const av = document.createElement('div');
       av.className = 'bot-avatar-sm';
-      av.textContent = '✦';
+      av.innerHTML = '<img src="/public/chatbot-logo.png" alt="JB Studio">';
 
       const bubble = document.createElement('div');
       bubble.className = 'typing-bubble';
@@ -944,18 +986,18 @@ Never say services are free. Never make up prices.`;
       userLang = lang;
       removeQuickReplies();
       if (lang === 'en') {
-        addMessage('bot', 'Perfect! What can I help you with today?');
+        addMessage('bot', "Perfect! Tell me — what's the biggest challenge your business is facing right now?");
         renderChips([
-          { label: '🌐 I need a website',        onClick: () => sendQuickReply('I need a website') },
-          { label: '🤖 I want a chatbot',         onClick: () => sendQuickReply('I want a chatbot') },
-          { label: '📅 Booking app (FlowBook)',   onClick: () => sendQuickReply('Tell me about FlowBook') },
+          { label: '🌐 My business isn\'t online yet',     onClick: () => sendQuickReply('My business has no website yet') },
+          { label: '🤖 I lose clients from slow replies',  onClick: () => sendQuickReply('I lose leads because I can\'t respond fast enough') },
+          { label: '📅 Appointment chaos is real',         onClick: () => sendQuickReply('My appointment booking is a mess, tell me about FlowBook') },
         ]);
       } else {
-        addMessage('bot', '¡Perfecto! ¿En qué te puedo ayudar hoy?');
+        addMessage('bot', '¡Perfecto! Dime — ¿cuál es el mayor reto que enfrenta tu negocio ahora mismo?');
         renderChips([
-          { label: '🌐 Necesito una página web',    onClick: () => sendQuickReply('Necesito una página web') },
-          { label: '🤖 Quiero un chatbot',           onClick: () => sendQuickReply('Quiero un chatbot') },
-          { label: '📅 App de reservas (FlowBook)',  onClick: () => sendQuickReply('Cuéntame sobre FlowBook') },
+          { label: '🌐 Mi negocio no está en Google',      onClick: () => sendQuickReply('Mi negocio no tiene página web todavía') },
+          { label: '🤖 Pierdo clientes por no responder',  onClick: () => sendQuickReply('Pierdo clientes porque no puedo responder rápido') },
+          { label: '📅 Las citas se me van de las manos',  onClick: () => sendQuickReply('Tengo caos con las citas, cuéntame sobre FlowBook') },
         ]);
       }
     }
@@ -1010,7 +1052,7 @@ Never say services are free. Never make up prices.`;
       }
 
       // ── Fresh start: bilingual greeting + language picker ─────────────────
-      addMessage('bot', "Hi! 👋 / ¡Hola! 👋\nWhat language do you prefer?\n¿En qué idioma prefieres hablar?");
+      addMessage('bot', "¡Hola! 👋 / Hi! 👋\n¿Qué idioma prefieres?\nWhat language do you prefer?");
       showLangPicker();
       unlockUI();
     }
@@ -1043,6 +1085,11 @@ Never say services are free. Never make up prices.`;
 
     // Botón "Nueva conversación" — borra historial y reinicia sin confirmación
     btnReset.addEventListener('click', resetChat);
+
+    // Botón X — cierra el panel en el padre vía postMessage
+    document.getElementById('closeChatBtn').addEventListener('click', () => {
+      window.parent.postMessage({ type: 'jb-close' }, window.location.origin);
+    });
 
     // Botón enviar
     sendBtn.addEventListener('click', handleSend);

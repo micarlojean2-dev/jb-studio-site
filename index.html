@@ -39,18 +39,503 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* ── Welcome Overlay ───────────────────────────────────────────────────── */
+    #jb-welcome {
+      position: fixed; inset: 0; z-index: 99999;
+      background: #0a1f0a;
+      background-image:
+        radial-gradient(ellipse at 15% 15%, rgba(74,222,128,0.1) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 85%, rgba(74,222,128,0.07) 0%, transparent 55%),
+        radial-gradient(ellipse at 50% 50%, rgba(26,74,46,0.4) 0%, transparent 70%);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      padding: 0 20px 80px;
+      transition: opacity 0.4s ease, transform 0.4s ease;
+      overflow-y: auto;
+    }
+    /* Decorative corner rings */
+    #jb-welcome::before {
+      content: '';
+      position: fixed; top: -160px; left: -160px;
+      width: 420px; height: 420px; border-radius: 50%;
+      border: 1px solid rgba(74,222,128,0.12);
+      pointer-events: none; z-index: 0;
+    }
+    #jb-welcome::after {
+      content: '';
+      position: fixed; bottom: -160px; right: -160px;
+      width: 420px; height: 420px; border-radius: 50%;
+      border: 1px solid rgba(74,222,128,0.09);
+      pointer-events: none; z-index: 0;
+    }
+    #jb-welcome.jb-out { opacity: 0; transform: scale(0.98); pointer-events: none; }
+
+    .jb-step {
+      display: flex; flex-direction: column;
+      align-items: center; text-align: center;
+      gap: 0; width: 100%; position: relative; z-index: 1;
+      transition: opacity 0.28s ease, transform 0.28s ease;
+    }
+    /* Step 1: centers itself within the overlay */
+    #jb-step-lang { max-width: 560px; gap: 28px; min-height: calc(100dvh - 80px); justify-content: center; }
+    /* Step 2 fills up to full width, flows from top */
+    #jb-step-service { max-width: 980px; padding-top: 32px; }
+
+    .jb-w-logo { width: 80px; height: 80px; object-fit: contain; border-radius: 16px; }
+    .jb-w-tagline {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 16px; color: rgba(255,255,255,0.75); letter-spacing: 0.03em;
+    }
+    .jb-lang-btns { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .jb-lang-btn {
+      background: rgba(255,255,255,0.1);
+      border: 2px solid rgba(255,255,255,0.3);
+      border-radius: 14px; color: #fff;
+      font-size: 18px; font-family: 'Anton', sans-serif;
+      letter-spacing: 1.5px; padding: 16px 40px;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .jb-lang-btn:hover {
+      background: rgba(255,255,255,0.22);
+      border-color: #fff; transform: scale(1.05);
+    }
+
+    /* ── Step 2 header ─────────────────────────────────────────────────────── */
+    .jb-sel-badge {
+      display: inline-flex; align-items: center;
+      background: rgba(74,222,128,0.1);
+      border: 1px solid rgba(74,222,128,0.35);
+      border-radius: 999px; padding: 6px 18px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.8px; color: #4ade80;
+      margin-bottom: 18px;
+      opacity: 0;
+    }
+    #jb-step-service.cards-ready .jb-sel-badge {
+      animation: jb-header-in 0.4s ease-out 0s forwards;
+    }
+    .jb-sel-title {
+      margin-bottom: 10px; opacity: 0;
+    }
+    #jb-step-service.cards-ready .jb-sel-title {
+      animation: jb-header-in 0.4s ease-out 0.08s forwards;
+    }
+    .jb-sel-title h2 {
+      font-family: 'Anton', sans-serif;
+      font-size: clamp(30px, 4.5vw, 54px);
+      line-height: 1.05; letter-spacing: 0.02em; color: #fff;
+    }
+    .jb-title-accent { color: #4ade80; }
+    .jb-sel-sub {
+      font-size: 14px; color: #aaaaaa; line-height: 1.6;
+      margin-bottom: 28px; opacity: 0;
+    }
+    #jb-step-service.cards-ready .jb-sel-sub {
+      animation: jb-header-in 0.4s ease-out 0.14s forwards;
+    }
+
+    @keyframes jb-header-in {
+      from { opacity: 0; transform: translateY(-16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes jb-card-in {
+      from { opacity: 0; transform: translateY(28px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Service cards grid ────────────────────────────────────────────────── */
+    .jb-service-cards {
+      display: grid;
+      grid-template-columns: 1fr 1.06fr 1fr;
+      gap: 16px; width: 100%; align-items: start;
+    }
+    .jb-service-card {
+      background: #ffffff;
+      border: 2px solid transparent;
+      border-radius: 22px;
+      padding: 26px 24px 0;
+      display: flex; flex-direction: column;
+      align-items: flex-start; cursor: pointer;
+      text-align: left; position: relative;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+      opacity: 0;
+    }
+    /* Staggered entrance */
+    #jb-step-service.cards-ready .jb-service-card:nth-child(1) { animation: jb-card-in 0.45s ease-out 0.1s  forwards; }
+    #jb-step-service.cards-ready .jb-service-card:nth-child(2) { animation: jb-card-in 0.45s ease-out 0.2s  forwards; }
+    #jb-step-service.cards-ready .jb-service-card:nth-child(3) { animation: jb-card-in 0.45s ease-out 0.3s  forwards; }
+    /* Hover per card color */
+    .jb-card-web:hover   { transform: translateY(-8px); box-shadow: 0 22px 56px rgba(59,130,246,0.25); border-color: #3b82f6; }
+    .jb-card-bot:hover   { transform: translateY(-8px); box-shadow: 0 22px 56px rgba(74,222,128,0.25); border-color: #4ade80; }
+    .jb-card-flow:hover  { transform: translateY(-8px); box-shadow: 0 22px 56px rgba(249,115,22,0.22);  border-color: #f97316; }
+    .jb-service-card:hover .jb-card-arrow { transform: translateX(4px); }
+    .jb-service-card:active { transform: scale(0.97) !important; transition-duration: 0.1s; }
+
+    /* Popular badge (absolute top ribbon) */
+    .jb-popular-badge {
+      position: absolute; top: 0; left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+      color: #0a1f0a; font-size: 9px; font-weight: 800;
+      letter-spacing: 1.8px; padding: 5px 16px;
+      border-radius: 0 0 12px 12px;
+      white-space: nowrap; font-family: 'IBM Plex Mono', monospace;
+    }
+    .jb-card-featured { padding-top: 38px; }
+
+    /* Small badge tag inside card */
+    .jb-card-tag {
+      display: inline-block; font-size: 9px; font-weight: 800;
+      letter-spacing: 1.5px; padding: 4px 10px;
+      border-radius: 999px; margin-bottom: 18px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .jb-tag-blue   { background: rgba(59,130,246,0.12); color: #3b82f6; }
+    .jb-tag-green  { background: rgba(74,222,128,0.15); color: #16a34a; }
+    .jb-tag-orange { background: rgba(249,115,22,0.12); color: #f97316; }
+
+    /* Icon circle */
+    .jb-card-icon-wrap {
+      width: 62px; height: 62px; border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px; margin-bottom: 14px; flex-shrink: 0;
+    }
+    .jb-icon-blue   { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); }
+    .jb-icon-green  { background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); }
+    .jb-icon-orange { background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%); }
+
+    /* Accent line */
+    .jb-card-line {
+      width: 36px; height: 3px; border-radius: 2px; margin-bottom: 14px;
+    }
+    .jb-line-blue   { background: #3b82f6; }
+    .jb-line-green  { background: #4ade80; }
+    .jb-line-orange { background: #f97316; }
+
+    /* Card text */
+    .jb-service-card h3 {
+      font-size: 20px; font-weight: 700; color: #111111;
+      line-height: 1.2; margin-bottom: 10px;
+    }
+    .jb-card-bot h3 { font-size: 21px; }
+    .jb-card-desc {
+      font-size: 13px; color: #555; line-height: 1.65;
+      margin-bottom: 18px;
+    }
+
+    /* Checklist */
+    .jb-checklist {
+      list-style: none; display: flex; flex-direction: column;
+      gap: 9px; margin-bottom: 20px; width: 100%; padding: 0;
+    }
+    .jb-checklist li {
+      display: flex; align-items: flex-start; gap: 8px;
+      font-size: 13px; color: #333; line-height: 1.4;
+    }
+    .jb-check { font-weight: 800; font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+    .jb-check-blue   { color: #3b82f6; }
+    .jb-check-green  { color: #16a34a; }
+    .jb-check-orange { color: #f97316; }
+
+    /* Card footer with gradient + arrow */
+    .jb-card-footer {
+      width: calc(100% + 48px); margin-left: -24px;
+      padding: 18px 24px;
+      display: flex; justify-content: flex-end;
+      margin-top: auto;
+    }
+    .jb-footer-blue   { background: linear-gradient(180deg, transparent 0%, rgba(59,130,246,0.07) 100%); }
+    .jb-footer-green  { background: linear-gradient(180deg, transparent 0%, rgba(74,222,128,0.10) 100%); }
+    .jb-footer-orange { background: linear-gradient(180deg, transparent 0%, rgba(249,115,22,0.07) 100%); }
+    .jb-card-arrow {
+      width: 38px; height: 38px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 700;
+      transition: transform 0.25s ease; flex-shrink: 0;
+    }
+    .jb-arrow-blue   { background: #3b82f6; color: #fff; }
+    .jb-arrow-green  { background: #4ade80; color: #0a1f0a; }
+    .jb-arrow-orange { background: #f97316; color: #fff; }
+
+    /* Trust bar */
+    .jb-trust-bar {
+      display: flex; gap: 28px; justify-content: center;
+      align-items: center; margin-top: 24px; flex-wrap: wrap;
+      opacity: 0;
+    }
+    #jb-step-service.cards-ready .jb-trust-bar {
+      animation: jb-header-in 0.4s ease-out 0.5s forwards;
+    }
+    .jb-trust-item {
+      font-size: 11px; color: rgba(255,255,255,0.45);
+      font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.5px;
+      display: flex; align-items: center; gap: 6px;
+    }
+
+    .jb-skip-btn {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: none; border: none;
+      color: rgba(255,255,255,0.35); font-size: 12px;
+      cursor: pointer; padding: 8px 20px;
+      font-family: 'IBM Plex Mono', monospace;
+      transition: color 0.2s; z-index: 99999; white-space: nowrap;
+    }
+    .jb-skip-btn:hover { color: rgba(255,255,255,0.75); }
+
+    /* ── Responsive ────────────────────────────────────────────────────────── */
+    @media (max-width: 680px) {
+      #jb-welcome { padding: 0 16px 72px; }
+      #jb-step-lang { min-height: calc(100dvh - 72px); }
+      #jb-step-service { padding-top: 28px; }
+      .jb-service-cards { grid-template-columns: 1fr; gap: 14px; max-width: 400px; }
+      .jb-card-bot { order: -1; }  /* featured card first on mobile */
+    }
+    @media (min-width: 681px) and (max-width: 900px) {
+      .jb-service-cards { gap: 12px; }
+      .jb-service-card  { padding: 22px 18px 0; }
+      .jb-card-featured { padding-top: 36px; }
+      .jb-service-card h3 { font-size: 17px; }
+      .jb-card-desc, .jb-checklist li { font-size: 12px; }
+      .jb-card-icon-wrap { width: 52px; height: 52px; font-size: 24px; }
+    }
+
+    /* ── Section visibility ────────────────────────────────────────────────── */
+    .jb-hidden { display: none !important; }
+
+    /* ── Service nav in header ─────────────────────────────────────────────── */
+    .jb-service-nav {
+      display: none; align-items: center; gap: 4px;
+    }
+    .jb-service-nav.is-visible { display: flex; }
+    .jb-snav-btn {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px; padding: 6px 13px;
+      color: rgba(255,255,255,0.65);
+      font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+      font-weight: 700; letter-spacing: 0.8px;
+      cursor: pointer; white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .jb-snav-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
+    .jb-snav-btn.is-active { background: rgba(255,255,255,0.22); color: #fff; border-color: rgba(255,255,255,0.45); }
+
+    /* ── Lang toggle in header ─────────────────────────────────────────────── */
+    .jb-lang-toggle-btn {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 6px; padding: 5px 11px;
+      color: rgba(255,255,255,0.6);
+      font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+      font-weight: 700; letter-spacing: 0.8px;
+      cursor: pointer; transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .jb-lang-toggle-btn:hover { border-color: rgba(255,255,255,0.5); color: #fff; }
+
+    /* ── Chatbot service hero ──────────────────────────────────────────────── */
+    .jb-chatbot-hero {
+      background: var(--green-dark, #00624f);
+      padding: 64px 32px 48px;
+      text-align: center;
+    }
+    .jb-chatbot-hero-title {
+      font-family: 'Anton', sans-serif;
+      font-size: clamp(32px, 6vw, 56px);
+      color: #fff; letter-spacing: 0.03em;
+      margin-bottom: 16px;
+    }
+    .jb-chatbot-hero-sub {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 15px; color: rgba(255,255,255,0.75);
+      max-width: 540px; margin: 0 auto 28px; line-height: 1.6;
+    }
+
+    /* ── FlowBook enhanced hero ────────────────────────────────────────────── */
+    .jb-fb-hero {
+      background: var(--green-dark, #00624f);
+      padding: 64px 32px 52px; text-align: center;
+    }
+    .jb-fb-hero-title {
+      font-family: 'Anton', sans-serif;
+      font-size: clamp(28px, 5vw, 50px);
+      color: #fff; letter-spacing: 0.03em; margin-bottom: 14px;
+    }
+    .jb-fb-hero-sub {
+      font-size: 16px; color: rgba(255,255,255,0.8);
+      max-width: 560px; margin: 0 auto 36px; line-height: 1.65;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .jb-fb-features {
+      display: inline-flex; flex-direction: column; gap: 10px;
+      text-align: left; margin-bottom: 36px;
+    }
+    .jb-fb-feature {
+      font-size: 15px; color: rgba(255,255,255,0.9);
+      display: flex; gap: 10px; align-items: flex-start;
+    }
+    .jb-fb-feature::before { content: '→'; color: #4ade80; flex-shrink: 0; font-weight: 700; }
+    .jb-fb-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .jb-fb-btn-primary {
+      background: #fff; color: #1a4a2e;
+      font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 700;
+      padding: 14px 28px; border-radius: 8px; border: none;
+      cursor: pointer; text-decoration: none;
+      transition: all 0.2s; letter-spacing: 0.5px;
+    }
+    .jb-fb-btn-primary:hover { background: #f0f7f4; transform: translateY(-2px); }
+    .jb-fb-btn-secondary {
+      background: none; color: #fff;
+      font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 700;
+      padding: 14px 28px; border-radius: 8px;
+      border: 1.5px solid rgba(255,255,255,0.4);
+      cursor: pointer; text-decoration: none;
+      transition: all 0.2s; letter-spacing: 0.5px;
+    }
+    .jb-fb-btn-secondary:hover { border-color: #fff; }
+  </style>
+  <!-- Meta Pixel Code -->
+  <script>
+  !function(f,b,e,v,n,t,s)
+  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+  n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];
+  s.parentNode.insertBefore(t,s)}(window, document,'script',
+  'https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '1062633503132094');
+  fbq('track', 'PageView');
+  </script>
+  <noscript>
+  <img height="1" width="1" style="display:none"
+  src="https://www.facebook.com/tr?id=1062633503132094&ev=PageView&noscript=1"/>
+  </noscript>
+  <!-- End Meta Pixel Code -->
   </head>
   <body>
     <main class="site-frame">
+
+      <!-- ── Welcome Screen ─────────────────────────────────────────────────── -->
+      <div id="jb-welcome" role="dialog" aria-modal="true" aria-label="Choose language and service">
+
+        <!-- Step 1: Language -->
+        <div id="jb-step-lang" class="jb-step">
+          <img src="/public/chatbot-logo.png" alt="JB Studio" class="jb-w-logo" onerror="this.style.display='none'">
+          <p class="jb-w-tagline">Select your language / Elige tu idioma</p>
+          <div class="jb-lang-btns">
+            <button class="jb-lang-btn" onclick="jbSelectLang('en')">🇺🇸 English</button>
+            <button class="jb-lang-btn" onclick="jbSelectLang('es')">🇪🇸 Español</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Service (premium redesign) -->
+        <div id="jb-step-service" class="jb-step" style="display:none;opacity:0;transform:translateY(20px);">
+
+          <!-- Badge -->
+          <div class="jb-sel-badge">
+            <span data-en="✦ DIGITAL SOLUTIONS THAT SELL" data-es="✦ SOLUCIONES DIGITALES QUE VENDEN">✦ SOLUCIONES DIGITALES QUE VENDEN</span>
+          </div>
+
+          <!-- Two-tone title -->
+          <div class="jb-sel-title">
+            <h2>
+              <span data-en="What does your" data-es="¿Qué necesita">¿Qué necesita</span><span class="jb-title-accent" data-en=" business need?" data-es=" tu negocio?"> tu negocio?</span>
+            </h2>
+          </div>
+
+          <!-- Subtitle -->
+          <p class="jb-sel-sub" data-en="Choose the perfect solution to grow, automate and sell more." data-es="Elige la solución perfecta para crecer, automatizar y vender más.">Elige la solución perfecta para crecer, automatizar y vender más.</p>
+
+          <!-- Cards -->
+          <div class="jb-service-cards">
+
+            <!-- Card 1: Website -->
+            <button class="jb-service-card jb-card-web" onclick="jbSelectService('website', this)">
+              <div class="jb-card-tag jb-tag-blue" data-en="WEB DESIGN" data-es="DISEÑO WEB">DISEÑO WEB</div>
+              <div class="jb-card-icon-wrap jb-icon-blue">🌐</div>
+              <div class="jb-card-line jb-line-blue"></div>
+              <h3 data-en="Website" data-es="Página Web">Página Web</h3>
+              <p class="jb-card-desc" data-en="Professional websites that convert visitors into paying clients." data-es="Páginas web profesionales que convierten visitantes en clientes.">Páginas web profesionales que convierten visitantes en clientes.</p>
+              <ul class="jb-checklist">
+                <li><span class="jb-check jb-check-blue">✓</span><span data-en="Modern, responsive design" data-es="Diseño moderno y responsivo">Diseño moderno y responsivo</span></li>
+                <li><span class="jb-check jb-check-blue">✓</span><span data-en="Optimized for Google SEO" data-es="Optimizada para Google SEO">Optimizada para Google SEO</span></li>
+                <li><span class="jb-check jb-check-blue">✓</span><span data-en="Fast delivery &amp; support" data-es="Entrega rápida y soporte incluido">Entrega rápida y soporte incluido</span></li>
+              </ul>
+              <div class="jb-card-footer jb-footer-blue">
+                <span class="jb-card-arrow jb-arrow-blue">→</span>
+              </div>
+            </button>
+
+            <!-- Card 2: Chatbot (featured) -->
+            <button class="jb-service-card jb-card-bot jb-card-featured" onclick="jbSelectService('chatbot', this)">
+              <div class="jb-popular-badge" data-en="★ MOST POPULAR" data-es="★ MÁS POPULAR">★ MÁS POPULAR</div>
+              <div class="jb-card-tag jb-tag-green" data-en="AI ASSISTANT" data-es="ASISTENTE CON IA">ASISTENTE CON IA</div>
+              <div class="jb-card-icon-wrap jb-icon-green">🤖</div>
+              <div class="jb-card-line jb-line-green"></div>
+              <h3 data-en="Tu Asistente 24/7" data-es="Tu Asistente 24/7">Tu Asistente 24/7</h3>
+              <p class="jb-card-desc" data-en="Automated assistant that responds, qualifies leads and sells 24/7." data-es="Asistente automático que responde, califica leads y vende las 24 horas.">Asistente automático que responde, califica leads y vende las 24 horas.</p>
+              <ul class="jb-checklist">
+                <li><span class="jb-check jb-check-green">✓</span><span data-en="Responds in seconds, always online" data-es="Responde en segundos, siempre activo">Responde en segundos, siempre activo</span></li>
+                <li><span class="jb-check jb-check-green">✓</span><span data-en="Captures &amp; qualifies leads automatically" data-es="Captura y califica leads automáticamente">Captura y califica leads automáticamente</span></li>
+                <li><span class="jb-check jb-check-green">✓</span><span data-en="Connects to WhatsApp &amp; Instagram" data-es="Conecta con WhatsApp e Instagram">Conecta con WhatsApp e Instagram</span></li>
+              </ul>
+              <div class="jb-card-footer jb-footer-green">
+                <span class="jb-card-arrow jb-arrow-green">→</span>
+              </div>
+            </button>
+
+            <!-- Card 3: FlowBook -->
+            <button class="jb-service-card jb-card-flow" onclick="jbSelectService('flowbook', this)">
+              <div class="jb-card-tag jb-tag-orange" data-en="APPOINTMENT MGT" data-es="GESTIÓN DE CITAS">GESTIÓN DE CITAS</div>
+              <div class="jb-card-icon-wrap jb-icon-orange">📅</div>
+              <div class="jb-card-line jb-line-orange"></div>
+              <h3 data-en="FlowBook" data-es="FlowBook">FlowBook</h3>
+              <p class="jb-card-desc" data-en="Smart booking app to manage appointments without endless back-and-forth." data-es="App de reservas inteligente para gestionar tus citas sin mensajes de ida y vuelta.">App de reservas inteligente para gestionar tus citas sin mensajes de ida y vuelta.</p>
+              <ul class="jb-checklist">
+                <li><span class="jb-check jb-check-orange">✓</span><span data-en="Online scheduling 24/7" data-es="Agenda online las 24 horas">Agenda online las 24 horas</span></li>
+                <li><span class="jb-check jb-check-orange">✓</span><span data-en="Automatic SMS reminders" data-es="Recordatorios automáticos por SMS">Recordatorios automáticos por SMS</span></li>
+                <li><span class="jb-check jb-check-orange">✓</span><span data-en="Payments &amp; deposits integrated" data-es="Pagos y depósitos integrados">Pagos y depósitos integrados</span></li>
+              </ul>
+              <div class="jb-card-footer jb-footer-orange">
+                <span class="jb-card-arrow jb-arrow-orange">→</span>
+              </div>
+            </button>
+
+          </div>
+
+          <!-- Trust bar -->
+          <div class="jb-trust-bar">
+            <span class="jb-trust-item">🛡 <span data-en="Security Guaranteed" data-es="Seguridad Garantizada">Seguridad Garantizada</span></span>
+            <span class="jb-trust-item">⚡ <span data-en="Fast Delivery" data-es="Entrega Rápida">Entrega Rápida</span></span>
+            <span class="jb-trust-item">🎧 <span data-en="Dedicated Support" data-es="Soporte Dedicado">Soporte Dedicado</span></span>
+          </div>
+
+        </div>
+
+        <button class="jb-skip-btn" onclick="jbSkipWelcome()">Skip / Saltar</button>
+      </div>
+      <!-- ── End Welcome Screen ─────────────────────────────────────────────── -->
+
       <section class="hero section-reveal" id="top">
         <header class="hero-header">
           <a class="brand notranslate" href="#top" translate="no">JB</a>
+          <div class="jb-service-nav" id="jb-service-nav">
+            <button class="jb-snav-btn" data-service="website"  onclick="jbSwitchService('website')"  data-en="WEBSITES"  data-es="WEBS">WEBSITES</button>
+            <button class="jb-snav-btn" data-service="chatbot"  onclick="jbSwitchService('chatbot')" data-en="ASISTENTE" data-es="ASISTENTE">ASISTENTE</button>
+            <button class="jb-snav-btn" data-service="flowbook" onclick="jbSwitchService('flowbook')">FLOWBOOK</button>
+          </div>
           <nav class="nav-pill" aria-label="Primary navigation">
-            <a href="#designs">DESIGNS</a>
-            <a href="#about-us">ABOUT US</a>
-            <a href="#flowbook">BOOKING APP</a>
-            <a href="#contact">CONTACT</a>
+            <a href="#designs"  data-en="DESIGNS"     data-es="DISEÑOS">DESIGNS</a>
+            <a href="#about-us" data-en="ABOUT US"    data-es="NOSOTROS">ABOUT US</a>
+            <a href="#flowbook" data-en="BOOKING APP" data-es="RESERVAS">BOOKING APP</a>
+            <a href="#contact"  data-en="CONTACT"     data-es="CONTACTO">CONTACT</a>
           </nav>
+          <button class="jb-lang-toggle-btn" id="jb-lang-btn" onclick="jbToggleLang()" aria-label="Toggle language">ES</button>
           <div class="hero-social-icons" aria-label="Social links">
             <a
               class="hero-social-icon"
@@ -73,7 +558,7 @@
 
          <p class="intro" translate="no"
             data-en="Hi there, we're JB Studio"
-            data-es="Hi there, we're JB Studio">Hi there, we're JB Studio</p>
+            data-es="¡Hola! Somos JB Studio">Hi there, we're JB Studio</p>
         <div class="hero-title hero-title-back" aria-hidden="true">
           <span translate="no" data-en="Modern Web" data-es="Diseño Web">Modern Web</span>
           <span translate="no" data-en="Design" data-es="Profesional">Design</span>
@@ -100,7 +585,9 @@
           class="hero-person hero-person-head"
         />
         <div class="code-mark">&lt;/&gt;</div>
-        <p class="hero-note">
+        <p class="hero-note"
+           data-en="We design professional websites for barbershops, salons, restaurants and local businesses in Chile and Mexico — so you look trustworthy and attract more clients online."
+           data-es="Diseñamos sitios web profesionales para barberías, salones, restaurantes y negocios locales en Chile y México — para que te veas confiable y atraigas más clientes.">
           We design professional websites for barbershops, salons, restaurants and local businesses in Chile and Mexico — so you look trustworthy and attract more clients online.
         </p>
       </section>
@@ -139,22 +626,29 @@
       </section>
 
       <!-- ── AI Chatbot Plans ──────────────────────────────────────────── -->
+      <!-- Chatbot hero banner (shown only in chatbot service view) -->
+      <div class="jb-chatbot-hero jb-hidden" id="chatbot-hero">
+        <h2 class="jb-chatbot-hero-title" data-en="AI Assistants for Local Businesses" data-es="Asistentes con IA para Negocios Locales">Asistentes con IA para Negocios Locales</h2>
+        <p class="jb-chatbot-hero-sub" data-en="24/7 automated customer service — no coding required." data-es="Atención al cliente automatizada 24/7 — sin código.">24/7 automated customer service — no coding required.</p>
+        <a class="chatbot-demo-btn" href="https://chatbot-demo-steel-delta.vercel.app/" target="_blank" rel="noopener noreferrer" onclick="if(typeof fbq==='function')fbq('track','ViewContent')" data-en="TRY LIVE DEMO →" data-es="PROBAR DEMO EN VIVO →">TRY LIVE DEMO →</a>
+      </div>
+
       <section class="chatbot-plans section-reveal" id="chatbot">
 
-        <div class="section-kicker">ADD AN AI CHATBOT TO YOUR BUSINESS</div>
+        <div class="section-kicker" data-en="ADD AN AI ASSISTANT TO YOUR BUSINESS" data-es="AGREGA UN ASISTENTE CON IA A TU NEGOCIO">AGREGA UN ASISTENTE CON IA A TU NEGOCIO</div>
 
         <div class="chatbot-head">
           <!-- Logo + title row -->
           <div class="chatbot-head-row">
-            <img src="/public/chatbot-logo.png" alt="JB Chatbot" class="chatbot-logo-img" />
-            <h2>YOUR BUSINESS<br>ANSWERING 24/7 —<br>WITHOUT YOU</h2>
+            <img src="/public/chatbot-logo.png" alt="JB Studio" class="chatbot-logo-img" />
+            <h2 data-en="YOUR BUSINESS ANSWERING 24/7 — WITHOUT YOU" data-es="TU NEGOCIO RESPONDIENDO 24/7 — SIN TI">YOUR BUSINESS<br>ANSWERING 24/7 —<br>WITHOUT YOU</h2>
           </div>
 
-          <p class="chatbot-subtitle">A custom AI chatbot trained on your business.<br>
-          Answers questions, qualifies leads, and sends<br>
-          them straight to your WhatsApp.</p>
+          <p class="chatbot-subtitle" data-en="A custom AI assistant trained on your business. Answers questions, qualifies leads, and sends them straight to your WhatsApp." data-es="Un asistente de IA personalizado para tu negocio. Responde preguntas, califica leads y los envía directo a tu WhatsApp.">Un asistente de IA personalizado para tu negocio.<br>
+          Responde preguntas, califica leads y los envía<br>
+          directo a tu WhatsApp.</p>
 
-          <p class="chatbot-for">Works for: <strong>barbershops · salons · restaurants · spas · nail studios · local businesses</strong></p>
+          <p class="chatbot-for" data-en="Works for: barbershops · salons · restaurants · spas · nail studios · local businesses" data-es="Para: barberías · salones · restaurantes · spas · nail studios · negocios locales">Works for: <strong>barbershops · salons · restaurants · spas · nail studios · local businesses</strong></p>
 
           <!-- Live demo button -->
           <a
@@ -162,6 +656,7 @@
             href="https://chatbot-demo-steel-delta.vercel.app/"
             target="_blank"
             rel="noopener noreferrer"
+            onclick="if(typeof fbq==='function')fbq('track','ViewContent')"
           >TRY A LIVE DEMO →</a>
         </div>
 
@@ -219,8 +714,8 @@
         </div>
 
         <div class="chatbot-bottom">
-          <p class="chatbot-note">Not sure which plan fits? The chatbot on this page will help you figure it out →</p>
-          <button class="chatbot-cta" onclick="document.getElementById('chat-fab').click()">GET MY CHATBOT →</button>
+          <p class="chatbot-note">Not sure which plan fits? The assistant on this page will help you figure it out →</p>
+          <button class="chatbot-cta" onclick="if(typeof fbq==='function')fbq('track','Lead');document.getElementById('chat-fab').click()">GET MY ASSISTANT →</button>
         </div>
 
       </section>
@@ -897,6 +1392,25 @@
       <!-- ── End Reviews Section ──────────────────────────────────────────── -->
 
       <section class="testimonials section-reveal" id="flowbook">
+
+        <!-- FlowBook hero (shown in flowbook service view) -->
+        <div class="jb-fb-hero">
+          <h2 class="jb-fb-hero-title" data-en="Manage your appointments with FlowBook" data-es="Gestiona tus citas con FlowBook">Manage your appointments with FlowBook</h2>
+          <p class="jb-fb-hero-sub" data-en="The booking app designed for local businesses in Latin America" data-es="La app de reservas diseñada para negocios locales en Latinoamérica">The booking app designed for local businesses in Latin America</p>
+          <div class="jb-fb-features">
+            <span class="jb-fb-feature" data-en="Automated appointment booking 24/7" data-es="Reservas automáticas 24/7">Automated appointment booking 24/7</span>
+            <span class="jb-fb-feature" data-en="Automatic reminders to your clients" data-es="Recordatorios automáticos a tus clientes">Automatic reminders to your clients</span>
+            <span class="jb-fb-feature" data-en="Payment tracking" data-es="Control de pagos">Payment tracking</span>
+            <span class="jb-fb-feature" data-en="Multi-staff support" data-es="Soporte para múltiples empleados">Multi-staff support</span>
+            <span class="jb-fb-feature" data-en="No commission per booking" data-es="Sin comisión por reserva">No commission per booking</span>
+            <span class="jb-fb-feature" data-en="Free trial available" data-es="Prueba gratis disponible">Free trial available</span>
+          </div>
+          <div class="jb-fb-btns">
+            <a class="jb-fb-btn-primary" href="https://flowbookapp.co" target="_blank" rel="noopener noreferrer" data-en="Download on Google Play →" data-es="Descargar en Google Play →">Download on Google Play →</a>
+            <a class="jb-fb-btn-secondary" href="https://flowbookapp.co" target="_blank" rel="noopener noreferrer" data-en="Learn more →" data-es="Más información →">Learn more →</a>
+          </div>
+        </div>
+
         <div class="booking-header">
           <p class="booking-kicker">BOOKING APP</p>
           <h2 class="booking-title">A SIMPLE BOOKING SYSTEM FOR APPOINTMENT-BASED BUSINESSES</h2>
@@ -1021,32 +1535,32 @@
         width: 65px;
         height: 65px;
         border-radius: 50%;
-        background: linear-gradient(135deg, #6C63FF 0%, #8B5CF6 100%);
+        background: #1a4a2e;
         border: none;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 6px 24px rgba(108, 99, 255, 0.45);
+        box-shadow: 0 6px 24px rgba(26, 74, 46, 0.55);
         transition: transform 0.2s, box-shadow 0.2s;
         animation: pulse-ring 2s infinite;
       }
 
       @keyframes pulse-ring {
-        0%   { box-shadow: 0 0 0 0   rgba(108, 99, 255, 0.6), 0 6px 24px rgba(108, 99, 255, 0.45); }
-        70%  { box-shadow: 0 0 0 18px rgba(108, 99, 255, 0),   0 6px 24px rgba(108, 99, 255, 0.45); }
-        100% { box-shadow: 0 0 0 0   rgba(108, 99, 255, 0),   0 6px 24px rgba(108, 99, 255, 0.45); }
+        0%   { box-shadow: 0 0 0 0   rgba(26, 74, 46, 0.7), 0 6px 24px rgba(26, 74, 46, 0.55); }
+        70%  { box-shadow: 0 0 0 18px rgba(26, 74, 46, 0),  0 6px 24px rgba(26, 74, 46, 0.55); }
+        100% { box-shadow: 0 0 0 0   rgba(26, 74, 46, 0),  0 6px 24px rgba(26, 74, 46, 0.55); }
       }
 
       #chat-fab:hover {
         transform: translateY(-3px) scale(1.06);
         animation-play-state: paused;
-        box-shadow: 0 14px 36px rgba(108, 99, 255, 0.55);
+        box-shadow: 0 14px 36px rgba(26, 74, 46, 0.7);
       }
 
       #chat-fab:active { transform: translateY(0) scale(0.95); animation-play-state: paused; }
 
-      #chat-fab svg { width: 26px; height: 26px; flex-shrink: 0; }
+      #chat-fab svg, #chat-fab img { flex-shrink: 0; }
 
       /* Tooltip */
       #chat-fab::before {
@@ -1056,7 +1570,7 @@
         top: 50%;
         transform: translateY(-50%);
         white-space: nowrap;
-        background: #1a1a2e;
+        background: #0a0a0a;
         color: #fff;
         font-family: var(--mono, monospace);
         font-size: 11px;
@@ -1077,7 +1591,7 @@
         top: 50%;
         transform: translateY(-50%);
         border: 5px solid transparent;
-        border-left-color: #1a1a2e;
+        border-left-color: #0a0a0a;
         pointer-events: none;
         opacity: 0;
         transition: opacity 0.2s ease;
@@ -1127,49 +1641,50 @@
         to   { opacity: 1; }
       }
 
-      /* Panel del chatbot */
+      /* Panel del asistente — card flotante en desktop, full-screen en mobile */
       #chat-panel {
-        position: fixed;
-        bottom: 96px;
-        right: 28px;
-        z-index: 9002;
-        width: 420px;
-        height: 600px;
-        border-radius: 20px;
+        position: fixed !important;
+        bottom: 108px !important;
+        right: 28px !important;
+        z-index: 9002 !important;
+        width: 420px !important;
+        height: 600px !important;
+        border-radius: 16px !important;
         overflow: hidden;
-        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
-        /* Estado cerrado */
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255,255,255,0.06);
+        /* Cerrado: slide abajo + fade */
         opacity: 0;
-        transform: translateY(16px) scale(0.97);
+        transform: translateY(20px);
         pointer-events: none;
-        transition: opacity 0.22s ease, transform 0.22s ease;
-        transform-origin: bottom right;
+        transition: opacity 0.22s ease-in, transform 0.22s ease-in;
       }
 
       #chat-panel.is-open {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        transform: translateY(0);
         pointer-events: auto;
+        transition: opacity 0.3s ease-out, transform 0.3s ease-out;
       }
 
       /* El iframe ocupa todo el panel */
       #chat-panel iframe {
-        width: 100%;
-        height: 100%;
+        width: 100% !important;
+        height: 100% !important;
         border: none;
         display: block;
-        border-radius: 20px;
       }
 
-      /* Responsive: en móvil el panel ocupa casi toda la pantalla */
-      @media (max-width: 500px) {
+      /* Mobile: panel ocupa 100% de la pantalla */
+      @media (max-width: 768px) {
         #chat-panel {
-          width: calc(100vw - 24px);
-          height: calc(100dvh - 110px);
-          bottom: 88px;
-          right: 12px;
-          left: 12px;
-          border-radius: 16px;
+          width: 100vw !important;
+          height: 100vh !important;
+          height: 100dvh !important;
+          bottom: 0 !important;
+          right: 0 !important;
+          left: 0 !important;
+          border-radius: 0 !important;
+          transform: translateY(100%);
         }
 
         #chat-fab {
@@ -1186,14 +1701,12 @@
 
     <!-- Botón flotante -->
     <button id="chat-fab" aria-label="Open chat assistant" aria-expanded="false">
-      <!-- Ícono chat (estado cerrado) -->
-      <svg id="fab-icon-chat" viewBox="0 0 24 24" fill="none"
-           stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-      </svg>
+      <!-- Logo circular (estado cerrado) -->
+      <img id="fab-icon-chat" src="/public/chatbot-logo.png" alt="JB Studio"
+           style="width:38px;height:38px;border-radius:50%;object-fit:contain;padding:3px;">
       <!-- Ícono X (estado abierto, oculto por defecto) -->
       <svg id="fab-icon-close" viewBox="0 0 24 24" fill="none"
-           stroke="white" stroke-width="2.2" stroke-linecap="round" style="display:none">
+           stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none;width:26px;height:26px;">
         <line x1="18" y1="6" x2="6" y2="18"></line>
         <line x1="6" y1="6" x2="18" y2="18"></line>
       </svg>
@@ -1230,6 +1743,7 @@
         function openPanel() {
           if (isOpen) return;
           isOpen = true;
+          if (typeof fbq === 'function') fbq('track', 'InitiateCheckout');
 
           // Carga el iframe la primera vez que se abre (lazy)
           if (!loaded) {
@@ -1267,17 +1781,158 @@
           if (e.key === 'Escape' && isOpen) closePanel();
         });
 
-        // Mensajes del iframe del chatbot:
-        // cuando el bot envía { type: 'jb-preview', slug } se navega a preview.html,
-        // replicando el mismo comportamiento que el botón .btn-live del catálogo.
+        // Mensajes del iframe del chatbot
         window.addEventListener('message', (e) => {
           if (e.origin !== window.location.origin) return;
           if (e.data?.type === 'jb-preview' && e.data.slug) {
             window.location.href = 'preview.html?template=' + encodeURIComponent(e.data.slug);
           }
+          if (e.data?.type === 'jb-close') closePanel();
         });
+
+        // Expose openPanel so the service/lang system can open chat programmatically
+        window.jbChatOpen = openPanel;
       })();
     </script>
     <!-- ── Fin chat widget flotante ───────────────────────────────────────── -->
+
+    <!-- ── Service / Language System ──────────────────────────────────────── -->
+    <script>
+    (function () {
+      'use strict';
+
+      var LANG_KEY = 'jb_lang'; // only lang is persisted; service is NOT saved
+
+      var SERVICE_MAP = {
+        website:  ['designs', 'about', 'about-us', 'reviews'],
+        chatbot:  ['designs', 'about', 'about-us', 'reviews'],
+        flowbook: ['flowbook']
+      };
+      var ALL_SERVICE_SECTIONS = ['designs', 'about', 'about-us', 'reviews', 'chatbot-hero', 'chatbot', 'flowbook'];
+
+      function applyLang(lang) {
+        localStorage.setItem(LANG_KEY, lang);
+        document.documentElement.lang = lang;
+        document.querySelectorAll('[data-en]').forEach(function (el) {
+          var text = el.getAttribute('data-' + lang);
+          if (!text) return;
+          if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+            el.placeholder = text;
+          } else {
+            el.textContent = text;
+          }
+        });
+        var btn = document.getElementById('jb-lang-btn');
+        if (btn) btn.textContent = lang === 'en' ? 'ES' : 'EN';
+      }
+
+      function applyService(service) {
+        // Service is NOT saved to localStorage — selector always shows on reload
+        ALL_SERVICE_SECTIONS.forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.classList.add('jb-hidden');
+        });
+        var toShow = SERVICE_MAP[service] || SERVICE_MAP['website'];
+        toShow.forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.classList.remove('jb-hidden');
+        });
+        var contact = document.getElementById('contact');
+        if (contact) contact.classList.remove('jb-hidden');
+        document.querySelectorAll('.jb-snav-btn').forEach(function (btn) {
+          btn.classList.toggle('is-active', btn.dataset.service === service);
+        });
+        var snav = document.getElementById('jb-service-nav');
+        if (snav) snav.classList.add('is-visible');
+      }
+
+      function dismissWelcome(onDone) {
+        var ov = document.getElementById('jb-welcome');
+        if (!ov) { if (onDone) onDone(); return; }
+        ov.classList.add('jb-out');
+        setTimeout(function () {
+          if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+          if (onDone) onDone();
+        }, 420);
+      }
+
+      function tryOpenChat() {
+        if (typeof window.jbChatOpen === 'function') {
+          window.jbChatOpen();
+        } else {
+          var fab = document.getElementById('chat-fab');
+          if (fab) fab.click();
+        }
+      }
+
+      window.jbSelectLang = function (lang) {
+        applyLang(lang);
+        var step1 = document.getElementById('jb-step-lang');
+        var step2 = document.getElementById('jb-step-service');
+        if (step1) {
+          step1.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+          step1.style.opacity    = '0';
+          step1.style.transform  = 'translateY(-20px)';
+        }
+        setTimeout(function () {
+          if (step1) step1.style.display = 'none';
+          if (step2) {
+            step2.querySelectorAll('[data-en]').forEach(function (el) {
+              var t = el.getAttribute('data-' + lang);
+              if (t) el.textContent = t;
+            });
+            step2.style.display    = 'flex';
+            step2.style.opacity    = '0';
+            step2.style.transform  = 'translateY(20px)';
+            step2.style.transition = '';
+            requestAnimationFrame(function () {
+              requestAnimationFrame(function () {
+                step2.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                step2.style.opacity    = '1';
+                step2.style.transform  = 'translateY(0)';
+                step2.classList.add('cards-ready');
+              });
+            });
+          }
+        }, 280);
+      };
+
+      window.jbSelectService = function (service, triggerEl) {
+        if (triggerEl) {
+          triggerEl.style.transition = 'transform 0.1s ease';
+          triggerEl.style.transform  = 'scale(0.97)';
+        }
+        setTimeout(function () {
+          applyService(service);
+          if (service === 'chatbot') {
+            dismissWelcome(function () { setTimeout(tryOpenChat, 80); });
+          } else {
+            dismissWelcome();
+          }
+        }, 110);
+      };
+
+      window.jbSkipWelcome = function () {
+        applyService('website');
+        dismissWelcome();
+      };
+
+      window.jbSwitchService = function (service) {
+        applyService(service);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (service === 'chatbot') setTimeout(tryOpenChat, 300);
+      };
+
+      window.jbToggleLang = function () {
+        var current = localStorage.getItem(LANG_KEY) || 'en';
+        applyLang(current === 'en' ? 'es' : 'en');
+      };
+
+      // Init: selector ALWAYS shows — only restore saved language
+      var savedLang = localStorage.getItem(LANG_KEY);
+      if (savedLang) applyLang(savedLang);
+    })();
+    </script>
+    <!-- ── Fin service/language system ─────────────────────────────────────── -->
   </body>
 </html>

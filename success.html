@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>¡Pago exitoso! — JB Studio</title>
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Meta Pixel Code -->
+  <script>
+  !function(f,b,e,v,n,t,s)
+  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+  n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];
+  s.parentNode.insertBefore(t,s)}(window, document,'script',
+  'https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '1062633503132094');
+  fbq('track', 'PageView');
+  fbq('track', 'Purchase', {value: 45.00, currency: 'USD'});
+  </script>
+  <noscript>
+  <img height="1" width="1" style="display:none"
+  src="https://www.facebook.com/tr?id=1062633503132094&ev=PageView&noscript=1"/>
+  </noscript>
+  <!-- End Meta Pixel Code -->
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: #f5f0e8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'IBM Plex Mono', monospace;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 52px 44px;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 8px 48px rgba(0,0,0,0.08);
+    }
+    .icon { font-size: 3.5rem; margin-bottom: 20px; line-height: 1; }
+    h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.2rem;
+      letter-spacing: 2px;
+      color: #0B0C12;
+      margin-bottom: 16px;
+    }
+    p {
+      font-size: 0.88rem;
+      color: rgba(0,0,0,0.55);
+      line-height: 1.75;
+      margin-bottom: 10px;
+    }
+    .highlight {
+      color: #1FD98A;
+      font-weight: 600;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid rgba(0,0,0,0.08);
+      margin: 28px 0;
+    }
+    .steps {
+      text-align: left;
+      font-size: 0.8rem;
+      color: rgba(0,0,0,0.5);
+      line-height: 2;
+      padding: 0 8px;
+    }
+    .steps li { list-style: none; padding-left: 4px; }
+    .steps li::before { content: '✓  '; color: #1FD98A; font-weight: 700; }
+    .btn {
+      display: inline-block;
+      margin-top: 32px;
+      background: #0B0C12;
+      color: #fff;
+      text-decoration: none;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1rem;
+      letter-spacing: 2px;
+      padding: 14px 32px;
+      border-radius: 10px;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #1a1a2e; }
+    .brand {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 0.95rem;
+      letter-spacing: 3px;
+      color: rgba(0,0,0,0.2);
+      margin-top: 36px;
+    }
+    .brand span { color: #6C63FF; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🎉</div>
+    <h1>¡Pago exitoso!</h1>
+    <p>Gracias por tu pago. Tu asistente está siendo configurado.</p>
+    <p class="highlight">En menos de 24 horas estará activo en tu sitio web.</p>
+    <hr class="divider">
+    <ul class="steps">
+      <li>Pago procesado y confirmado</li>
+      <li>Asistente activado automáticamente</li>
+      <li>Widget listo para instalar</li>
+    </ul>
+    <a href="https://jbstudio.app" class="btn">Volver al inicio →</a>
+    <p class="brand">JB <span>STUDIO</span></p>
+  </div>
+</body>
+</html>

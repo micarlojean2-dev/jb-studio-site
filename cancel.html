@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pago cancelado — JB Studio</title>
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Meta Pixel Code -->
+  <script>
+  !function(f,b,e,v,n,t,s)
+  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+  n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];
+  s.parentNode.insertBefore(t,s)}(window, document,'script',
+  'https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '1062633503132094');
+  fbq('track', 'PageView');
+  </script>
+  <noscript>
+  <img height="1" width="1" style="display:none"
+  src="https://www.facebook.com/tr?id=1062633503132094&ev=PageView&noscript=1"/>
+  </noscript>
+  <!-- End Meta Pixel Code -->
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: #f5f0e8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'IBM Plex Mono', monospace;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 20px;
+      padding: 52px 44px;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 8px 48px rgba(0,0,0,0.08);
+    }
+    .icon { font-size: 3rem; margin-bottom: 20px; line-height: 1; }
+    h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.2rem;
+      letter-spacing: 2px;
+      color: #0B0C12;
+      margin-bottom: 16px;
+    }
+    p {
+      font-size: 0.88rem;
+      color: rgba(0,0,0,0.5);
+      line-height: 1.75;
+    }
+    .btn {
+      display: inline-block;
+      margin-top: 32px;
+      background: #6C63FF;
+      color: #fff;
+      text-decoration: none;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1rem;
+      letter-spacing: 2px;
+      padding: 14px 32px;
+      border-radius: 10px;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #7D71FF; }
+    .btn-ghost {
+      display: inline-block;
+      margin-top: 12px;
+      color: rgba(0,0,0,0.35);
+      text-decoration: none;
+      font-size: 0.75rem;
+      letter-spacing: 1px;
+      padding: 8px 16px;
+      transition: color 0.15s;
+    }
+    .btn-ghost:hover { color: #0B0C12; }
+    .brand {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 0.95rem;
+      letter-spacing: 3px;
+      color: rgba(0,0,0,0.2);
+      margin-top: 36px;
+    }
+    .brand span { color: #6C63FF; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">↩️</div>
+    <h1>Pago cancelado</h1>
+    <p>No se realizó ningún cargo.<br>Puedes intentarlo nuevamente cuando quieras.</p>
+    <br>
+    <a href="https://jbstudio.app" class="btn">Intentar de nuevo →</a>
+    <br>
+    <a href="https://jbstudio.app" class="btn-ghost">Volver a jbstudio.app</a>
+    <p class="brand">JB <span>STUDIO</span></p>
+  </div>
+</body>
+</html>
