@@ -346,6 +346,19 @@ function looksLikeName(text) {
   return /^[A-Za-zÁÉÍÓÚáéíóúÑñ'.,\- ]{2,}$/.test(value) && value.split(' ').length <= 4;
 }
 
+function extractName(text) {
+  const value = cleanLine(text);
+  if (!value) return '';
+
+  const directMatch = value.match(/(?:me\s+llamo|soy)\s+([A-Za-zÁÉÍÓÚáéíóúÑñ][A-Za-zÁÉÍÓÚáéíóúÑñ'.,\- ]{1,40})/i);
+  if (directMatch) {
+    const candidate = cleanLine(directMatch[1]).split(/\s+(?:y|mi|tengo|necesito|quiero)\b/i)[0].trim();
+    if (looksLikeName(candidate)) return candidate;
+  }
+
+  return looksLikeName(value) ? value : '';
+}
+
 const CURIOUS_RE = /(solo\s+(estoy\s+)?(mirando|viendo)|por\s+curiosidad|curioseando|solo\s+quiero\s+informaci[oó]n|solo\s+informaci[oó]n|solo\s+preguntaba|solo\s+quer[ií]a\s+saber|estoy\s+comparando|solo\s+estaba\s+viendo|nada\s+m[aá]s\s+estoy\s+viendo)/i;
 const NOT_ACTIVE_BUSINESS_RE = /(voy\s+a\s+abrir|quiero\s+abrir|estoy\s+por\s+abrir|todav[ií]a\s+no\s+(lo\s+)?he\s+lanzado|a[uú]n\s+no\s+vendo|es\s+solo\s+una\s+idea|todav[ií]a\s+no\s+est[aá]\s+operando)/i;
 const BUSINESS_TYPE_RE = /\b(barber[ií]a|barber[ií]o|restaurante|spa|belleza|cl[ií]nica|cafeter[ií]a|sal[oó]n|tienda|agencia|consultorio|estudio|gym|gimnasio|negocio|empresa|ecommerce|e-commerce)\b/i;
@@ -377,7 +390,7 @@ function summarizeConversation(messages) {
 
   userTexts.forEach(function (text) {
     if (!contact && looksLikeContact(text)) contact = text;
-    if (!name && looksLikeName(text)) name = text;
+    if (!name) name = extractName(text);
     if (!HUMAN_REQUEST_RE.test(text) && contextParts.length < 3) contextParts.push(text);
   });
 
@@ -395,7 +408,7 @@ function getLeadSignals(messages) {
     .filter(Boolean);
 
   const joined = userTexts.join(' | ');
-  const name = userTexts.find(looksLikeName) || '';
+  const name = userTexts.map(extractName).find(Boolean) || '';
   const contact = userTexts.find(looksLikeContact) || '';
   const planMatch = joined.match(/\b(plan\s+pro|pro\b|plan\s+b[aá]sico|b[aá]sico\b|350|200)\b/i);
   const business = getBusinessLabel(joined);
