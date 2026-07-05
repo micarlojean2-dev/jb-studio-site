@@ -807,10 +807,11 @@
         }
 
         var raw = d.text || '';
+        var leadQualified = d.leadQualified === true;
 
         if (!summaryShown && raw.includes('[MOSTRAR_CONTACTO_HUMANO]')) {
           summaryShown = true;
-          trackLeadOnce();
+          if (leadQualified) trackLeadOnce();
           var humanText = raw.replace('[MOSTRAR_CONTACTO_HUMANO]', '').trim();
           var humanParts = humanText.split('\n\n');
           var humanReply = humanParts.shift() || '';
@@ -829,7 +830,7 @@
           scrollBottom();
         } else if (!summaryShown && raw.includes('[MOSTRAR_RESUMEN]')) {
           summaryShown = true;
-          trackLeadOnce();
+          if (leadQualified) trackLeadOnce();
           var cleanText = raw.replace('[MOSTRAR_RESUMEN]', '').trim();
           if (cleanText) addMsg('bot', cleanText);
           showCTA(cleanText, 'Tu información está lista. Hacé clic abajo para enviársela a Mike por WhatsApp y coordinar el inicio.', 'Enviar a Mike por WhatsApp');

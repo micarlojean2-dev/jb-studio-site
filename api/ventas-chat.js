@@ -171,13 +171,23 @@ FLUJO DE CONVERSACIÓN:
 FASE 1 — Calificación:
 Saludá y calificá al cliente de forma breve, de a una pregunta por vez:
 - ¿Qué tipo de negocio tiene?
-- ¿Ya tiene página web? ¿Cuál?
+- Confirmá si es un negocio activo ahora mismo cuando no esté claro.
 - ¿Qué problema quiere resolver? (muchas preguntas en WhatsApp, clientes fuera de horario, reservas, leads, etc.)
+- La web se pregunta solo si aporta contexto, no antes del filtro principal.
 
 FASE 2 — Diagnóstico y recomendación personalizada:
 Escuchá primero y adaptá el pitch al dolor específico del cliente. Encontrá el problema real, hacelo visible y luego mostrale cómo el asistente lo resuelve. Por defecto, guiá hacia el Pro usando argumentos concretos de ventas, atención 24/7, reservas, captación y gestión.
 
-FASE 3 — Responder dudas y objeciones:
+FASE 3 — Filtro profesional antes del contacto:
+Antes de pedir nombre, WhatsApp, email o cualquier contacto, hacé este filtro de forma natural. Podés usar esta frase o una variación muy cercana:
+"Para ser claro contigo: este es un servicio personalizado de pago, pensado para negocios que quieren atender más clientes y ahorrar tiempo. Si ves que encaja con tu negocio, ¿te gustaría avanzar para recibir una propuesta?"
+
+Reglas del filtro:
+- Si el cliente dice que solo está mirando, que solo quiere información general, que solo pregunta precios, que solo tiene curiosidad o que no busca implementarlo seriamente, respondé con amabilidad, seguí resolviendo dudas si hace falta, pero no pidas contacto, no generes resumen y no avises a Mike.
+- Si el cliente confirma que tiene un negocio real, explica qué necesita del asistente y dice que sí le gustaría avanzar para recibir una propuesta, recién ahí podés pedir sus datos.
+- El tono siempre debe ser profesional, claro y natural. Nunca agresivo, nunca presionando para pagar.
+
+FASE 4 — Responder dudas y objeciones:
 - "¿Cuánto tarda?" → "Entre 3 y 5 días hábiles una vez confirmado el pago inicial."
 - "¿Funciona en mi tipo de negocio?" → Adaptá la respuesta al negocio que mencionó.
 - "¿Puedo cambiar de Básico a Pro después?" → "Sí, con un costo adicional."
@@ -189,7 +199,7 @@ FASE 3 — Responder dudas y objeciones:
 - Si el cliente pide descuento, decile que eso lo puede hablar directamente con Mike.
 - Si el cliente dice "lo voy a pensar", respondé con firmeza pero naturalidad y tratá de descubrir qué duda real le falta resolver.
 
-FASE 4 — Cierre y reglas para avisar a Mike:
+FASE 5 — Cierre y reglas para avisar a Mike:
 Manejás toda la conversación vos solo. No digas que Mike va a escribirle, que lo vas a contactar ni que vas a pasarle el caso todavía, a menos que ocurra uno de estos dos casos:
 
 CASO A — Cliente listo para comprar:
@@ -197,7 +207,15 @@ Solo cuando ya recopilaste todos los datos, el cliente confirmó claramente que 
 [MOSTRAR_RESUMEN]
 
 CASO B — Cliente quiere hablar con una persona real:
-Si el cliente dice que quiere hablar con alguien, con una persona real, con el dueño o con Mike, respondé exactamente:
+Si el cliente dice que quiere hablar con alguien, con una persona real, con el dueño o con Mike, primero verificá estas 4 cosas antes de avisar a Mike:
+- Que sí tiene un negocio activo
+- Qué necesita que haga el asistente
+- Que no está solo por curiosidad
+- Que sí quiere avanzar para recibir una propuesta de un servicio pagado
+
+Si todavía no tenés eso claro, hacé las preguntas necesarias con tacto y no avises a Mike todavía.
+
+Solo cuando ya esté filtrado y además tengas al menos nombre y una forma de contacto, respondé exactamente:
 "Claro, le aviso a Mike ahora mismo para que te contacte."
 
 Luego dejá una línea en blanco y escribí este resumen corto:
@@ -211,7 +229,14 @@ Al final agregá exactamente esta línea:
 
 En cualquier otro caso, no muestres botones, no generes resúmenes para Mike y seguí manejando la conversación vos solo.
 
-Antes de generar el resumen final para Mike, siempre pedí el contacto del cliente exactamente con este mensaje:
+Antes de generar el resumen final para Mike, primero asegurate de haber confirmado:
+- nombre
+- tipo de negocio activo
+- qué necesita del asistente
+- que quiere avanzar
+- que entiende que es un servicio pagado o quiere recibir propuesta
+
+Después pedí el contacto del cliente exactamente con este mensaje:
 "Perfecto. Para que Mike pueda contactarte directamente,
 ¿cuál es tu mejor forma de contacto? Puede ser WhatsApp,
 Instagram, TikTok, email o cualquier red social
@@ -219,7 +244,7 @@ Instagram, TikTok, email o cualquier red social
 
 Esperá la respuesta del cliente, guardá ese dato y no generes el resumen ni el botón hasta tenerlo.
 
-Solo cuando el cliente ya está convencido y quiere proceder, recopilá en orden, de a uno por mensaje:
+Solo cuando el cliente ya pasó el filtro, está convencido y quiere proceder, recopilá en orden, de a uno por mensaje:
 1. Nombre completo
 2. Nombre del negocio
 3. Tipo de negocio
@@ -273,7 +298,7 @@ REGLAS IMPORTANTES:
 - Escribí en texto plano y natural como una conversación
 - Nunca menciones links de pago, URLs de Stripe ni enlaces de cobro
 - Solo escribí [MOSTRAR_RESUMEN] cuando tengas todos los datos, incluyendo el contacto preferido, y el cliente haya confirmado que quiere proceder
-- Solo escribí [MOSTRAR_CONTACTO_HUMANO] cuando el cliente pida hablar con una persona real`;
+- Solo escribí [MOSTRAR_CONTACTO_HUMANO] cuando el cliente pida hablar con una persona real y ya haya quedado claro que tiene un negocio activo, necesita el asistente, quiere avanzar con una propuesta y dejó nombre y contacto`;
 
 const PROMPT_LEAK_PATTERNS = [
   'PERSONALIDAD:',
@@ -317,7 +342,27 @@ function looksLikeName(text) {
   const value = cleanLine(text);
   if (!value || looksLikeContact(value) || value.length > 60) return false;
   if (/https?:\/\//i.test(value)) return false;
-  return /^[A-Za-zÁÉÍÓÚáéíóúÑñ'.,\- ]{3,}$/.test(value) && value.split(' ').length >= 2;
+  if (/\b(barber[ií]a|restaurante|spa|cl[ií]nica|negocio|empresa|instagram|tiktok|whatsapp|gmail|hotmail|pro|b[aá]sico)\b/i.test(value)) return false;
+  return /^[A-Za-zÁÉÍÓÚáéíóúÑñ'.,\- ]{2,}$/.test(value) && value.split(' ').length <= 4;
+}
+
+const CURIOUS_RE = /(solo\s+(estoy\s+)?(mirando|viendo)|por\s+curiosidad|curioseando|solo\s+quiero\s+informaci[oó]n|solo\s+informaci[oó]n|solo\s+preguntaba|solo\s+quer[ií]a\s+saber|estoy\s+comparando|solo\s+estaba\s+viendo|nada\s+m[aá]s\s+estoy\s+viendo)/i;
+const NOT_ACTIVE_BUSINESS_RE = /(voy\s+a\s+abrir|quiero\s+abrir|estoy\s+por\s+abrir|todav[ií]a\s+no\s+(lo\s+)?he\s+lanzado|a[uú]n\s+no\s+vendo|es\s+solo\s+una\s+idea|todav[ií]a\s+no\s+est[aá]\s+operando)/i;
+const BUSINESS_TYPE_RE = /\b(barber[ií]a|barber[ií]o|restaurante|spa|belleza|cl[ií]nica|cafeter[ií]a|sal[oó]n|tienda|agencia|consultorio|estudio|gym|gimnasio|negocio|empresa|ecommerce|e-commerce)\b/i;
+const NEED_RE = /(necesito|busco|quiero\s+que|me\s+gustar[ií]a\s+que|quisiera\s+que).*(asistente|bot|chat|responda|conteste|atienda|reserve|reservas|agenda|leads?|ventas|clientes|whatsapp|correo|mensajes|cotizaciones|consultas|citas)|((muchas\s+preguntas|muchos\s+mensajes|fuera\s+de\s+horario|pierdo\s+clientes|no\s+respondo\s+a\s+tiempo|quiero\s+automatizar|quiero\s+ahorrar\s+tiempo).*(clientes|reservas|whatsapp|mensajes|consultas)?)|(responder\s+clientes|tomar\s+reservas|captar\s+leads|atender\s+consultas|filtrar\s+prospectos)/i;
+const ADVANCE_RE = /(quiero\s+avanzar|me\s+gustar[ií]a\s+avanzar|avancemos|quiero\s+seguir|sigamos|quiero\s+empezar|quiero\s+proceder|quiero\s+implementarlo|me\s+interesa\s+implementarlo|quiero\s+contratar|vamos\s+a\s+avanzar|dale[,\s]+avancemos|s[ií][,\s]+quiero\s+avanzar|quiero\s+recibir\s+una\s+propuesta|me\s+gustar[ií]a\s+recibir\s+una\s+propuesta|mandame\s+la\s+propuesta|manda(me)?\s+propuesta)/i;
+const PAID_AWARE_RE = /(entiendo\s+que\s+es\s+un\s+servicio\s+pagado|entiendo\s+que\s+es\s+de\s+pago|s[eé]\s+que\s+es\s+pagado|s[eé]\s+que\s+es\s+de\s+pago|es\s+un\s+servicio\s+pagado\s+y\s+est[aá]\s+bien|estoy\s+dispuesto\s+a\s+invertir|podr[ií]a\s+invertir|tengo\s+presupuesto|si\s+me\s+sirve\s+(s[ií]|avanzo)|si\s+encaja\s+(s[ií]|avanzo)|quiero\s+recibir\s+una\s+propuesta|me\s+gustar[ií]a\s+recibir\s+una\s+propuesta|quiero\s+avanzar\s+para\s+recibir\s+una\s+propuesta|me\s+gustar[ií]a\s+avanzar\s+para\s+recibir\s+una\s+propuesta|mandame\s+la\s+propuesta|manda(me)?\s+propuesta)/i;
+
+function getBusinessLabel(text) {
+  const direct = text.match(BUSINESS_TYPE_RE);
+  if (direct) return direct[0];
+
+  const contextual = text.match(/(?:tengo\s+(?:una|un)|soy\s+dueñ[oa]\s+de\s+(?:una|un)|manejo\s+(?:una|un)|mi\s+negocio\s+es\s+(?:una|un)|mi\s+empresa\s+es\s+(?:una|un))\s+([A-Za-zÁÉÍÓÚáéíóúÑñ][A-Za-zÁÉÍÓÚáéíóúÑñ\s-]{2,40})/i);
+  if (!contextual) return '';
+
+  const label = cleanLine(contextual[1]).split(' ').slice(0, 4).join(' ');
+  if (/^(p[aá]gina|web|idea|proyecto|pregunta|consulta)\b/i.test(label)) return '';
+  return label;
 }
 
 function summarizeConversation(messages) {
@@ -353,32 +398,75 @@ function getLeadSignals(messages) {
   const name = userTexts.find(looksLikeName) || '';
   const contact = userTexts.find(looksLikeContact) || '';
   const planMatch = joined.match(/\b(plan\s+pro|pro\b|plan\s+b[aá]sico|b[aá]sico\b|350|200)\b/i);
-  const businessMatch = joined.match(/\b(barber[ií]a|restaurante|spa|belleza|cl[ií]nica|cafeter[ií]a|sal[oó]n|tienda|negocio)\b/i);
-  const confirmation = userTexts.some(function (text) {
-    return /(^|\b)(s[ií]|dale|quiero\s+proceder|quiero\s+avanzar|empecemos|quiero\s+empezar|quiero\s+seguir|hag[aá]moslo|vamos\s+a\s+darle|quiero\s+contratar|me\s+quiero\s+sumar)(\b|$)/i.test(text);
+  const business = getBusinessLabel(joined);
+  const need = userTexts.some(function (text) {
+    return NEED_RE.test(text);
   });
+  const advanceIntent = userTexts.some(function (text) {
+    return ADVANCE_RE.test(text);
+  });
+  const paidAware = userTexts.some(function (text) {
+    return PAID_AWARE_RE.test(text);
+  });
+  const curious = userTexts.some(function (text) {
+    return CURIOUS_RE.test(text);
+  });
+  const activeBusiness = Boolean(business) && !NOT_ACTIVE_BUSINESS_RE.test(joined);
 
   return {
     name,
     contact,
     plan: planMatch ? planMatch[0] : '',
-    business: businessMatch ? businessMatch[0] : '',
-    confirmation,
+    business,
+    need,
+    advanceIntent,
+    paidAware,
+    curious: curious && !advanceIntent && !paidAware,
+    activeBusiness,
+    qualifiedMinimum: Boolean(name && contact && business && activeBusiness && need && advanceIntent && paidAware && !(curious && !advanceIntent && !paidAware)),
     totalMessages: messages.length,
   };
+}
+
+function getMissingQualificationStep(signals) {
+  if (!signals.activeBusiness) return 'business';
+  if (!signals.need) return 'need';
+  if (!signals.advanceIntent || !signals.paidAware) return 'proposal';
+  if (!signals.name) return 'name';
+  if (!signals.contact) return 'contact';
+  return '';
+}
+
+function buildQualificationFollowUp(signals) {
+  const missing = getMissingQualificationStep(signals);
+
+  if (missing === 'business') {
+    return 'Antes de seguir, necesito confirmar algo: ¿tu negocio ya está operando activamente ahora mismo?';
+  }
+
+  if (missing === 'need') {
+    return 'Para orientarte bien, ¿qué necesitás que haga el asistente en tu negocio?';
+  }
+
+  if (missing === 'proposal') {
+    return 'Para ser claro contigo: este es un servicio personalizado de pago, pensado para negocios que quieren atender más clientes y ahorrar tiempo. Si ves que encaja con tu negocio, ¿te gustaría avanzar para recibir una propuesta?';
+  }
+
+  if (missing === 'name') {
+    return 'Perfecto. Antes de seguir, ¿cómo te llamás?';
+  }
+
+  if (missing === 'contact') {
+    return 'Perfecto. ¿Cuál es tu mejor WhatsApp o correo para enviarte la propuesta?';
+  }
+
+  return 'Contame un poco más sobre tu negocio y lo que querés implementar.';
 }
 
 function shouldSendLeadFallback(messages, assistantText) {
   if (assistantText && assistantText.includes('[MOSTRAR_RESUMEN]')) return false;
   const signals = getLeadSignals(messages);
-  return Boolean(
-    signals.name &&
-    signals.contact &&
-    signals.plan &&
-    signals.business &&
-    signals.confirmation &&
-    signals.totalMessages >= LEAD_BACKUP_AFTER_MESSAGES
-  );
+  return Boolean(signals.qualifiedMinimum && signals.totalMessages >= LEAD_BACKUP_AFTER_MESSAGES);
 }
 
 function buildPossibleLeadAlert(messages) {
@@ -390,7 +478,10 @@ function buildPossibleLeadAlert(messages) {
     'Negocio: ' + (signals.business || 'No indicado'),
     'Plan mencionado: ' + (signals.plan || 'No indicado'),
     'Contacto: ' + (signals.contact || 'No indicado'),
-    'Confirmación detectada: ' + (signals.confirmation ? 'Sí' : 'No'),
+    'Negocio activo detectado: ' + (signals.activeBusiness ? 'Sí' : 'No'),
+    'Necesidad detectada: ' + (signals.need ? 'Sí' : 'No'),
+    'Intención de avanzar detectada: ' + (signals.advanceIntent ? 'Sí' : 'No'),
+    'Acepta servicio pagado / propuesta: ' + (signals.paidAware ? 'Sí' : 'No'),
     'Contexto: ' + summary.context,
   ].join('\n');
 }
@@ -632,15 +723,6 @@ export default async function handler(req, res) {
     return res.status(200).json({ text: buildDemoOffer() });
   }
 
-  if (latestUserMessage && HUMAN_REQUEST_RE.test(latestUserMessage.content)) {
-    const text = buildHumanHandoff(sanitizedMessages);
-    const summaryText = text.replace('[MOSTRAR_CONTACTO_HUMANO]', '').trim();
-    const contactText = getPreferredContactFromSummary(summaryText);
-    await sendMikeEmail('⚠️ Cliente quiere hablar contigo — JB Studio', summaryText, contactText);
-    await sendMikeTelegram('⚠️ Cliente quiere hablar contigo — JB Studio', summaryText, contactText);
-    return res.status(200).json({ text });
-  }
-
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'Servicio no disponible' });
   if (!canUseClaudeToday()) {
@@ -672,11 +754,18 @@ export default async function handler(req, res) {
     }
 
     const data = await upstream.json();
-    const text = data.content?.[0]?.text || '';
+    let text = data.content?.[0]?.text || '';
 
     if (looksLikePromptLeak(text)) {
       console.warn('[api/ventas-chat] blocked prompt-like response');
       return res.status(200).json({ text: 'Puedo ayudarte con precios, planes y cómo funcionaría en tu negocio, pero no comparto instrucciones internas. Decime qué tipo de negocio tenés y te recomiendo la mejor opción.' });
+    }
+
+    const signals = getLeadSignals(sanitizedMessages);
+    const leadQualified = signals.qualifiedMinimum;
+
+    if ((text.includes('[MOSTRAR_RESUMEN]') || text.includes('[MOSTRAR_CONTACTO_HUMANO]')) && !leadQualified) {
+      text = buildQualificationFollowUp(signals);
     }
 
     if (text.includes('[MOSTRAR_RESUMEN]')) {
@@ -697,7 +786,7 @@ export default async function handler(req, res) {
       await sendMikeTelegram('⚠️ POSIBLE LEAD LISTO (sin tag) — JB Studio', fallbackText, contactText);
     }
 
-    return res.status(200).json({ text });
+    return res.status(200).json({ text, leadQualified });
 
   } catch (err) {
     console.error('[api/ventas-chat]', err.message);
