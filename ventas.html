@@ -809,7 +809,13 @@
         var raw = d.text || '';
         var leadQualified = d.leadQualified === true;
 
-        if (!summaryShown && raw.includes('[MOSTRAR_CONTACTO_HUMANO]')) {
+        if (raw.includes('[LEAD_MINIMO]')) {
+          if (leadQualified) trackLeadOnce();
+          var minimumText = raw.replace('[LEAD_MINIMO]', '').trim();
+          if (minimumText) addMsg('bot', minimumText);
+          msgs.push({ role: 'user', content: text });
+          msgs.push({ role: 'assistant', content: raw });
+        } else if (!summaryShown && raw.includes('[MOSTRAR_CONTACTO_HUMANO]')) {
           summaryShown = true;
           if (leadQualified) trackLeadOnce();
           var humanText = raw.replace('[MOSTRAR_CONTACTO_HUMANO]', '').trim();

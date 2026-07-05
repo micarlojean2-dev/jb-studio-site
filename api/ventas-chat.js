@@ -338,6 +338,19 @@ function looksLikeContact(text) {
   return /@|\+?\d[\d\s().-]{6,}/.test(value);
 }
 
+function extractContact(text) {
+  const value = cleanLine(text);
+  if (!value) return '';
+
+  const emailMatch = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  if (emailMatch) return emailMatch[0];
+
+  const phoneMatch = value.match(/\+?\d[\d\s().-]{6,}\d/);
+  if (phoneMatch) return cleanLine(phoneMatch[0]);
+
+  return looksLikeContact(value) ? value : '';
+}
+
 function looksLikeName(text) {
   const value = cleanLine(text);
   if (!value || looksLikeContact(value) || value.length > 60) return false;
@@ -389,7 +402,7 @@ function summarizeConversation(messages) {
   const contextParts = [];
 
   userTexts.forEach(function (text) {
-    if (!contact && looksLikeContact(text)) contact = text;
+    if (!contact) contact = extractContact(text);
     if (!name) name = extractName(text);
     if (!HUMAN_REQUEST_RE.test(text) && contextParts.length < 3) contextParts.push(text);
   });
@@ -409,7 +422,7 @@ function getLeadSignals(messages) {
 
   const joined = userTexts.join(' | ');
   const name = userTexts.map(extractName).find(Boolean) || '';
-  const contact = userTexts.find(looksLikeContact) || '';
+  const contact = userTexts.map(extractContact).find(Boolean) || '';
   const planMatch = joined.match(/\b(plan\s+pro|pro\b|plan\s+b[aá]sico|b[aá]sico\b|350|200)\b/i);
   const business = getBusinessLabel(joined);
   const need = userTexts.some(function (text) {
@@ -482,6 +495,12 @@ function shouldSendLeadFallback(messages, assistantText) {
   return Boolean(signals.qualifiedMinimum && signals.totalMessages >= LEAD_BACKUP_AFTER_MESSAGES);
 }
 
+function hasLeadMarker(messages) {
+  return messages.some(function (message) {
+    return message.role === 'assistant' && /\[(LEAD_MINIMO|MOSTRAR_RESUMEN|MOSTRAR_CONTACTO_HUMANO)\]/.test(message.content);
+  });
+}
+
 function buildPossibleLeadAlert(messages) {
   const signals = getLeadSignals(messages);
   const summary = summarizeConversation(messages);
@@ -496,6 +515,21 @@ function buildPossibleLeadAlert(messages) {
     'Intención de avanzar detectada: ' + (signals.advanceIntent ? 'Sí' : 'No'),
     'Acepta servicio pagado / propuesta: ' + (signals.paidAware ? 'Sí' : 'No'),
     'Contexto: ' + summary.context,
+  ].join('\n');
+}
+
+function buildMinimumLeadAlert(messages) {
+  const signals = getLeadSignals(messages);
+  const summary = summarizeConversation(messages);
+  return [
+    '🔔 NUEVO CLIENTE INTERESADO - JB Studio',
+    '👤 Nombre: ' + (signals.name || 'No indicado'),
+    '🏷️ Tipo de negocio: ' + (signals.business || 'No indicado'),
+    '📲 Contacto: ' + (signals.contact || 'No indicado'),
+    '🧩 Necesidad detectada: ' + (signals.need ? 'Sí' : 'No'),
+    '✅ Quiere avanzar / recibir propuesta: ' + (signals.advanceIntent ? 'Sí' : 'No'),
+    '💸 Entiende que es un servicio pagado: ' + (signals.paidAware ? 'Sí' : 'No'),
+    '📝 Contexto: ' + summary.context,
   ].join('\n');
 }
 
@@ -576,6 +610,9 @@ function getBusinessNameFromSummary(text) {
 function getPreferredContactFromSummary(text) {
   const preferred = text.match(/^📲 Contacto preferido:\s*(.+)$/m);
   if (preferred) return preferred[1].trim();
+
+  const basic = text.match(/^📲 Contacto:\s*(.+)$/m);
+  if (basic) return basic[1].trim();
 
   const fallback = text.match(/^Contacto:\s*(.+)$/m);
   return fallback ? fallback[1].trim() : 'No indicado';
@@ -776,6 +813,7 @@ export default async function handler(req, res) {
 
     const signals = getLeadSignals(sanitizedMessages);
     const leadQualified = signals.qualifiedMinimum;
+    const leadAlreadyTagged = hasLeadMarker(sanitizedMessages);
 
     if ((text.includes('[MOSTRAR_RESUMEN]') || text.includes('[MOSTRAR_CONTACTO_HUMANO]')) && !leadQualified) {
       text = buildQualificationFollowUp(signals);
@@ -792,6 +830,12 @@ export default async function handler(req, res) {
       const contactText = getPreferredContactFromSummary(summaryText);
       await sendMikeEmail('⚠️ Cliente quiere hablar contigo — JB Studio', summaryText, contactText);
       await sendMikeTelegram('⚠️ Cliente quiere hablar contigo — JB Studio', summaryText, contactText);
+    } else if (leadQualified && !leadAlreadyTagged) {
+      const minimumLeadText = buildMinimumLeadAlert(sanitizedMessages);
+      const contactText = getPreferredContactFromSummary(minimumLeadText);
+      await sendMikeEmail('🔔 Nuevo cliente interesado — JB Studio', minimumLeadText, contactText);
+      await sendMikeTelegram('🔔 Nuevo cliente interesado — JB Studio', minimumLeadText, contactText);
+      text += '\n\n[LEAD_MINIMO]';
     } else if (shouldSendLeadFallback(sanitizedMessages, text)) {
       const fallbackText = buildPossibleLeadAlert(sanitizedMessages);
       const contactText = getPreferredContactFromSummary(fallbackText);
