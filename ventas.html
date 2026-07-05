@@ -824,14 +824,14 @@
           var humanSummary = humanParts.join('\n\n').trim();
           if (humanReply) addMsg('bot', humanReply);
           if (humanSummary) {
-            showCTA(humanSummary, 'Mike ya tiene el contexto. Hacé clic abajo para abrir WhatsApp con el resumen listo.', 'Hablar con Mike por WhatsApp');
+            showCTA(humanSummary, 'El equipo de JB Studio ya tiene el contexto. Hacé clic abajo para abrir WhatsApp con el mensaje listo.', 'Escribir al equipo por WhatsApp');
           }
           msgs.push({ role: 'assistant', content: raw });
           inputEl.disabled = true;
           sendBtn.disabled = true;
           var humanNotice = document.createElement('div');
           humanNotice.className = 'limit-notice';
-          humanNotice.textContent = 'Contacto listo para que Mike continúe la conversación.';
+          humanNotice.textContent = 'Contacto listo para que el equipo de JB Studio continúe la conversación.';
           messagesEl.appendChild(humanNotice);
           scrollBottom();
         } else if (!summaryShown && raw.includes('[MOSTRAR_RESUMEN]')) {
@@ -839,13 +839,13 @@
           if (leadQualified) trackLeadOnce();
           var cleanText = raw.replace('[MOSTRAR_RESUMEN]', '').trim();
           if (cleanText) addMsg('bot', cleanText);
-          showCTA(cleanText, 'Tu información está lista. Hacé clic abajo para enviársela a Mike por WhatsApp y coordinar el inicio.', 'Enviar a Mike por WhatsApp');
+          showCTA(cleanText, 'Tu información está lista. Hacé clic abajo para escribirle al equipo de JB Studio por WhatsApp y coordinar el inicio.', 'Escribir al equipo por WhatsApp');
           msgs.push({ role: 'assistant', content: raw });
           inputEl.disabled = true;
           sendBtn.disabled = true;
           var notice = document.createElement('div');
           notice.className = 'limit-notice';
-          notice.textContent = 'Resumen listo. Enviáselo a Mike para coordinar el inicio.';
+          notice.textContent = 'Resumen listo. Enviáselo al equipo de JB Studio para coordinar el inicio.';
           messagesEl.appendChild(notice);
           scrollBottom();
         } else {
