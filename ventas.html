@@ -67,13 +67,45 @@
       overflow: hidden;
     }
 
-    /* ── App card ── */
+    /* ── Layout ── */
     #app {
+      display: grid;
+      grid-template-columns: minmax(280px, 1fr) minmax(320px, 430px);
+      gap: 24px;
+      width: 100%;
+      max-width: 1080px;
+      align-items: stretch;
+    }
+
+    /* ── Hero intro ── */
+    #hero-intro {
+      align-self: stretch;
+      padding: 28px 26px 22px;
+      background:
+        radial-gradient(ellipse 90% 120% at 0% 0%, rgba(124,58,237,0.18) 0%, transparent 45%),
+        radial-gradient(ellipse 70% 90% at 100% 0%, rgba(37,99,235,0.16) 0%, transparent 42%),
+        linear-gradient(180deg, rgba(9,13,31,0.96) 0%, rgba(11,16,32,0.92) 100%);
+      border: 1px solid rgba(148,163,184,0.10);
+      border-radius: var(--radius-card);
+      position: relative;
+      overflow: hidden;
+    }
+
+    #hero-intro::after {
+      content: '';
+      position: absolute;
+      inset: auto 26px 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, rgba(167,139,250,0.35) 50%, transparent 100%);
+      pointer-events: none;
+    }
+
+    #chat-shell {
       display: flex;
       flex-direction: column;
       width: 100%;
-      height: 100%;
-      max-width: 760px;
+      min-height: min(760px, calc(100dvh - 40px));
+      aspect-ratio: 9 / 16;
       border-radius: var(--radius-card);
       overflow: hidden;
       background: var(--card);
@@ -86,8 +118,7 @@
       position: relative;
     }
 
-    /* ── Subtle card top shimmer ── */
-    #app::before {
+    #chat-shell::before {
       content: '';
       position: absolute;
       top: 0; left: 0; right: 0;
@@ -96,28 +127,6 @@
       pointer-events: none;
       z-index: 10;
       border-radius: var(--radius-card) var(--radius-card) 0 0;
-    }
-
-    /* ── Hero intro ── */
-    #hero-intro {
-      flex: 0 0 auto;
-      padding: 28px 26px 22px;
-      background:
-        radial-gradient(ellipse 90% 120% at 0% 0%, rgba(124,58,237,0.18) 0%, transparent 45%),
-        radial-gradient(ellipse 70% 90% at 100% 0%, rgba(37,99,235,0.16) 0%, transparent 42%),
-        linear-gradient(180deg, rgba(9,13,31,0.96) 0%, rgba(11,16,32,0.92) 100%);
-      border-bottom: 1px solid rgba(148,163,184,0.10);
-      position: relative;
-      overflow: hidden;
-    }
-
-    #hero-intro::after {
-      content: '';
-      position: absolute;
-      inset: auto 26px 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent 0%, rgba(167,139,250,0.35) 50%, transparent 100%);
-      pointer-events: none;
     }
 
     .hero-kicker {
@@ -146,7 +155,7 @@
     }
 
     .hero-title {
-      max-width: 18ch;
+      max-width: 16ch;
       font-size: clamp(28px, 5vw, 36px);
       line-height: 1.08;
       letter-spacing: -1.2px;
@@ -155,12 +164,8 @@
       text-wrap: balance;
     }
 
-    .hero-title-accent {
-      color: #a78bfa;
-    }
-
     .hero-subtitle {
-      max-width: 620px;
+      max-width: 34ch;
       margin-top: 8px;
       font-size: 12.5px;
       line-height: 1.5;
@@ -545,10 +550,31 @@
 
     /* ── Responsive ── */
     @media (max-width: 600px) {
-      body { padding: 8px; }
-      #app { border-radius: 20px; }
-      #hero-intro { padding: 14px 16px 12px; }
-      .hero-title { max-width: none; }
+      body {
+        align-items: stretch;
+        padding: 8px;
+      }
+      #app {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        height: 100%;
+      }
+      #chat-shell {
+        order: 1;
+        min-height: min(74dvh, calc(100dvh - 24px));
+        aspect-ratio: auto;
+        border-radius: 20px;
+      }
+      #hero-intro {
+        order: 2;
+        padding: 12px 14px 12px;
+        border-radius: 20px;
+      }
+      .hero-title {
+        max-width: none;
+        font-size: 24px;
+      }
       .hero-subtitle {
         margin-top: 6px;
         font-size: 12px;
@@ -557,7 +583,8 @@
 
     @media (max-width: 380px) {
       body { padding: 0; }
-      #app { border-radius: 0; }
+      #chat-shell,
+      #hero-intro { border-radius: 0; }
     }
   </style>
 </head>
@@ -571,50 +598,52 @@
       Asistente JB Studio
     </div>
     <h1 class="hero-title">
-      Construí tu <span class="hero-title-accent">asistente virtual</span>, a tu manera.
+      Te ayudo a construir tu asistente que gestionará tu negocio a tu manera.
     </h1>
     <p class="hero-subtitle">
-      Probá cómo atendería tu negocio.
+      Respondé clientes, tomá reservas y automatizá atención.
     </p>
   </section>
 
-  <!-- Header -->
-  <div id="header">
-    <div class="header-avatar">A</div>
-    <div class="header-info">
-      <div class="header-title">Alex — Asistente de Ventas</div>
-      <div class="header-sub">
-        <span class="online-dot"></span>
-        JB Studio · En línea 24/7
+  <div id="chat-shell">
+    <!-- Header -->
+    <div id="header">
+      <div class="header-avatar">A</div>
+      <div class="header-info">
+        <div class="header-title">Alex — Asistente de Ventas</div>
+        <div class="header-sub">
+          <span class="online-dot"></span>
+          JB Studio · En línea 24/7
+        </div>
+      </div>
+      <div class="header-badge">JB Studio</div>
+    </div>
+
+    <!-- Trust bar -->
+    <div id="trust-bar">
+      <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+      Automatización para negocios locales
+    </div>
+
+    <!-- Messages -->
+    <div id="messages"></div>
+
+    <!-- Typing indicator -->
+    <div id="typing">
+      <div class="avatar">A</div>
+      <div class="typing-bubble">
+        <span></span><span></span><span></span>
       </div>
     </div>
-    <div class="header-badge">JB Studio</div>
-  </div>
 
-  <!-- Trust bar -->
-  <div id="trust-bar">
-    <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
-    Automatización para negocios locales
-  </div>
-
-  <!-- Messages -->
-  <div id="messages"></div>
-
-  <!-- Typing indicator -->
-  <div id="typing">
-    <div class="avatar">A</div>
-    <div class="typing-bubble">
-      <span></span><span></span><span></span>
-    </div>
-  </div>
-
-  <!-- Input -->
-  <div id="input-area">
-    <div class="input-row">
-      <textarea id="msg-input" placeholder="Escribí tu mensaje aquí..." rows="1"></textarea>
-      <button id="send-btn" aria-label="Enviar">
-        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-      </button>
+    <!-- Input -->
+    <div id="input-area">
+      <div class="input-row">
+        <textarea id="msg-input" placeholder="Escribí tu mensaje aquí..." rows="1"></textarea>
+        <button id="send-btn" aria-label="Enviar">
+          <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
     </div>
   </div>
 
