@@ -125,7 +125,7 @@
       align-items: center;
       gap: 8px;
       padding: 7px 12px;
-      margin-bottom: 16px;
+      margin-bottom: 10px;
       border-radius: 999px;
       border: 1px solid rgba(167,139,250,0.18);
       background: rgba(124,58,237,0.08);
@@ -146,7 +146,7 @@
     }
 
     .hero-title {
-      max-width: 14ch;
+      max-width: 18ch;
       font-size: clamp(28px, 5vw, 36px);
       line-height: 1.08;
       letter-spacing: -1.2px;
@@ -161,9 +161,9 @@
 
     .hero-subtitle {
       max-width: 620px;
-      margin-top: 14px;
-      font-size: 14px;
-      line-height: 1.7;
+      margin-top: 8px;
+      font-size: 12.5px;
+      line-height: 1.5;
       color: rgba(148,163,184,0.92);
       letter-spacing: -0.1px;
     }
@@ -547,9 +547,12 @@
     @media (max-width: 600px) {
       body { padding: 8px; }
       #app { border-radius: 20px; }
-      #hero-intro { padding: 22px 18px 18px; }
+      #hero-intro { padding: 14px 16px 12px; }
       .hero-title { max-width: none; }
-      .hero-subtitle { font-size: 13.5px; }
+      .hero-subtitle {
+        margin-top: 6px;
+        font-size: 12px;
+      }
     }
 
     @media (max-width: 380px) {
@@ -565,15 +568,13 @@
   <section id="hero-intro" aria-label="Presentación del asistente">
     <div class="hero-kicker">
       <span class="hero-kicker-dot"></span>
-      Asistente IA JB Studio
+      Asistente JB Studio
     </div>
     <h1 class="hero-title">
-      Hola, soy el asistente de JB Studio.<br>
-      <span class="hero-title-accent">Te ayudo a personalizar tu propio asistente de IA</span>
-      para que gestione tu negocio 24/7.
+      Construí tu <span class="hero-title-accent">asistente virtual</span>, a tu manera.
     </h1>
     <p class="hero-subtitle">
-      Te ayudo a conseguir un asistente que gestiona tu negocio 24/7: responde clientes, toma reservas y captura leads sin que vos tengas que estar pendiente.
+      Probá cómo atendería tu negocio.
     </p>
   </section>
 
