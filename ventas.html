@@ -626,8 +626,8 @@
 
   var MAX_MESSAGES  = 30;
   var API_ENDPOINT  = '/api/ventas-chat';
-  var VISIT_TRACK_ENDPOINT = '/api/track-visit';
-  var CHAT_START_TRACK_ENDPOINT = '/api/track-chat-start';
+  var VISIT_TRACK_ENDPOINT = '/api/track-ventas-funnel';
+  var CHAT_START_TRACK_ENDPOINT = '/api/track-ventas-funnel';
 
   // ── State ────────────────────────────────────────────────────────────────
   var msgs         = [];
@@ -767,7 +767,7 @@
     fetch(VISIT_TRACK_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(getUtmPayload())
+      body: JSON.stringify(Object.assign({ type: 'visit' }, getUtmPayload()))
     }).catch(function (err) {
       console.error('[ventas] track visit failed', err);
     });
@@ -784,7 +784,7 @@
     fetch(CHAT_START_TRACK_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ timestamp: new Date().toISOString() })
+      body: JSON.stringify({ type: 'chat_start', timestamp: new Date().toISOString() })
     }).catch(function (err) {
       console.error('[ventas] track chat start failed', err);
     });
