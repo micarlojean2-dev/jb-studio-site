@@ -626,6 +626,8 @@
 
   var MAX_MESSAGES  = 30;
   var API_ENDPOINT  = '/api/ventas-chat';
+  var VISIT_TRACK_ENDPOINT = '/api/track-visit';
+  var CHAT_START_TRACK_ENDPOINT = '/api/track-chat-start';
 
   // ── State ────────────────────────────────────────────────────────────────
   var msgs         = [];
@@ -744,6 +746,50 @@
     window.fbq('track', 'Lead');
   }
 
+  function getUtmPayload() {
+    var params = new URLSearchParams(window.location.search);
+    return {
+      timestamp: new Date().toISOString(),
+      utm_source: params.get('utm_source') || 'directo',
+      utm_campaign: params.get('utm_campaign') || 'directo',
+      utm_medium: params.get('utm_medium') || 'directo'
+    };
+  }
+
+  function trackVisitOnce() {
+    try {
+      if (sessionStorage.getItem('visit_tracked')) return;
+      sessionStorage.setItem('visit_tracked', '1');
+    } catch (err) {
+      console.error('[ventas] visit session flag failed', err);
+    }
+
+    fetch(VISIT_TRACK_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(getUtmPayload())
+    }).catch(function (err) {
+      console.error('[ventas] track visit failed', err);
+    });
+  }
+
+  function trackChatStartOnce() {
+    try {
+      if (sessionStorage.getItem('chat_started')) return;
+      sessionStorage.setItem('chat_started', '1');
+    } catch (err) {
+      console.error('[ventas] chat-start session flag failed', err);
+    }
+
+    fetch(CHAT_START_TRACK_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timestamp: new Date().toISOString() })
+    }).catch(function (err) {
+      console.error('[ventas] track chat start failed', err);
+    });
+  }
+
   // ── Auto-resize textarea ─────────────────────────────────────────────────
   inputEl.addEventListener('input', function () {
     inputEl.style.height = 'auto';
@@ -775,6 +821,8 @@
       quickDone = true;
       hideQuickReplies();
     }
+
+    trackChatStartOnce();
 
     msgCount++;
     addMsg('user', text);
@@ -871,6 +919,7 @@
 
   // ── Init: show welcome + quick replies ───────────────────────────────────
   setTimeout(function () {
+    trackVisitOnce();
     addMsg('bot', WELCOME);
     setTimeout(showQuickReplies, 120);
   }, 400);
