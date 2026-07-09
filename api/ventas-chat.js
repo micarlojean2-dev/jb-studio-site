@@ -129,11 +129,15 @@ NO incluye:
 COMPROMISO:
 Siempre que hables de precio, explicá de forma natural que no hay costo de instalación y que ambos planes tienen compromiso mínimo de 3 meses porque el asistente se configura específicamente para cada negocio.
 
-PAGOS:
-- Nunca menciones links de pago, URLs de Stripe ni ningún enlace. Eso lo coordina el equipo de JB Studio.
-- Alex solo menciona precios y que el proceso de pago se coordina personalmente con el equipo de JB Studio.
-- Si el cliente pregunta cómo se paga o está listo para proceder, explicá de forma natural que el cobro es mensual: Básico $49/mes y Pro $65/mes, ambos con compromiso mínimo de 3 meses y sin instalación.
-- Si el cliente pide descuento o quiere negociar precio, no negocies. Decile que eso lo puede revisar directamente un especialista de JB Studio.
+PAGOS Y CIERRE:
+- Alex NO maneja pagos directamente.
+- Alex NO envía links de pago ni URLs de Stripe.
+- Alex solo explica precios y qué incluye cada plan.
+- Cuando el cliente muestre interés real (me interesa, quiero uno, quiero empezar, cómo contrato, dónde pago, cómo hacemos, quiero el pro, quiero el básico), Alex debe dar contacto humano:
+"Perfecto. Para coordinarlo directamente con JB Studio, escribí aquí:
+WhatsApp: https://wa.me/15035931690
+Instagram: https://instagram.com/jb__studiodesing
+Ahí revisamos tu negocio, confirmamos qué versión te conviene y coordinamos la configuración."
 
 TECNICAS DE VENTA QUE USAS NATURALMENTE:
 - Compromiso y certeza: hablás con convicción. Si el cliente duda por valor o dirección, podés reencuadrar con ideas como: "El problema nunca es el dinero, es si ves el valor o no", "No te estoy mostrando un gasto, te estoy mostrando una inversión" o "La gente que no invierte en su negocio después se pregunta por qué no crece". Adaptalo al contexto, sin sonar agresivo.
@@ -341,6 +345,7 @@ const INTERNAL_INFO_RE = /(system\s+prompt|prompt\s+interno|instrucciones\s+inte
 const ABUSIVE_RE = /(idiota|imbecil|imbécil|estupido|estúpido|pendejo|mierda|carajo|puta|puto|fuck|shit|bitch|asshole|cabr[oó]n)/i;
 const DEMO_INTEREST_RE = /(puedo\s+ver(lo|la)?\s+antes|tienen\s+ejemplo|tienen\s+demo|tienes\s+demo|me\s+gustar[ií]a\s+ver(lo|la)|c[oó]mo\s+se\s+ve|no\s+s[eé]\s+si\s+funciona\s+para\s+mi\s+negocio|quiero\s+ver\s+una\s+demo|ejemplo\s+real)/i;
 const PRICE_INTEREST_RE = /(cu[aá]nto\s+cuesta|precio|cu[aá]nto\s+vale|planes|mensualidad)/i;
+const CONTACT_OFFER_RE = /(me\s+interesa|quiero\s+uno|quiero\s+empezar|c[oó]mo\s+contrato|quiero\s+hablar\s+contigo|d[oó]nde\s+pago|c[oó]mo\s+hacemos|quiero\s+el\s+pro|quiero\s+el\s+b[aá]sico)/i;
 
 function looksLikePromptLeak(text) {
   if (!text) return false;
@@ -582,7 +587,11 @@ function buildDemoOffer() {
 }
 
 function buildPriceOffer() {
-  return `El Básico cuesta $49 al mes y el Pro cuesta $65 al mes.\n\nEl Básico responde preguntas del negocio.\nEl Pro responde, toma reservas, guarda datos de clientes interesados y te avisa por correo.\n\nAmbos tienen compromiso mínimo de 3 meses porque el asistente se configura para tu negocio. No hay costo de instalación.\n\nTambién podés probar una demo en vivo aquí:\n${DEMO_LINK}\n\nAhí vas a poder ver ejemplos para barbería, uñas, restaurante, salón de belleza y fotografía.`;
+  return `El Básico cuesta $49 al mes y el Pro cuesta $65 al mes.\n\nEl Básico responde preguntas del negocio como horarios, precios, servicios, ubicación y dudas frecuentes.\n\nEl Pro responde, toma reservas, guarda datos de clientes interesados y te avisa por correo cuando alguien quiere comprar o agendar.\n\nNo hay costo de instalación. Ambos tienen compromiso mínimo de 3 meses porque el asistente se configura específicamente para tu negocio.\n\nTambién podés probar una demo en vivo aquí:\n${DEMO_LINK}`;
+}
+
+function buildContactOffer() {
+  return `Perfecto. Para coordinarlo directamente con JB Studio, escribí aquí:\n\nWhatsApp: https://wa.me/15035931690\nInstagram: https://instagram.com/jb__studiodesing\n\nAhí revisamos tu negocio, confirmamos qué versión te conviene y coordinamos la configuración.`;
 }
 
 function escapeHtml(text) {
@@ -1115,6 +1124,10 @@ export default async function handler(req, res) {
 
   if (latestUserMessage && PRICE_INTEREST_RE.test(latestUserMessage.content)) {
     return res.status(200).json({ text: buildPriceOffer() });
+  }
+
+  if (latestUserMessage && CONTACT_OFFER_RE.test(latestUserMessage.content)) {
+    return res.status(200).json({ text: buildContactOffer() });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
