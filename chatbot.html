@@ -829,11 +829,11 @@
         draft.time = `${hour}:${minute} ${period}`;
       }
 
-      const namePatterns = /(?:soy|me llamo|mi nombre es|a nombre de|para)\s+([A-ZÁÉÍÓÚáéíóúñÑ][a-zA-ZÁÉÍÓÚáéíóúñÑ\s]{1,20})/i;
+      const namePatterns = /(?:soy|me llamo|mi nombre es|a nombre de)\s+([A-ZÁÉÍÓÚáéíóúñÑ][a-zA-ZÁÉÍÓÚáéíóúñÑ]{1,20})/i;
       const nameMatch = text.match(namePatterns);
-      if (nameMatch && !draft.customerName) draft.customerName = nameMatch[1].trim().split(/\s+/).slice(0, 2).join(' ');
+      if (nameMatch && !draft.customerName) draft.customerName = nameMatch[1].trim();
 
-      const servicePatterns = /(?:para|servicio|quiero|una|un)\s+(corte de pelo|corte|barba|manicure|pedicure|uñas|limpieza facial|sesión de fotos|sesion de fotos|una mesa|reserva)/i;
+      const servicePatterns = /\b(corte de pelo|corte|barba|manicure|pedicure|uñas|limpieza facial|sesión de fotos|sesion de fotos|una mesa)\b/i;
       const serviceMatch = lower.match(servicePatterns);
       if (serviceMatch && !draft.service) draft.service = serviceMatch[1];
 
