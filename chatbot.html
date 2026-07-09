@@ -290,7 +290,7 @@
   </div>
 
   <script>
-    const DEMO_EMAIL_ENDPOINT = '/api/demo-reservation-email';
+    const DEMO_EMAIL_ENDPOINT = '/api/track-ventas-funnel';
     const sessionId = 'demo_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
     const categories = {
       barberia: {
@@ -451,6 +451,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          type: 'demo_email',
           sessionId,
           email: reservation.email,
           business: categories[currentCategory].business,
