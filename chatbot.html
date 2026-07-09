@@ -807,92 +807,123 @@
       demoMessages.scrollTop = demoMessages.scrollHeight;
     }
 
-    function handleReservationFlow(text) {
-      if (!pendingReservation) {
-        pendingReservation = { date: text };
-        addBot('Perfecto. ¿A qué hora?');
-        return true;
-      }
-      if (!pendingReservation.time) {
-        pendingReservation.time = text;
-        addBot('¿A nombre de quién pongo la reserva?');
-        return true;
-      }
-      if (!pendingReservation.name) {
-        pendingReservation.name = text;
-        addBot('¿Qué servicio querés reservar?');
-        return true;
-      }
-      if (!pendingReservation.service) {
-        pendingReservation.service = text;
-        addBot('Genial. Para que veas cómo llega el aviso automático, pasame un correo y te envío una notificación de prueba.');
-        return true;
-      }
-      if (!pendingReservation.email) {
-        pendingReservation.email = text;
-        pendingReservation.business = categories[currentCategory].business;
-        pendingReservation.status = 'active';
-        pendingReservation.note = 'Reserva simulada desde la demo';
+    function extractReservationInfo(text, draft) {
+      const lower = text.toLowerCase();
+      const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+      if (emailMatch && !draft.email) draft.email = emailMatch[0];
 
-        const payload = {
-          type: 'demo_reservation_create',
-          sessionId,
-          business: pendingReservation.business,
-          customerName: pendingReservation.name,
-          customerContact: pendingReservation.email,
-          service: pendingReservation.service,
-          date: pendingReservation.date,
-          time: pendingReservation.time,
-          notes: pendingReservation.note
-        };
+      const datePatterns = /(hoy|mañana|pasado mañana|lunes|martes|miércoles|jueves|viernes|sábado|domingo)/i;
+      const dateMatch = lower.match(datePatterns);
+      if (dateMatch && !draft.date) draft.date = dateMatch[1];
 
-        fetch(DEMO_EMAIL_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }).then(res => res.json()).then(data => {
-          if (data && data.ok) {
-            reservations.unshift(data.reservation);
-            renderReservations();
-            showOwnerPanelCard(data.reservation);
-            maybeSendDemoEmail(data.reservation).then(function (response) {
-              if (response && response.ok) {
-                addBot('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos. El correo puede usarse solo para avisos importantes o resúmenes.');
-                showImpactCard(data.reservation, true);
-              } else {
-                addBot('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nNo pude enviar el correo de prueba ahora mismo, pero podés seguir probando la demo.');
-                showImpactCard(data.reservation, false);
-              }
-            });
-          } else {
-            // Fallback local si Redis falla
-            const localRes = { ...pendingReservation, reservationId: 'local_' + Date.now() };
-            reservations.unshift(localRes);
-            renderReservations();
-            showOwnerPanelCard(localRes);
-            maybeSendDemoEmail(localRes).then(function (response) {
-              if (response && response.ok) {
-                addBot('Listo ✅\n\nLa reserva quedó creada localmente.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos.');
-                showImpactCard(localRes, true);
-              } else {
-                addBot('Listo ✅\n\nLa reserva quedó creada localmente.\n\nNo pude enviar el correo de prueba ahora mismo, pero podés seguir probando la demo.');
-                showImpactCard(localRes, false);
-              }
-            });
-          }
-        }).catch(() => {
+      const timePatterns = /(?:a las |a la )?(\d{1,2})(?::(\d{2}))?\s*(am|pm|de la tarde|de la mañana|de la noche)?/i;
+      const timeMatch = lower.match(timePatterns);
+      if (timeMatch && !draft.time) {
+        let hour = timeMatch[1];
+        let minute = timeMatch[2] || '00';
+        let period = timeMatch[3] || '';
+        if (!period && parseInt(hour) <= 12) period = 'PM';
+        if (period.includes('tarde') || period.includes('noche')) period = 'PM';
+        else if (period.includes('mañana')) period = 'AM';
+        else period = 'PM';
+        draft.time = `${hour}:${minute} ${period}`;
+      }
+
+      const namePatterns = /(?:soy|me llamo|mi nombre es|a nombre de|para)\s+([A-ZÁÉÍÓÚáéíóúñÑ][a-zA-ZÁÉÍÓÚáéíóúñÑ\s]{1,20})/i;
+      const nameMatch = text.match(namePatterns);
+      if (nameMatch && !draft.customerName) draft.customerName = nameMatch[1].trim().split(/\s+/).slice(0, 2).join(' ');
+
+      const servicePatterns = /(?:para|servicio|quiero|una|un)\s+(corte de pelo|corte|barba|manicure|pedicure|uñas|limpieza facial|sesión de fotos|sesion de fotos|una mesa|reserva)/i;
+      const serviceMatch = lower.match(servicePatterns);
+      if (serviceMatch && !draft.service) draft.service = serviceMatch[1];
+
+      return draft;
+    }
+
+    function createReservation() {
+      pendingReservation.business = categories[currentCategory].business;
+      pendingReservation.status = 'active';
+      pendingReservation.notes = 'Reserva simulada desde la demo';
+
+      const payload = {
+        type: 'demo_reservation_create',
+        sessionId,
+        business: pendingReservation.business,
+        customerName: pendingReservation.customerName,
+        customerContact: pendingReservation.email,
+        service: pendingReservation.service,
+        date: pendingReservation.date,
+        time: pendingReservation.time,
+        notes: pendingReservation.notes
+      };
+
+      addBot(`Perfecto, ${pendingReservation.customerName}. Ya tengo los datos de la reserva:\n\nServicio: ${pendingReservation.service}\nFecha: ${pendingReservation.date}\nHora: ${pendingReservation.time}\nCorreo: ${pendingReservation.email}\n\nVoy a crear la reserva de prueba y guardarla en el panel del dueño.`);
+
+      fetch(DEMO_EMAIL_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(res => res.json()).then(data => {
+        if (data && data.ok) {
+          reservations.unshift(data.reservation);
+          renderReservations();
+          showOwnerPanelCard(data.reservation);
+          maybeSendDemoEmail(data.reservation).then(function (response) {
+            if (response && response.ok) {
+              addBot('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos. El correo puede usarse solo para avisos importantes o resúmenes.');
+              showImpactCard(data.reservation, true);
+            } else {
+              addBot('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nNo pude enviar el correo de prueba ahora mismo, pero podés seguir probando la demo.');
+              showImpactCard(data.reservation, false);
+            }
+          });
+        } else {
           const localRes = { ...pendingReservation, reservationId: 'local_' + Date.now() };
           reservations.unshift(localRes);
           renderReservations();
           showOwnerPanelCard(localRes);
           addBot('Listo ✅\n\nLa reserva quedó creada localmente.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos.');
           showImpactCard(localRes, false);
-        });
+        }
+      }).catch(() => {
+        const localRes = { ...pendingReservation, reservationId: 'local_' + Date.now() };
+        reservations.unshift(localRes);
+        renderReservations();
+        showOwnerPanelCard(localRes);
+        addBot('Listo ✅\n\nLa reserva quedó creada localmente.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos.');
+        showImpactCard(localRes, false);
+      });
 
-        pendingReservation = null;
+      pendingReservation = null;
+    }
+
+    function handleReservationFlow(text) {
+      if (!pendingReservation) pendingReservation = {};
+      extractReservationInfo(text, pendingReservation);
+
+      if (!pendingReservation.date) {
+        addBot('Perfecto. ¿Para qué día querés simular la reserva?');
         return true;
       }
-      return false;
+      if (!pendingReservation.time) {
+        addBot('Perfecto. ¿A qué hora?');
+        return true;
+      }
+      if (!pendingReservation.customerName) {
+        addBot('¿A nombre de quién pongo la reserva?');
+        return true;
+      }
+      if (!pendingReservation.service) {
+        addBot('¿Qué servicio querés reservar?');
+        return true;
+      }
+      if (!pendingReservation.email) {
+        addBot('Genial. Para que veas cómo llega el aviso automático, pasame un correo y te envío una notificación de prueba.');
+        return true;
+      }
+
+      createReservation();
+      return true;
     }
 
     function respond(text) {
