@@ -11,7 +11,7 @@ const DAILY_USAGE_STORE = new Map();
 const LEAD_BACKUP_AFTER_MESSAGES = 14;
 const TRACKER_STALE_MS = 5 * 60 * 1000;
 const TRACKER_LIVE_COOLDOWN_MS = 35 * 1000;
-const DEMO_LINK = 'https://jbstudio.app/demo';
+const DEMO_LINK = 'https://jbstudio.app/chatbot';
 
 const trackerRedisUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
 const trackerRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
@@ -340,6 +340,7 @@ const PROMPT_INJECTION_RE = /(ignora\s+tus\s+instrucciones|ignore\s+your\s+instr
 const INTERNAL_INFO_RE = /(system\s+prompt|prompt\s+interno|instrucciones\s+internas|modelo\s+de\s+ia|model\s+name|variables?\s+de\s+entorno|environment\s+variables?|api\s*key|codigo\s+del\s+sistema|source\s+code|c[oó]mo\s+funcionas\s+internamente|internal\s+instructions)/i;
 const ABUSIVE_RE = /(idiota|imbecil|imbécil|estupido|estúpido|pendejo|mierda|carajo|puta|puto|fuck|shit|bitch|asshole|cabr[oó]n)/i;
 const DEMO_INTEREST_RE = /(puedo\s+ver(lo|la)?\s+antes|tienen\s+ejemplo|tienen\s+demo|tienes\s+demo|me\s+gustar[ií]a\s+ver(lo|la)|c[oó]mo\s+se\s+ve|no\s+s[eé]\s+si\s+funciona\s+para\s+mi\s+negocio|quiero\s+ver\s+una\s+demo|ejemplo\s+real)/i;
+const PRICE_INTEREST_RE = /(cu[aá]nto\s+cuesta|precio|cu[aá]nto\s+vale|planes|mensualidad)/i;
 
 function looksLikePromptLeak(text) {
   if (!text) return false;
@@ -578,6 +579,10 @@ function buildHumanHandoff(messages) {
 
 function buildDemoOffer() {
   return `Sí. Podés probar una demo en vivo aquí: ${DEMO_LINK}\n\nElegís un tipo de negocio, hacés una reserva de prueba y podés ver cómo se guarda en la lista. También podés recibir un correo de prueba para ver cómo llegaría la notificación.`;
+}
+
+function buildPriceOffer() {
+  return `El Básico cuesta $49 al mes y el Pro cuesta $65 al mes.\n\nEl Básico responde preguntas del negocio.\nEl Pro responde, toma reservas, guarda datos de clientes interesados y te avisa por correo.\n\nAmbos tienen compromiso mínimo de 3 meses porque el asistente se configura para tu negocio. No hay costo de instalación.\n\nTambién podés probar una demo en vivo aquí:\n${DEMO_LINK}\n\nAhí vas a poder ver ejemplos para barbería, uñas, restaurante, salón de belleza y fotografía.`;
 }
 
 function escapeHtml(text) {
@@ -1106,6 +1111,10 @@ export default async function handler(req, res) {
 
   if (latestUserMessage && DEMO_INTEREST_RE.test(latestUserMessage.content)) {
     return res.status(200).json({ text: buildDemoOffer() });
+  }
+
+  if (latestUserMessage && PRICE_INTEREST_RE.test(latestUserMessage.content)) {
+    return res.status(200).json({ text: buildPriceOffer() });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
