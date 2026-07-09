@@ -639,7 +639,7 @@
   var currentSelectedOption = '';
 
   // Welcome message — shorter, scannable
-  var WELCOME = 'Hola, soy Alex de JB Studio.\n\nAyudo a negocios a no perder clientes cuando nadie puede responder.\n\nTu asistente puede responder preguntas, tomar reservas y avisarte por correo cuando alguien quiere comprar o agendar.\n\nPara mostrarte cómo quedaría en tu negocio, elegí una opción:';
+  var WELCOME = 'Hola, soy Alex de JB Studio.\n\nAyudo a negocios a no perder clientes cuando nadie puede responder.\n\nTrabajo con 2 planes:\nBásico: $49 al mes. Responde preguntas del negocio como horarios, precios, servicios, ubicación y dudas frecuentes.\nPro: $65 al mes. Además de responder, también toma reservas, guarda datos de clientes interesados y avisa por correo.\n\nNo cobro instalación. Ambos planes tienen compromiso mínimo de 3 meses porque el asistente se configura específicamente para tu negocio.\n\nPara mostrarte cómo quedaría en tu negocio, elegí una opción:';
 
   var QUICK_REPLIES = ['Barbería', 'Restaurante', 'Spa / Belleza', 'Clínica', 'Otro negocio'];
 
@@ -650,6 +650,21 @@
   var sendBtn    = document.getElementById('send-btn');
 
   // ── Render helpers ───────────────────────────────────────────────────────
+  function escapeHtml(text) {
+    return String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderBotText(text) {
+    return escapeHtml(text)
+      .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>')
+      .replace(/\n/g, '<br>');
+  }
+
   function addMsg(role, text) {
     var row = document.createElement('div');
     row.className = 'bubble-row ' + role;
@@ -663,7 +678,11 @@
 
     var bubble = document.createElement('div');
     bubble.className = 'bubble';
-    bubble.textContent = text;
+    if (role === 'bot') {
+      bubble.innerHTML = renderBotText(text);
+    } else {
+      bubble.textContent = text;
+    }
     row.appendChild(bubble);
 
     messagesEl.appendChild(row);

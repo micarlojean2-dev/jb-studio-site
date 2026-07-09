@@ -3,6 +3,7 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/ventas",          "destination": "/ventas.html"   },
+    { "source": "/demo",            "destination": "/chatbot.html"  },
     { "source": "/reservas/:path*", "destination": "/reservas.html" }
   ],
   "headers": [
