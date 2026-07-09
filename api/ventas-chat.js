@@ -800,6 +800,7 @@ function buildLiveConversationAlert(meta, userText, assistantText, signals) {
 
 function buildHotLeadAlert(meta, userText, sessionData, signals) {
   const summary = summarizeConversation(sessionData.messages || []);
+  const diagnosis = diagnoseConversation(sessionData);
   return [
     `Fuente: ${meta.utm_source} / ${meta.utm_medium}`,
     `Campaña: ${meta.utm_campaign}`,
@@ -819,8 +820,12 @@ function buildHotLeadAlert(meta, userText, sessionData, signals) {
     `- Interés: ${trackerLevelFromSignals(signals, userText)}`,
     '- Objeción: No detectada',
     '',
+    'Diagnóstico rápido:',
+    `${diagnosis.category}${diagnosis.category !== 'SIN_DIAGNOSTICO' ? ' / ' + diagnosis.confidence : ''}`,
+    diagnosis.reason,
+    '',
     'Acción recomendada:',
-    signals.contact ? 'responder rápido' : 'revisar por qué no dejó contacto',
+    diagnosis.recommendedAction || (signals.contact ? 'responder rápido' : 'revisar por qué no dejó contacto'),
   ].join('\n');
 }
 
@@ -828,6 +833,7 @@ function buildAbandonSummary(meta, sessionData) {
   const lines = [];
   const messages = sessionData.messages || [];
   const summary = summarizeConversation(messages);
+  const diagnosis = diagnoseConversation(sessionData);
 
   messages.slice(-12).forEach(function (message) {
     const speaker = message.role === 'user' ? 'Cliente' : 'Alex';
@@ -846,12 +852,88 @@ function buildAbandonSummary(meta, sessionData) {
     lines.join('\n') || 'Sin mensajes registrados',
     '',
     'Diagnóstico automático:',
-    `- ¿Mostró interés real?: ${sessionData.intentLevel || 'baja'}`,
-    `- ¿Pidió precio?: ${sessionData.askedPrice ? 'sí' : 'no'}`,
-    `- ¿Dejó contacto?: ${sessionData.hasContact ? 'sí' : 'no'}`,
-    `- ¿Dónde se perdió?: ${sessionData.dropoffStage || 'otro'}`,
-    `- Posible problema: ${sessionData.possibleProblem || 'visitante curioso'}`,
+    `Categoría: ${diagnosis.category}`,
+    `Confianza: ${diagnosis.confidence}`,
+    `Razón: ${diagnosis.reason}`,
+    `Acción recomendada: ${diagnosis.recommendedAction}`,
+    '',
+    'Datos:',
+    `- Nicho: ${sessionData.business || sessionData.selectedOption || 'No detectado'}`,
+    `- Necesidad: ${sessionData.needsDetected ? 'sí' : 'no'}`,
+    `- Preguntó precio: ${sessionData.askedPrice ? 'sí' : 'no'}`,
+    `- Intención alta: ${sessionData.hotLeadDetected ? 'sí' : 'no'}`,
+    `- Contacto detectado: ${sessionData.hasContact ? 'sí' : 'no'}`,
+    `- Lead mínimo: ${sessionData.leadMinimumTriggered ? 'sí' : 'no'}`,
+    `- Mensajes totales: ${sessionData.messageCount || 0}`,
   ].join('\n');
+}
+
+function diagnoseConversation(sessionData) {
+  const userMessages = (sessionData.messages || []).filter(function (message) {
+    return message.role === 'user';
+  }).map(function (message) {
+    return cleanLine(message.content).toLowerCase();
+  });
+
+  const usefulUserMessages = userMessages.filter(function (message) {
+    return message && !/^(hola|ok|oki|vale|dale|si|s[ií]|x1|1|2|3|gracias|info|m[aá]s\s+info|quiero\s+info)$/.test(message);
+  }).length;
+
+  const highIntentTurn = userMessages.findIndex(function (message) {
+    return TRACKER_HOT_RE.test(message) || HIGH_INTENT_RE.test(message);
+  });
+  const totalTurnsAfterHighIntent = highIntentTurn === -1
+    ? 0
+    : Math.max(0, (sessionData.messages || []).length - ((highIntentTurn + 1) * 2));
+
+  let diagnosis = {
+    category: 'SIN_DIAGNOSTICO',
+    confidence: 'baja',
+    reason: 'Todavía no hay suficiente señal para clasificar esta conversación con seguridad.',
+    recommendedAction: 'Seguir observando más conversaciones antes de cambiar el flujo.',
+  };
+
+  if (sessionData.hasContact && !sessionData.leadMinimumTriggered && !sessionData.leadQualified) {
+    diagnosis = {
+      category: 'TECNICO',
+      confidence: 'alta',
+      reason: 'Hay contacto en la conversación, pero no se marcó como lead. Revisar trigger leadQualified, [LEAD_MINIMO], Telegram/Resend o evento Lead.',
+      recommendedAction: 'Revisar trigger técnico de leadQualified y disparos de Telegram/Meta.',
+    };
+  } else if (sessionData.hotLeadDetected && !sessionData.hasContact && totalTurnsAfterHighIntent >= 3) {
+    diagnosis = {
+      category: 'ALEX_PREGUNTA_DEMASIADO',
+      confidence: 'media',
+      reason: 'Usuario mostró intención alta, pero el flujo siguió preguntando demasiado antes de cerrar. Alex pudo enfriar al cliente.',
+      recommendedAction: 'Pedir contacto o proponer siguiente paso más rápido cuando detecte intención alta.',
+    };
+  } else if (sessionData.askedPrice && !sessionData.hasContact && !sessionData.leadMinimumTriggered && usefulUserMessages <= 2) {
+    diagnosis = {
+      category: 'PRECIO_CONFIANZA',
+      confidence: 'media',
+      reason: 'Preguntó precio y se fue. Puede faltar confianza antes de mostrar precio, o el precio se percibió alto.',
+      recommendedAction: 'Dar más contexto de valor antes del precio o suavizar la transición hacia el costo.',
+    };
+  } else if (!sessionData.hasBusiness && !sessionData.needsDetected && !sessionData.hasContact && usefulUserMessages <= 1) {
+    diagnosis = {
+      category: 'ANUNCIO',
+      confidence: 'alta',
+      reason: 'Entró con curiosidad, pero no explicó negocio ni necesidad. Puede que el anuncio esté atrayendo gente poco calificada o que la oferta no se entienda rápido.',
+      recommendedAction: 'Revisar segmentación y claridad del anuncio para filtrar curiosos.',
+    };
+  } else if (sessionData.hasBusiness && sessionData.needsDetected && !sessionData.hasContact && usefulUserMessages >= 2) {
+    diagnosis = {
+      category: 'CIERRE_ALEX',
+      confidence: 'media',
+      reason: 'Usuario calificado explicó negocio/necesidad, pero no dejó contacto. Alex probablemente no cerró con suficiente claridad.',
+      recommendedAction: 'Probar cierres más directos y pedir contacto antes de seguir profundizando.',
+    };
+  }
+
+  console.log('[TRACKER] diagnostico calculado');
+  console.log('[TRACKER] diagnostico categoria:', diagnosis.category);
+  console.log('[TRACKER] diagnostico confianza:', diagnosis.confidence);
+  return diagnosis;
 }
 
 async function loadTrackerSession(sessionId) {
@@ -929,16 +1011,24 @@ async function trackVentasConversation(meta, messages, userText, assistantText, 
     sessionData.lastActivityAt = now;
     sessionData.hasName = Boolean(signals.name);
     sessionData.hasBusiness = Boolean(signals.business);
+    sessionData.business = signals.business || sessionData.selectedOption || '';
     sessionData.hasContact = Boolean(signals.contact);
+    sessionData.contact = signals.contact || '';
+    sessionData.needsDetected = Boolean(signals.need);
     sessionData.showedHuman = assistantText.includes('[MOSTRAR_CONTACTO_HUMANO]');
     sessionData.leadMinimumTriggered = assistantText.includes('[LEAD_MINIMO]') || signals.qualifiedMinimum;
+    sessionData.leadQualified = Boolean(signals.qualifiedMinimum);
     sessionData.intentLevel = trackerLevelFromSignals(signals, userText);
+    sessionData.hotLeadDetected = Boolean(signals.highIntentHandoff || TRACKER_HOT_RE.test(userText || ''));
     sessionData.askedPrice = sessionData.askedPrice || /\b(precio|cu[aá]nto\s+cuesta|cost[oó])\b/i.test(userText);
     sessionData.dropoffStage = !signals.business ? 'inicio' : !signals.qualifiedMinimum ? 'explicación' : !signals.contact ? 'contacto' : 'otro';
     sessionData.possibleProblem = !signals.business ? 'visitante curioso' : !signals.contact ? 'agente' : 'oferta';
 
     const baseMessages = Array.isArray(messages) ? messages.slice(-20) : [];
     sessionData.messages = baseMessages.concat([{ role: 'assistant', content: assistantText }]).slice(-24);
+    sessionData.messageCount = sessionData.messages.length;
+    sessionData.lastUserMessage = cleanLine(userText);
+    sessionData.lastAssistantMessage = cleanLine(assistantText);
 
     if (trackerIsImportantMessage(userText, sessionData.messages.length) && now - (sessionData.lastLiveAlertAt || 0) >= TRACKER_LIVE_COOLDOWN_MS) {
       const liveBody = buildLiveConversationAlert(meta, userText, assistantText, signals);
