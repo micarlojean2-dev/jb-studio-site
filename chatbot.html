@@ -176,6 +176,56 @@
     }
     .bubble.bot { background: #fffdf8; border: 1px solid rgba(15,90,63,0.14); color: var(--text); }
     .bubble.user { background: var(--green-900); color: #fff; border: 1px solid rgba(255,255,255,0.08); }
+    .bubble.rich {
+      max-width: min(92%, 620px);
+      background: #fffdf8;
+      border: 1px solid rgba(15,90,63,0.14);
+      color: var(--text);
+    }
+    .rich-card-title {
+      font-size: 14px;
+      font-weight: 900;
+      color: var(--green-900);
+      margin-bottom: 8px;
+    }
+    .rich-card-copy {
+      font-size: 13px;
+      line-height: 1.65;
+      color: var(--text);
+    }
+    .rich-card-copy strong {
+      color: var(--green-900);
+    }
+    .impact-card {
+      margin-top: 10px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(24,113,79,0.08), rgba(255,255,255,0.82));
+      border: 1px solid rgba(15,90,63,0.14);
+      box-shadow: 0 10px 22px rgba(15,45,31,0.06);
+    }
+    .impact-card-title {
+      font-size: 13px;
+      font-weight: 900;
+      color: var(--green-900);
+      margin-bottom: 8px;
+    }
+    .impact-card-line {
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--text);
+    }
+    .impact-footer {
+      margin-top: 10px;
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+    .impact-footer a {
+      color: var(--green-700);
+      font-weight: 800;
+      text-decoration: none;
+    }
     .demo-reservations {
       position: absolute;
       top: 72px;
@@ -560,7 +610,7 @@
         reservations = [];
         renderReservations();
         pendingReservation = null;
-        addBot(`Hola. Esta es una demo Pro para ${value.name}. Podés preguntarme precios, horarios o hacer una reserva de prueba.`);
+        addBot(`Hola. Esta es una demo Pro para ${value.name}.\n\nPodés preguntarme precios, horarios o hacer una reserva de prueba.\n\nSi escribís 'quiero reservar', voy a simular todo el flujo: reserva, panel del dueño y correo de prueba.`);
       });
       grid.appendChild(button);
     });
@@ -592,6 +642,7 @@
         card.className = 'reservation-card';
         card.innerHTML = `
           <strong>Cliente:</strong> ${reservation.name}<br>
+          <strong>Negocio:</strong> ${reservation.business}<br>
           <strong>Servicio:</strong> ${reservation.service}<br>
           <strong>Fecha:</strong> ${reservation.date}<br>
           <strong>Hora:</strong> ${reservation.time}<br>
@@ -619,8 +670,15 @@
           addBot(`Perfecto. La reserva simulada de ${reservation.name} quedó reagendada para las 5:00 PM.`);
         });
 
+        const resend = document.createElement('button');
+        resend.textContent = 'Enviar correo de prueba';
+        resend.addEventListener('click', function () {
+          maybeSendDemoEmail(reservation, true);
+        });
+
         actions.appendChild(cancel);
         actions.appendChild(reschedule);
+        actions.appendChild(resend);
         card.appendChild(actions);
         reservationsList.appendChild(card);
       });
@@ -630,14 +688,14 @@
       reservationsList.classList.toggle('visible');
     });
 
-    async function maybeSendDemoEmail(reservation) {
+    async function maybeSendDemoEmail(reservation, manual) {
       if (!reservation.email) {
         addBot('Ahora mismo la demo de correo no está disponible, pero la reserva sí quedó simulada en la lista.');
-        return;
+        return { ok: false, unavailable: true };
       }
       if (emailSends >= 2) {
-        addBot('Ya usaste el máximo de correos de prueba para esta sesión.');
-        return;
+        addBot('Ya enviaste el máximo de correos de prueba para esta sesión, pero podés seguir usando la demo.');
+        return { ok: false, limit: true };
       }
       const response = await fetch(DEMO_EMAIL_ENDPOINT, {
         method: 'POST',
@@ -657,41 +715,93 @@
 
       if (response.ok) {
         emailSends++;
-        addBot('Listo. Te mandé un correo de prueba para que veas cómo llegaría una reserva real.');
+        if (manual) addBot('Listo. Te mandé un correo de prueba para que veas cómo llegaría una reserva real.');
       } else {
         addBot(response.message || 'Ahora mismo la demo de correo no está disponible, pero la reserva sí quedó simulada en la lista.');
       }
+      return response;
+    }
+
+    function addRichCard(title, html, className) {
+      const row = document.createElement('div');
+      row.className = 'message-row bot';
+      const avatar = document.createElement('div');
+      avatar.className = 'mini-avatar';
+      avatar.textContent = 'A';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble rich ' + (className || '');
+      bubble.innerHTML = `<div class="rich-card-title">${title}</div><div class="rich-card-copy">${html}</div>`;
+      row.appendChild(avatar);
+      row.appendChild(bubble);
+      demoMessages.appendChild(row);
+      demoMessages.scrollTop = demoMessages.scrollHeight;
+    }
+
+    function showOwnerPanelCard(reservation) {
+      addRichCard('📋 Panel del dueño', `Nueva reserva recibida ✅<br><br><strong>Cliente:</strong> ${reservation.name}<br><strong>Negocio:</strong> ${reservation.business}<br><strong>Servicio:</strong> ${reservation.service}<br><strong>Fecha:</strong> ${reservation.date}<br><strong>Hora:</strong> ${reservation.time}<br><strong>Contacto:</strong> ${reservation.email}<br><strong>Estado:</strong> ${reservation.status}<br><br>Así verías la reserva cuando un cliente agenda con tu asistente.`);
+    }
+
+    function showImpactCard(reservation, emailOk) {
+      const row = document.createElement('div');
+      row.className = 'message-row bot';
+      const avatar = document.createElement('div');
+      avatar.className = 'mini-avatar';
+      avatar.textContent = 'A';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble rich';
+      bubble.innerHTML = `
+        <div class="impact-card-title">Impacto de esta reserva</div>
+        <div class="impact-card-line">Cliente atendido: Sí</div>
+        <div class="impact-card-line">Reserva guardada: Sí</div>
+        <div class="impact-card-line">Aviso por correo: ${emailOk ? 'Sí' : 'No disponible'}</div>
+        <div class="impact-card-line">Tiempo de respuesta: Instantáneo</div>
+        <div class="impact-card-line">Estado: ${reservation.status}</div>
+        <div class="impact-footer">En una versión real, esto se adapta a tu negocio: tus servicios, tus horarios, tus precios y tu correo.<br><a href="https://jbstudio.app/ventas">Volver a /ventas</a></div>
+      `;
+      row.appendChild(avatar);
+      row.appendChild(bubble);
+      demoMessages.appendChild(row);
+      demoMessages.scrollTop = demoMessages.scrollHeight;
     }
 
     function handleReservationFlow(text) {
       if (!pendingReservation) {
         pendingReservation = { date: text };
-        addBot('Perfecto. ¿A nombre de quién pongo la reserva?');
-        return true;
-      }
-      if (!pendingReservation.name) {
-        pendingReservation.name = text;
-        addBot('Genial. ¿Qué servicio querés reservar?');
-        return true;
-      }
-      if (!pendingReservation.service) {
-        pendingReservation.service = text;
-        addBot('Buenísimo. ¿A qué hora querés simular la reserva?');
+        addBot('Perfecto. ¿A qué hora?');
         return true;
       }
       if (!pendingReservation.time) {
         pendingReservation.time = text;
-        addBot('Perfecto. Pasame un correo para enviarte una notificación de prueba y veas cómo llegaría la reserva.');
+        addBot('¿A nombre de quién pongo la reserva?');
+        return true;
+      }
+      if (!pendingReservation.name) {
+        pendingReservation.name = text;
+        addBot('¿Qué servicio querés reservar?');
+        return true;
+      }
+      if (!pendingReservation.service) {
+        pendingReservation.service = text;
+        addBot('Genial. Para que veas cómo llega el aviso automático, pasame un correo y te envío una notificación de prueba.');
         return true;
       }
       if (!pendingReservation.email) {
         pendingReservation.email = text;
+        pendingReservation.business = categories[currentCategory].business;
         pendingReservation.status = 'Activa';
         pendingReservation.note = 'Reserva simulada desde la demo';
         reservations.unshift({ ...pendingReservation });
         renderReservations();
-        addBot('Listo. Voy a simular una reserva y enviarte un correo de prueba. También ya la podés ver en la lista de reservas simuladas.');
-        maybeSendDemoEmail(pendingReservation);
+        showOwnerPanelCard(pendingReservation);
+        maybeSendDemoEmail(pendingReservation).then(function (response) {
+          if (response && response.ok) {
+            addBot('Listo ✅\n\nTu reserva de prueba quedó creada.\n\nTambién hice esto:\n📋 La guardé en el panel del dueño.\n📩 Te envié un correo de prueba.\n⚡ La respuesta fue automática.\n\nEsto es lo que pasaría cuando un cliente agenda con tu asistente.');
+            showImpactCard(pendingReservation, true);
+          } else {
+            addBot('Listo ✅\n\nLa reserva quedó creada y guardada en el panel del dueño.\n\nNo pude enviar el correo de prueba ahora mismo, pero podés seguir probando la demo.');
+            showImpactCard(pendingReservation, false);
+          }
+        });
         pendingReservation = null;
         return true;
       }
@@ -724,7 +834,7 @@
         addBot(`En esta demo puedo mostrarte estos servicios: ${category.services.join(', ')}.`);
         return;
       }
-      if (/reserva|reservar|cita|agendar/.test(lower)) {
+      if (/reserva|reservar|cita|agendar|probar\s+reserva|ver\s+c[oó]mo\s+funciona|ver\s+el\s+correo/.test(lower)) {
         pendingReservation = {};
         addBot('Claro. Podemos hacer una prueba ahora mismo. Decime para qué día querés simular la reserva.');
         return;
@@ -752,7 +862,7 @@
       }
     });
 
-    addBot('Elegí un negocio para empezar la demo.');
+    addBot('Hola. Esta es una demo del Plan Pro.\n\nPodés probar cómo el asistente:\n✓ responde preguntas\n✓ toma una reserva\n✓ la guarda en un panel del dueño\n✓ envía un correo de prueba\n✓ permite cancelar o reagendar\n\nEscribí ‘quiero reservar’ para probarlo.');
   </script>
 </body>
 </html>
