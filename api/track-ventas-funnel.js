@@ -150,7 +150,7 @@ export default async function handler(req, res) {
         updatedAt: new Date().toISOString(),
       };
 
-      await redis.set(key, JSON.stringify(reservation), { ex: 48 * 60 * 60 });
+      await redis.set(key, reservation, { ex: 48 * 60 * 60 });
       return res.status(200).json({ ok: true, reservation });
     }
 
@@ -163,7 +163,7 @@ export default async function handler(req, res) {
       const reservations = [];
       for (const key of keys) {
         const data = await redis.get(key);
-        if (data) reservations.push(JSON.parse(data));
+        if (data) reservations.push(data);
       }
       return res.status(200).json({ ok: true, reservations });
     }
@@ -175,13 +175,12 @@ export default async function handler(req, res) {
       if (!sessionId || !reservationId) return res.status(400).json({ error: 'Datos incompletos' });
 
       const key = `demo_reservation:${sessionId}:${reservationId}`;
-      const data = await redis.get(key);
-      if (!data) return res.status(404).json({ error: 'Reserva no encontrada' });
+      const reservation = await redis.get(key);
+      if (!reservation) return res.status(404).json({ error: 'Reserva no encontrada' });
 
-      const reservation = JSON.parse(data);
       reservation.status = 'cancelled';
       reservation.updatedAt = new Date().toISOString();
-      await redis.set(key, JSON.stringify(reservation), { ex: 48 * 60 * 60 });
+      await redis.set(key, reservation, { ex: 48 * 60 * 60 });
       return res.status(200).json({ ok: true, reservation });
     }
 
@@ -192,15 +191,14 @@ export default async function handler(req, res) {
       if (!sessionId || !reservationId) return res.status(400).json({ error: 'Datos incompletos' });
 
       const key = `demo_reservation:${sessionId}:${reservationId}`;
-      const data = await redis.get(key);
-      if (!data) return res.status(404).json({ error: 'Reserva no encontrada' });
+      const reservation = await redis.get(key);
+      if (!reservation) return res.status(404).json({ error: 'Reserva no encontrada' });
 
-      const reservation = JSON.parse(data);
       reservation.date = clean(body.date) || reservation.date;
       reservation.time = clean(body.time) || reservation.time;
       reservation.status = 'rescheduled';
       reservation.updatedAt = new Date().toISOString();
-      await redis.set(key, JSON.stringify(reservation), { ex: 48 * 60 * 60 });
+      await redis.set(key, reservation, { ex: 48 * 60 * 60 });
       return res.status(200).json({ ok: true, reservation });
     }
 
