@@ -636,6 +636,7 @@
   var summaryShown = false;
   var quickDone    = false;
   var leadTracked  = false;
+  var currentSelectedOption = '';
 
   // Welcome message — shorter, scannable
   var WELCOME = 'Hola, soy Alex de JB Studio.\n\nAyudo a negocios a no perder clientes cuando nadie puede responder.\n\nTu asistente puede responder preguntas, tomar reservas y avisarte por correo cuando alguien quiere comprar o agendar.\n\nPara mostrarte cómo quedaría en tu negocio, elegí una opción:';
@@ -680,6 +681,7 @@
       btn.textContent = label;
       btn.addEventListener('click', function () {
         if (waiting || quickDone) return;
+        currentSelectedOption = label;
         inputEl.value = label;
         send();
       });
@@ -754,6 +756,18 @@
       utm_campaign: params.get('utm_campaign') || 'directo',
       utm_medium: params.get('utm_medium') || 'directo'
     };
+  }
+
+  function getSessionId() {
+    try {
+      var existing = sessionStorage.getItem('ventas_session_id');
+      if (existing) return existing;
+      var created = 'ventas_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+      sessionStorage.setItem('ventas_session_id', created);
+      return created;
+    } catch (err) {
+      return 'ventas_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+    }
   }
 
   function trackVisitOnce() {
@@ -843,7 +857,11 @@
     fetch(API_ENDPOINT, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ messages: history }),
+      body:    JSON.stringify(Object.assign({
+        messages: history,
+        sessionId: getSessionId(),
+        selectedOption: currentSelectedOption || ''
+      }, getUtmPayload())),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {

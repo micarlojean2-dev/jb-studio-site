@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { Redis } from '@upstash/redis';
 
 // ── In-memory rate limit: 30 req/IP/hour ──────────────────────────────────
 const ipStore = new Map();
@@ -8,6 +9,15 @@ const FROM    = 'reservas@jbstudio.app';
 const DAILY_API_LIMIT = 500;
 const DAILY_USAGE_STORE = new Map();
 const LEAD_BACKUP_AFTER_MESSAGES = 14;
+const TRACKER_STALE_MS = 5 * 60 * 1000;
+const TRACKER_LIVE_COOLDOWN_MS = 35 * 1000;
+
+const trackerRedisUrl = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+const trackerRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+const trackerRedis = trackerRedisUrl && trackerRedisToken ? new Redis({
+  url: trackerRedisUrl,
+  token: trackerRedisToken,
+}) : null;
 
 function checkRateLimit(ip) {
   const now = Date.now();
@@ -47,6 +57,18 @@ function recordClaudeUsage() {
 
 function sleep(ms) {
   return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+function buildVentasSessionId() {
+  return 'ventas_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+}
+
+function getTrackerSessionKey(sessionId) {
+  return `ventas_tracker:session:${sessionId}`;
+}
+
+function getTrackerIndexKey() {
+  return 'ventas_tracker:sessions';
 }
 
 // ── System prompt ──────────────────────────────────────────────────────────
@@ -385,6 +407,7 @@ const NEED_RE = /(necesito|busco|quiero\s+que|me\s+gustar[ií]a\s+que|quisiera\s
 const ADVANCE_RE = /(quiero\s+avanzar|me\s+gustar[ií]a\s+avanzar|avancemos|quiero\s+seguir|sigamos|quiero\s+empezar|quiero\s+proceder|quiero\s+implementarlo|me\s+interesa\s+implementarlo|quiero\s+contratar|vamos\s+a\s+avanzar|dale[,\s]+avancemos|s[ií][,\s]+quiero\s+avanzar|quiero\s+recibir\s+una\s+propuesta|me\s+gustar[ií]a\s+recibir\s+una\s+propuesta|mandame\s+la\s+propuesta|manda(me)?\s+propuesta)/i;
 const PAID_AWARE_RE = /(entiendo\s+que\s+es\s+un\s+servicio\s+pagado|entiendo\s+que\s+es\s+de\s+pago|s[eé]\s+que\s+es\s+pagado|s[eé]\s+que\s+es\s+de\s+pago|es\s+un\s+servicio\s+pagado\s+y\s+est[aá]\s+bien|estoy\s+dispuesto\s+a\s+invertir|podr[ií]a\s+invertir|tengo\s+presupuesto|si\s+me\s+sirve\s+(s[ií]|avanzo)|si\s+encaja\s+(s[ií]|avanzo)|quiero\s+recibir\s+una\s+propuesta|me\s+gustar[ií]a\s+recibir\s+una\s+propuesta|quiero\s+avanzar\s+para\s+recibir\s+una\s+propuesta|me\s+gustar[ií]a\s+avanzar\s+para\s+recibir\s+una\s+propuesta|mandame\s+la\s+propuesta|manda(me)?\s+propuesta)/i;
 const HIGH_INTENT_RE = /(quiero\s+empezar|quiero\s+contratar|quiero\s+avanzar\s+ya|pasame\s+el\s+whatsapp|p[aá]same\s+el\s+whatsapp|quiero\s+hablar\s+con\s+(alguien|una\s+persona|el\s+equipo|un\s+especialista)|como\s+se\s+paga|c[oó]mo\s+se\s+paga|quiero\s+agendar|quiero\s+que\s+lo\s+hagan|quiero\s+hablar\s+con\s+el\s+equipo|quiero\s+hablar\s+con\s+un\s+especialista|quiero\s+pagar)/i;
+const TRACKER_HOT_RE = /(quiero\s+uno|cu[aá]nto\s+cuesta|me\s+interesa|quiero\s+mi\s+asistente|c[oó]mo\s+funciona\s+para\s+mi\s+negocio|lo\s+quiero\s+para\s+mi\s+(barber[ií]a|restaurante|spa|cl[ií]nica|negocio)|d[oó]nde\s+pago|quiero\s+empezar|quiero\s+que\s+me\s+contacten|necesito\s+eso|mi\s+negocio\s+necesita\s+eso)/i;
 
 function getBusinessLabel(text) {
   const direct = text.match(BUSINESS_TYPE_RE);
@@ -728,6 +751,215 @@ async function sendMikeTelegram(subject, bodyText, contactText) {
 
 export { sendMikeTelegram };
 
+function parseTrackerBody(reqBody) {
+  const meta = reqBody || {};
+  const sessionId = cleanLine(meta.sessionId) || buildVentasSessionId();
+  return {
+    sessionId,
+    page: '/ventas',
+    utm_source: cleanLine(meta.utm_source) || 'directo',
+    utm_campaign: cleanLine(meta.utm_campaign) || 'directo',
+    utm_medium: cleanLine(meta.utm_medium) || 'directo',
+    selectedOption: cleanLine(meta.selectedOption) || 'No indicado',
+  };
+}
+
+function trackerLevelFromSignals(signals, userText) {
+  if (signals.highIntentHandoff || TRACKER_HOT_RE.test(userText || '')) return 'alta';
+  if (signals.qualifiedMinimum || /\b(me\s+interesa|quiero\s+saber\s+precio|precio|propuesta|funciona\s+para\s+mi\s+negocio|necesito\s+eso)\b/i.test(userText || '')) return 'media';
+  return 'baja';
+}
+
+function trackerIsImportantMessage(userText, historyLength) {
+  const value = cleanLine(userText).toLowerCase();
+  if (!value) return false;
+  if (value.length >= 12) return true;
+  if (historyLength >= 4) return true;
+  return !/^(hola|ok|oki|vale|dale|si|s[ií]|x1|1|2|3|gracias)$/.test(value);
+}
+
+function buildLiveConversationAlert(meta, userText, assistantText, signals) {
+  return [
+    `Fuente: ${meta.utm_source} / ${meta.utm_medium}`,
+    `Campaña: ${meta.utm_campaign}`,
+    `Sesión: ${meta.sessionId}`,
+    '',
+    'Cliente:',
+    `"${cleanLine(userText) || 'Sin mensaje'}"`,
+    '',
+    'Alex:',
+    `"${cleanLine(assistantText) || 'Sin respuesta'}"`,
+    '',
+    'Estado:',
+    `- Nicho: ${signals.business || meta.selectedOption || 'No detectado'}`,
+    `- Contacto: ${signals.contact || 'No detectado'}`,
+    `- Intención: ${trackerLevelFromSignals(signals, userText)}`,
+    `- Lead mínimo: ${signals.qualifiedMinimum ? 'sí' : 'no'}`,
+  ].join('\n');
+}
+
+function buildHotLeadAlert(meta, userText, sessionData, signals) {
+  const summary = summarizeConversation(sessionData.messages || []);
+  return [
+    `Fuente: ${meta.utm_source} / ${meta.utm_medium}`,
+    `Campaña: ${meta.utm_campaign}`,
+    `Sesión: ${meta.sessionId}`,
+    '',
+    'Mensaje:',
+    `"${cleanLine(userText) || 'Sin mensaje'}"`,
+    '',
+    'Resumen:',
+    summary.context,
+    '',
+    'Datos detectados:',
+    `- Nombre: ${signals.name || 'No indicado'}`,
+    `- Negocio: ${signals.business || meta.selectedOption || 'No indicado'}`,
+    `- Contacto: ${signals.contact || 'No indicado'}`,
+    `- Nicho: ${signals.business || 'No indicado'}`,
+    `- Interés: ${trackerLevelFromSignals(signals, userText)}`,
+    '- Objeción: No detectada',
+    '',
+    'Acción recomendada:',
+    signals.contact ? 'responder rápido' : 'revisar por qué no dejó contacto',
+  ].join('\n');
+}
+
+function buildAbandonSummary(meta, sessionData) {
+  const lines = [];
+  const messages = sessionData.messages || [];
+  const summary = summarizeConversation(messages);
+
+  messages.slice(-12).forEach(function (message) {
+    const speaker = message.role === 'user' ? 'Cliente' : 'Alex';
+    lines.push(`${speaker}: ${cleanLine(message.content)}`);
+  });
+
+  return [
+    `Fuente: ${sessionData.utm_source || meta.utm_source} / ${sessionData.utm_medium || meta.utm_medium}`,
+    `Campaña: ${sessionData.utm_campaign || meta.utm_campaign}`,
+    `Sesión: ${sessionData.sessionId || meta.sessionId}`,
+    '',
+    'Resumen:',
+    summary.context,
+    '',
+    'Conversación:',
+    lines.join('\n') || 'Sin mensajes registrados',
+    '',
+    'Diagnóstico automático:',
+    `- ¿Mostró interés real?: ${sessionData.intentLevel || 'baja'}`,
+    `- ¿Pidió precio?: ${sessionData.askedPrice ? 'sí' : 'no'}`,
+    `- ¿Dejó contacto?: ${sessionData.hasContact ? 'sí' : 'no'}`,
+    `- ¿Dónde se perdió?: ${sessionData.dropoffStage || 'otro'}`,
+    `- Posible problema: ${sessionData.possibleProblem || 'visitante curioso'}`,
+  ].join('\n');
+}
+
+async function loadTrackerSession(sessionId) {
+  if (!trackerRedis) return null;
+  try {
+    return await trackerRedis.get(getTrackerSessionKey(sessionId));
+  } catch (err) {
+    console.error('[TRACKER] error loading session', err?.message || err);
+    return null;
+  }
+}
+
+async function saveTrackerSession(sessionData) {
+  if (!trackerRedis) return;
+  try {
+    await trackerRedis.set(getTrackerSessionKey(sessionData.sessionId), sessionData, { ex: 60 * 60 * 24 });
+    await trackerRedis.sadd(getTrackerIndexKey(), sessionData.sessionId);
+  } catch (err) {
+    console.error('[TRACKER] error saving session', err?.message || err);
+  }
+}
+
+async function maybeSendTrackerAbandonSummaries(meta) {
+  if (!trackerRedis) return;
+  try {
+    const sessionIds = await trackerRedis.smembers(getTrackerIndexKey());
+    const now = Date.now();
+    for (const sessionId of sessionIds || []) {
+      const data = await trackerRedis.get(getTrackerSessionKey(sessionId));
+      if (!data || data.summarySent || !data.lastActivityAt) continue;
+      if (now - data.lastActivityAt < TRACKER_STALE_MS) continue;
+      if (!Array.isArray(data.messages) || data.messages.length < 2) continue;
+
+      const body = buildAbandonSummary(meta, data);
+      await sendMikeTelegram('📌 Conversación terminada o abandonada', body, data.contact || 'No indicado');
+      console.log('[TRACKER] resumen por abandono enviado', sessionId);
+      data.summarySent = true;
+      await saveTrackerSession(data);
+    }
+  } catch (err) {
+    console.error('[TRACKER] error enviando resumen por abandono', err?.message || err);
+  }
+}
+
+async function trackVentasConversation(meta, messages, userText, assistantText, signals) {
+  if (!trackerRedis) {
+    console.warn('[TRACKER] Redis/KV no configurado; tracker omitido');
+    return;
+  }
+
+  try {
+    console.log('[TRACKER] mensaje recibido', JSON.stringify({ sessionId: meta.sessionId, selectedOption: meta.selectedOption }));
+    await maybeSendTrackerAbandonSummaries(meta);
+
+    const now = Date.now();
+    const existing = await loadTrackerSession(meta.sessionId);
+    const sessionData = existing || {
+      sessionId: meta.sessionId,
+      page: meta.page,
+      utm_source: meta.utm_source,
+      utm_campaign: meta.utm_campaign,
+      utm_medium: meta.utm_medium,
+      selectedOption: meta.selectedOption,
+      messages: [],
+      hotAlertSent: false,
+      summarySent: false,
+      lastLiveAlertAt: 0,
+      askedPrice: false,
+    };
+
+    if (meta.selectedOption && meta.selectedOption !== 'No indicado') sessionData.selectedOption = meta.selectedOption;
+    sessionData.utm_source = sessionData.utm_source || meta.utm_source;
+    sessionData.utm_campaign = sessionData.utm_campaign || meta.utm_campaign;
+    sessionData.utm_medium = sessionData.utm_medium || meta.utm_medium;
+    sessionData.lastActivityAt = now;
+    sessionData.hasName = Boolean(signals.name);
+    sessionData.hasBusiness = Boolean(signals.business);
+    sessionData.hasContact = Boolean(signals.contact);
+    sessionData.showedHuman = assistantText.includes('[MOSTRAR_CONTACTO_HUMANO]');
+    sessionData.leadMinimumTriggered = assistantText.includes('[LEAD_MINIMO]') || signals.qualifiedMinimum;
+    sessionData.intentLevel = trackerLevelFromSignals(signals, userText);
+    sessionData.askedPrice = sessionData.askedPrice || /\b(precio|cu[aá]nto\s+cuesta|cost[oó])\b/i.test(userText);
+    sessionData.dropoffStage = !signals.business ? 'inicio' : !signals.qualifiedMinimum ? 'explicación' : !signals.contact ? 'contacto' : 'otro';
+    sessionData.possibleProblem = !signals.business ? 'visitante curioso' : !signals.contact ? 'agente' : 'oferta';
+
+    const baseMessages = Array.isArray(messages) ? messages.slice(-20) : [];
+    sessionData.messages = baseMessages.concat([{ role: 'assistant', content: assistantText }]).slice(-24);
+
+    if (trackerIsImportantMessage(userText, sessionData.messages.length) && now - (sessionData.lastLiveAlertAt || 0) >= TRACKER_LIVE_COOLDOWN_MS) {
+      const liveBody = buildLiveConversationAlert(meta, userText, assistantText, signals);
+      await sendMikeTelegram('💬 Cliente hablando con Alex', liveBody, signals.contact || 'No indicado');
+      sessionData.lastLiveAlertAt = now;
+      console.log('[TRACKER] alerta telegram enviada', meta.sessionId);
+    }
+
+    if ((signals.highIntentHandoff || TRACKER_HOT_RE.test(userText || '')) && !sessionData.hotAlertSent) {
+      const hotBody = buildHotLeadAlert(meta, userText, sessionData, signals);
+      await sendMikeTelegram('🔥 POSIBLE CLIENTE CALIENTE', hotBody, signals.contact || 'No indicado');
+      sessionData.hotAlertSent = true;
+      console.log('[TRACKER] lead caliente detectado', meta.sessionId);
+    }
+
+    await saveTrackerSession(sessionData);
+  } catch (err) {
+    console.error('[TRACKER] error enviando telegram', err?.message || err);
+  }
+}
+
 // ── Handler ────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin',  'https://jbstudio.app');
@@ -742,6 +974,7 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera un momento.' });
 
   const { messages } = req.body || {};
+  const trackerMeta = parseTrackerBody(req.body || {});
 
   if (!Array.isArray(messages) || messages.length === 0)
     return res.status(400).json({ error: 'messages requerido' });
@@ -870,7 +1103,15 @@ export default async function handler(req, res) {
       await sendMikeTelegram('⚠️ POSIBLE LEAD LISTO (sin tag) — JB Studio', fallbackText, contactText);
     }
 
-    return res.status(200).json({ text, leadQualified });
+    await trackVentasConversation(
+      trackerMeta,
+      sanitizedMessages,
+      latestUserMessage ? latestUserMessage.content : '',
+      text,
+      signals
+    );
+
+    return res.status(200).json({ text, leadQualified, sessionId: trackerMeta.sessionId });
 
   } catch (err) {
     console.error('[api/ventas-chat]', err.message);
