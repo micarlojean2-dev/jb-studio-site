@@ -127,6 +127,83 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // Demo Reservations in Redis
+    if (type === 'demo_reservation_create') {
+      if (!redis) return res.status(200).json({ ok: false, unavailable: true, message: 'Redis no disponible' });
+      const sessionId = clean(body.sessionId);
+      if (!sessionId) return res.status(400).json({ error: 'sessionId requerido' });
+
+      const reservationId = 'res_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+      const key = `demo_reservation:${sessionId}:${reservationId}`;
+      const reservation = {
+        sessionId,
+        reservationId,
+        business: clean(body.business) || 'Demo',
+        customerName: clean(body.customerName) || '',
+        customerContact: clean(body.customerContact) || '',
+        service: clean(body.service) || '',
+        date: clean(body.date) || '',
+        time: clean(body.time) || '',
+        status: 'active',
+        notes: clean(body.notes) || '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await redis.set(key, JSON.stringify(reservation), { ex: 48 * 60 * 60 });
+      return res.status(200).json({ ok: true, reservation });
+    }
+
+    if (type === 'demo_reservation_list') {
+      if (!redis) return res.status(200).json({ ok: false, unavailable: true, reservations: [] });
+      const sessionId = clean(body.sessionId);
+      if (!sessionId) return res.status(400).json({ error: 'sessionId requerido' });
+
+      const keys = await redis.keys(`demo_reservation:${sessionId}:*`);
+      const reservations = [];
+      for (const key of keys) {
+        const data = await redis.get(key);
+        if (data) reservations.push(JSON.parse(data));
+      }
+      return res.status(200).json({ ok: true, reservations });
+    }
+
+    if (type === 'demo_reservation_cancel') {
+      if (!redis) return res.status(200).json({ ok: false, unavailable: true });
+      const sessionId = clean(body.sessionId);
+      const reservationId = clean(body.reservationId);
+      if (!sessionId || !reservationId) return res.status(400).json({ error: 'Datos incompletos' });
+
+      const key = `demo_reservation:${sessionId}:${reservationId}`;
+      const data = await redis.get(key);
+      if (!data) return res.status(404).json({ error: 'Reserva no encontrada' });
+
+      const reservation = JSON.parse(data);
+      reservation.status = 'cancelled';
+      reservation.updatedAt = new Date().toISOString();
+      await redis.set(key, JSON.stringify(reservation), { ex: 48 * 60 * 60 });
+      return res.status(200).json({ ok: true, reservation });
+    }
+
+    if (type === 'demo_reservation_reschedule') {
+      if (!redis) return res.status(200).json({ ok: false, unavailable: true });
+      const sessionId = clean(body.sessionId);
+      const reservationId = clean(body.reservationId);
+      if (!sessionId || !reservationId) return res.status(400).json({ error: 'Datos incompletos' });
+
+      const key = `demo_reservation:${sessionId}:${reservationId}`;
+      const data = await redis.get(key);
+      if (!data) return res.status(404).json({ error: 'Reserva no encontrada' });
+
+      const reservation = JSON.parse(data);
+      reservation.date = clean(body.date) || reservation.date;
+      reservation.time = clean(body.time) || reservation.time;
+      reservation.status = 'rescheduled';
+      reservation.updatedAt = new Date().toISOString();
+      await redis.set(key, JSON.stringify(reservation), { ex: 48 * 60 * 60 });
+      return res.status(200).json({ ok: true, reservation });
+    }
+
     return res.status(400).json({ error: 'Invalid track type' });
   } catch (err) {
     console.error('[api/track-ventas-funnel]', err?.message || err);

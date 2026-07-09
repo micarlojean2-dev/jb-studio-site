@@ -595,6 +595,7 @@
     let reservations = [];
     let pendingReservation = null;
     let emailSends = 0;
+    let isFetchingReservations = false;
 
     Object.entries(categories).forEach(([key, value]) => {
       const button = document.createElement('button');
@@ -635,56 +636,96 @@
     function addBot(text) { addMessage('bot', text); }
     function addUser(text) { addMessage('user', text); }
 
+    async function loadReservationsFromRedis() {
+      if (isFetchingReservations) return;
+      isFetchingReservations = true;
+      try {
+        const res = await fetch(DEMO_EMAIL_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'demo_reservation_list', sessionId })
+        });
+        const data = await res.json();
+        if (data && data.ok) {
+          reservations = data.reservations;
+          renderReservations();
+        }
+      } catch (e) {
+        console.error('Error cargando reservas de Redis', e);
+      }
+      isFetchingReservations = false;
+    }
+
     function renderReservations() {
       reservationsList.innerHTML = '';
-      reservations.forEach((reservation, index) => {
+      reservations.forEach((reservation) => {
         const card = document.createElement('div');
         card.className = 'reservation-card';
         card.innerHTML = `
-          <strong>Cliente:</strong> ${reservation.name}<br>
+          <strong>Cliente:</strong> ${reservation.customerName || reservation.name}<br>
           <strong>Negocio:</strong> ${reservation.business}<br>
           <strong>Servicio:</strong> ${reservation.service}<br>
           <strong>Fecha:</strong> ${reservation.date}<br>
           <strong>Hora:</strong> ${reservation.time}<br>
-          <strong>Contacto/email:</strong> ${reservation.email || 'No indicado'}<br>
+          <strong>Contacto:</strong> ${reservation.customerContact || reservation.email || 'No indicado'}<br>
           <strong>Estado:</strong> ${reservation.status}<br>
-          <strong>Petición especial:</strong> ${reservation.note || 'Ninguna'}
+          <strong>Notas:</strong> ${reservation.notes || reservation.note || 'Ninguna'}
         `;
         const actions = document.createElement('div');
         actions.className = 'reservation-actions';
 
-        const cancel = document.createElement('button');
-        cancel.textContent = 'Cancelar';
-        cancel.addEventListener('click', function () {
-          reservations[index].status = 'Cancelada';
-          renderReservations();
-          addBot(`Listo. La reserva simulada de ${reservation.name} quedó cancelada.`);
-        });
+        if (reservation.status !== 'cancelled') {
+          const cancel = document.createElement('button');
+          cancel.textContent = 'Cancelar';
+          cancel.addEventListener('click', function () {
+            updateReservation(reservation, 'demo_reservation_cancel', { status: 'cancelled' }, 'cancelada');
+          });
+          actions.appendChild(cancel);
+        }
 
-        const reschedule = document.createElement('button');
-        reschedule.textContent = 'Reagendar';
-        reschedule.addEventListener('click', function () {
-          reservations[index].status = 'Reagendada';
-          reservations[index].time = '5:00 PM';
-          renderReservations();
-          addBot(`Perfecto. La reserva simulada de ${reservation.name} quedó reagendada para las 5:00 PM.`);
-        });
+        if (reservation.status !== 'cancelled') {
+          const reschedule = document.createElement('button');
+          reschedule.textContent = 'Reagendar';
+          reschedule.addEventListener('click', function () {
+            updateReservation(reservation, 'demo_reservation_reschedule', { date: 'Mañana', time: '5:00 PM', status: 'rescheduled' }, 'reagendada para mañana a las 5:00 PM');
+          });
+          actions.appendChild(reschedule);
+        }
 
         const resend = document.createElement('button');
         resend.textContent = 'Enviar correo de prueba';
         resend.addEventListener('click', function () {
           maybeSendDemoEmail(reservation, true);
         });
-
-        actions.appendChild(cancel);
-        actions.appendChild(reschedule);
         actions.appendChild(resend);
+
         card.appendChild(actions);
         reservationsList.appendChild(card);
       });
     }
 
+    function updateReservation(reservation, type, updates, successMsg) {
+      const payload = { type, sessionId, reservationId: reservation.reservationId, ...updates };
+      fetch(DEMO_EMAIL_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(res => res.json()).then(data => {
+        if (data && data.ok) {
+          const idx = reservations.findIndex(r => r.reservationId === reservation.reservationId);
+          if (idx !== -1) reservations[idx] = data.reservation;
+          renderReservations();
+          addBot(`Listo. La reserva de ${reservation.customerName || reservation.name} quedó ${successMsg}.`);
+        } else {
+          addBot('No se pudo actualizar la reserva en este momento.');
+        }
+      }).catch(() => addBot('Error de conexión al actualizar la reserva.'));
+    }
+
     toggleReservations.addEventListener('click', function () {
+      if (!reservationsList.classList.contains('visible')) {
+        loadReservationsFromRedis();
+      }
       reservationsList.classList.toggle('visible');
     });
 
@@ -738,7 +779,9 @@
     }
 
     function showOwnerPanelCard(reservation) {
-      addRichCard('📋 Panel del dueño', `Nueva reserva recibida ✅<br><br><strong>Cliente:</strong> ${reservation.name}<br><strong>Negocio:</strong> ${reservation.business}<br><strong>Servicio:</strong> ${reservation.service}<br><strong>Fecha:</strong> ${reservation.date}<br><strong>Hora:</strong> ${reservation.time}<br><strong>Contacto:</strong> ${reservation.email}<br><strong>Estado:</strong> ${reservation.status}<br><br>Así verías la reserva cuando un cliente agenda con tu asistente.`);
+      const name = reservation.customerName || reservation.name || 'Cliente';
+      const contact = reservation.customerContact || reservation.email || 'No indicado';
+      addRichCard('📋 Panel del dueño', `Nueva reserva recibida ✅<br><br><strong>Cliente:</strong> ${name}<br><strong>Negocio:</strong> ${reservation.business}<br><strong>Servicio:</strong> ${reservation.service}<br><strong>Fecha:</strong> ${reservation.date}<br><strong>Hora:</strong> ${reservation.time}<br><strong>Contacto:</strong> ${contact}<br><strong>Estado:</strong> ${reservation.status}<br><br>Así verías la reserva cuando un cliente agenda con tu asistente.`);
     }
 
     function showImpactCard(reservation, emailOk) {
@@ -788,20 +831,64 @@
       if (!pendingReservation.email) {
         pendingReservation.email = text;
         pendingReservation.business = categories[currentCategory].business;
-        pendingReservation.status = 'Activa';
+        pendingReservation.status = 'active';
         pendingReservation.note = 'Reserva simulada desde la demo';
-        reservations.unshift({ ...pendingReservation });
-        renderReservations();
-        showOwnerPanelCard(pendingReservation);
-        maybeSendDemoEmail(pendingReservation).then(function (response) {
-          if (response && response.ok) {
-            addBot('Listo ✅\n\nTu reserva de prueba quedó creada.\n\nTambién hice esto:\n📋 La guardé en el panel del dueño.\n📩 Te envié un correo de prueba.\n⚡ La respuesta fue automática.\n\nEsto es lo que pasaría cuando un cliente agenda con tu asistente.');
-            showImpactCard(pendingReservation, true);
+
+        const payload = {
+          type: 'demo_reservation_create',
+          sessionId,
+          business: pendingReservation.business,
+          customerName: pendingReservation.name,
+          customerContact: pendingReservation.email,
+          service: pendingReservation.service,
+          date: pendingReservation.date,
+          time: pendingReservation.time,
+          notes: pendingReservation.note
+        };
+
+        fetch(DEMO_EMAIL_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(res => res.json()).then(data => {
+          if (data && data.ok) {
+            reservations.unshift(data.reservation);
+            renderReservations();
+            showOwnerPanelCard(data.reservation);
+            maybeSendDemoEmail(data.reservation).then(function (response) {
+              if (response && response.ok) {
+                addBot('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos. El correo puede usarse solo para avisos importantes o resúmenes.');
+                showImpactCard(data.reservation, true);
+              } else {
+                addBot('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nNo pude enviar el correo de prueba ahora mismo, pero podés seguir probando la demo.');
+                showImpactCard(data.reservation, false);
+              }
+            });
           } else {
-            addBot('Listo ✅\n\nLa reserva quedó creada y guardada en el panel del dueño.\n\nNo pude enviar el correo de prueba ahora mismo, pero podés seguir probando la demo.');
-            showImpactCard(pendingReservation, false);
+            // Fallback local si Redis falla
+            const localRes = { ...pendingReservation, reservationId: 'local_' + Date.now() };
+            reservations.unshift(localRes);
+            renderReservations();
+            showOwnerPanelCard(localRes);
+            maybeSendDemoEmail(localRes).then(function (response) {
+              if (response && response.ok) {
+                addBot('Listo ✅\n\nLa reserva quedó creada localmente.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos.');
+                showImpactCard(localRes, true);
+              } else {
+                addBot('Listo ✅\n\nLa reserva quedó creada localmente.\n\nNo pude enviar el correo de prueba ahora mismo, pero podés seguir probando la demo.');
+                showImpactCard(localRes, false);
+              }
+            });
           }
+        }).catch(() => {
+          const localRes = { ...pendingReservation, reservationId: 'local_' + Date.now() };
+          reservations.unshift(localRes);
+          renderReservations();
+          showOwnerPanelCard(localRes);
+          addBot('Listo ✅\n\nLa reserva quedó creada localmente.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos.');
+          showImpactCard(localRes, false);
         });
+
         pendingReservation = null;
         return true;
       }
