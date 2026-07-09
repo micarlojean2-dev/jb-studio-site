@@ -34,25 +34,26 @@
       align-items: center;
       justify-content: center;
       padding: 18px;
+      overflow: hidden;
     }
     .demo-shell {
-      width: min(1120px, 100%);
-      min-height: min(88dvh, 960px);
+      width: min(860px, calc(100vw - 32px));
+      height: min(900px, calc(100dvh - 36px));
+      min-height: 82dvh;
       background: var(--cream);
       border-radius: var(--radius-xl);
-      border: 1px solid rgba(255,255,255,0.16);
+      border: 1px solid rgba(255,255,255,0.14);
       box-shadow: var(--shadow);
       overflow: hidden;
       display: grid;
-      grid-template-columns: 330px 1fr;
+      grid-template-rows: auto auto 1fr auto;
+      position: relative;
     }
     .demo-sidebar {
-      background: linear-gradient(180deg, rgba(255,255,255,0.4), rgba(255,255,255,0.05));
-      border-right: 1px solid var(--border);
-      padding: 24px 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
+      padding: 10px 18px 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(252,248,240,0.82);
+      backdrop-filter: blur(10px);
     }
     .demo-kicker {
       display: inline-flex;
@@ -72,33 +73,39 @@
       background: var(--green-600);
       box-shadow: 0 0 14px rgba(24,113,79,0.45);
     }
-    .demo-title {
-      font-size: clamp(28px, 3vw, 40px);
-      line-height: 0.95;
-      font-weight: 900;
-      letter-spacing: -0.04em;
-      color: var(--green-900);
-    }
-    .demo-subtitle {
-      font-size: 14px;
-      line-height: 1.6;
-      color: var(--muted);
-      max-width: 28ch;
+    .demo-title,
+    .demo-subtitle,
+    .sidebar-footer,
+    .demo-kicker {
+      display: none;
     }
     .category-grid {
-      display: grid;
-      gap: 12px;
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x proximity;
+      padding-bottom: 2px;
+    }
+    .category-grid::-webkit-scrollbar {
+      display: none;
     }
     .category-card {
-      width: 100%;
+      flex: 0 0 auto;
+      min-width: max-content;
+      min-height: 54px;
       border: 1px solid rgba(15,90,63,0.14);
       background: rgba(255,255,255,0.68);
-      border-radius: var(--radius-md);
-      padding: 14px 15px;
+      border-radius: 999px;
+      padding: 10px 14px;
       text-align: left;
       cursor: pointer;
       transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
       box-shadow: 0 8px 18px rgba(15,45,31,0.06);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      scroll-snap-align: start;
     }
     .category-card:hover,
     .category-card.active {
@@ -108,19 +115,12 @@
       box-shadow: 0 16px 28px rgba(15,45,31,0.16);
       color: #fff;
     }
-    .category-emoji { font-size: 18px; }
-    .category-name { margin-top: 6px; font-size: 15px; font-weight: 800; }
-    .category-desc { margin-top: 4px; font-size: 12px; line-height: 1.45; opacity: 0.78; }
-    .sidebar-footer {
-      margin-top: auto;
-      font-size: 12px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-    .sidebar-footer a { color: var(--green-700); font-weight: 700; }
+    .category-emoji { font-size: 16px; line-height: 1; }
+    .category-name { margin-top: 0; font-size: 13px; font-weight: 800; white-space: nowrap; }
+    .category-desc { display: none; }
     .demo-main {
       display: grid;
-      grid-template-rows: auto 1fr auto;
+      grid-template-rows: auto 1fr;
       min-width: 0;
       min-height: 0;
       background: linear-gradient(180deg, var(--cream-soft), var(--cream));
@@ -164,35 +164,56 @@
       display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; flex-shrink: 0;
     }
     .bubble {
-      max-width: min(78%, 560px);
+      max-width: min(85%, 560px);
       padding: 13px 16px;
       border-radius: 18px;
       font-size: 14px;
       line-height: 1.6;
       white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
       box-shadow: 0 10px 22px rgba(15,45,31,0.06);
     }
     .bubble.bot { background: #fffdf8; border: 1px solid rgba(15,90,63,0.14); color: var(--text); }
     .bubble.user { background: var(--green-900); color: #fff; border: 1px solid rgba(255,255,255,0.08); }
     .demo-reservations {
-      border-top: 1px solid var(--border);
-      background: rgba(255,255,255,0.36);
-      padding: 16px 20px 14px;
+      position: absolute;
+      top: 72px;
+      right: 18px;
+      width: min(320px, calc(100% - 24px));
+      max-height: min(58dvh, 460px);
+      z-index: 12;
+      pointer-events: none;
     }
     .reservations-toggle {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 800;
       color: var(--green-700);
       cursor: pointer;
-      margin-bottom: 10px;
+      margin-bottom: 0;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid rgba(15,90,63,0.14);
+      border-radius: 999px;
+      padding: 8px 12px;
+      box-shadow: 0 8px 18px rgba(15,45,31,0.08);
+      pointer-events: auto;
     }
     .reservations-list {
       display: none;
       gap: 10px;
       flex-direction: column;
+      margin-top: 10px;
+      background: rgba(255,255,255,0.94);
+      border: 1px solid rgba(15,90,63,0.12);
+      border-radius: 18px;
+      padding: 12px;
+      box-shadow: 0 18px 38px rgba(15,45,31,0.16);
+      max-height: min(50dvh, 360px);
+      overflow-y: auto;
+      pointer-events: auto;
     }
     .reservations-list.visible { display: flex; }
     .reservation-card {
@@ -222,7 +243,7 @@
     }
     .reservation-actions button:hover { background: var(--green-700); color: #fff; }
     .demo-input {
-      padding: 16px 20px 20px;
+      padding: 14px 16px max(16px, env(safe-area-inset-bottom));
       display: flex;
       gap: 12px;
       align-items: flex-end;
@@ -249,18 +270,13 @@
       box-shadow: inset 0 2px 8px rgba(15,45,31,0.04);
     }
     .demo-send {
-      width: 50px; height: 50px; border: none; border-radius: 50%; cursor: pointer;
+      width: 52px; height: 52px; border: none; border-radius: 50%; cursor: pointer;
       background: linear-gradient(135deg, var(--green-700), var(--green-600)); color: #fff;
       box-shadow: 0 14px 24px rgba(24,113,79,0.22);
       font-size: 18px; font-weight: 800;
     }
     .demo-send:hover { transform: translateY(-1px); }
     .back-link { font-size: 12px; color: var(--green-700); font-weight: 700; text-decoration: none; }
-    @media (max-width: 920px) {
-      .demo-shell { grid-template-columns: 1fr; min-height: 100dvh; border-radius: 0; }
-      .demo-sidebar { border-right: none; border-bottom: 1px solid var(--border); }
-    }
-
     @media (max-width: 768px) {
       html, body {
         width: 100%;
@@ -277,21 +293,12 @@
         min-height: 100dvh;
         height: 100dvh;
         border-radius: 0;
-        display: grid;
-        grid-template-columns: 1fr;
-        grid-template-rows: auto 1fr;
       }
       .demo-sidebar {
-        padding: 10px 12px 8px;
+        padding: 8px 12px 8px;
         gap: 8px;
         background: rgba(252,248,240,0.82);
         backdrop-filter: blur(12px);
-      }
-      .demo-kicker,
-      .demo-title,
-      .demo-subtitle,
-      .sidebar-footer {
-        display: none;
       }
       .category-grid {
         display: flex;
@@ -306,7 +313,7 @@
       .category-card {
         flex: 0 0 auto;
         min-width: max-content;
-        min-height: 48px;
+        min-height: 52px;
         padding: 10px 12px;
         display: inline-flex;
         align-items: center;
@@ -332,13 +339,11 @@
       .category-desc {
         display: none;
       }
-      .demo-main {
-        grid-template-rows: auto 1fr auto auto;
-        min-height: 0;
-      }
+      .demo-main { min-height: 0; }
       .demo-header {
         padding: 12px 14px;
         gap: 10px;
+        min-height: 64px;
       }
       .demo-header-left {
         min-width: 0;
@@ -360,7 +365,7 @@
         flex-shrink: 0;
       }
       .demo-messages {
-        padding: 14px 12px 10px;
+        padding: 12px 12px 10px;
         gap: 8px;
       }
       .message-row {
@@ -378,19 +383,21 @@
         line-height: 1.55;
       }
       .demo-reservations {
-        padding: 8px 12px 10px;
-        background: rgba(255,255,255,0.28);
+        top: 64px;
+        right: 10px;
+        width: min(300px, calc(100% - 20px));
       }
       .reservations-toggle {
         font-size: 12px;
-        margin-bottom: 6px;
+        margin-bottom: 0;
       }
       .reservation-card {
         font-size: 11px;
       }
       .demo-input {
-        padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+        padding: 10px 12px max(14px, env(safe-area-inset-bottom));
         gap: 10px;
+        min-height: 72px;
       }
       .demo-textarea {
         min-height: 48px;
@@ -421,6 +428,9 @@
       .back-link {
         margin-top: 2px;
       }
+      .demo-reservations {
+        width: calc(100% - 20px);
+      }
     }
 
     @media (max-width: 390px) {
@@ -431,9 +441,7 @@
       .category-name {
         font-size: 12px;
       }
-      .bubble {
-        max-width: 92%;
-      }
+      .bubble { max-width: 92%; }
     }
   </style>
 </head>
@@ -453,7 +461,7 @@
           <div class="demo-avatar">A</div>
           <div>
             <div class="demo-header-title" id="demoTitle">Alex — Demo Pro</div>
-            <div class="demo-header-sub" id="demoSubtitle">Elegí un tipo de negocio para empezar.</div>
+            <div class="demo-header-sub" id="demoSubtitle">Probá reservas, preguntas y avisos por correo.</div>
           </div>
         </div>
         <a class="back-link" href="https://jbstudio.app/ventas">Volver a /ventas</a>
@@ -552,7 +560,7 @@
         reservations = [];
         renderReservations();
         pendingReservation = null;
-        addBot(`Hola. Esta es una demo del Plan Pro para ${value.name}.\n\nPuedo responder preguntas, tomar reservas, guardar datos y avisarte por correo.\n\nProbá preguntarme por horarios, servicios o escribime directamente que querés reservar.`);
+        addBot(`Hola. Esta es una demo Pro para ${value.name}. Podés preguntarme precios, horarios o hacer una reserva de prueba.`);
       });
       grid.appendChild(button);
     });
@@ -744,7 +752,7 @@
       }
     });
 
-    addBot('Demo en vivo. Elegí un tipo de negocio y probá cómo atendería clientes el asistente Pro.');
+    addBot('Elegí un negocio para empezar la demo.');
   </script>
 </body>
 </html>
