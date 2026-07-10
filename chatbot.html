@@ -292,6 +292,32 @@
       cursor: pointer;
     }
     .reservation-actions button:hover { background: var(--green-700); color: #fff; }
+    .demo-suggestions {
+      padding: 8px 16px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: rgba(252,248,240,0.6);
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .demo-suggestions::-webkit-scrollbar { display: none; }
+    .suggestion-chip {
+      flex: 0 0 auto;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,90,63,0.18);
+      background: #fffdf8;
+      color: var(--green-700);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s, color 0.2s;
+    }
+    .suggestion-chip:hover { background: var(--green-700); color: #fff; }
+    .suggestion-chip:disabled { opacity: 0.4; cursor: not-allowed; }
     .demo-input {
       padding: 14px 16px max(16px, env(safe-area-inset-bottom));
       display: flex;
@@ -319,6 +345,7 @@
       outline: none;
       box-shadow: inset 0 2px 8px rgba(15,45,31,0.04);
     }
+    .demo-textarea:disabled { opacity: 0.5; cursor: not-allowed; }
     .demo-send {
       width: 52px; height: 52px; border: none; border-radius: 50%; cursor: pointer;
       background: linear-gradient(135deg, var(--green-700), var(--green-600)); color: #fff;
@@ -326,12 +353,121 @@
       font-size: 18px; font-weight: 800;
     }
     .demo-send:hover { transform: translateY(-1px); }
+    .demo-send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
     .back-link { font-size: 12px; color: var(--green-700); font-weight: 700; text-decoration: none; }
     .typing-bubble { background: #fffdf8; border: 1px solid rgba(15,90,63,0.14); border-radius: 18px; padding: 16px 20px; display: flex; gap: 5px; align-items: center; box-shadow: 0 10px 22px rgba(15,45,31,0.06); }
     .typing-bubble span { width: 7px; height: 7px; background: rgba(15,90,63,0.35); border-radius: 50%; animation: bounce 1.3s ease-in-out infinite; }
     .typing-bubble span:nth-child(2) { animation-delay: 0.18s; }
     .typing-bubble span:nth-child(3) { animation-delay: 0.36s; }
     @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); opacity: 0.35; } 40% { transform: translateY(-5px); opacity: 1; } }
+    .qr-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--green-700);
+      cursor: pointer;
+      background: rgba(255,255,255,0.8);
+      border: 1px solid rgba(15,90,63,0.14);
+      border-radius: 999px;
+      padding: 6px 12px;
+      transition: background 0.2s;
+    }
+    .qr-btn:hover { background: var(--green-700); color: #fff; }
+    .qr-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+    }
+    .qr-modal.visible { display: flex; }
+    .qr-panel {
+      background: var(--cream);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      max-width: 340px;
+      width: calc(100% - 32px);
+      text-align: center;
+      box-shadow: 0 28px 80px rgba(0,0,0,0.3);
+    }
+    .qr-panel h3 { font-size: 16px; font-weight: 800; color: var(--green-900); margin-bottom: 12px; }
+    .qr-panel img { width: 200px; height: 200px; border-radius: 12px; margin-bottom: 12px; }
+    .qr-panel p { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+    .qr-panel a { font-size: 12px; color: var(--green-700); font-weight: 700; word-break: break-all; }
+    .qr-actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }
+    .qr-actions button {
+      padding: 10px 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(15,90,63,0.18);
+      background: #fffdf8;
+      color: var(--green-700);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .qr-actions button:hover { background: var(--green-700); color: #fff; }
+    .qr-close {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      background: none;
+      border: none;
+    }
+    .demo-end-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      background: rgba(244,236,223,0.95);
+      backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .demo-end-overlay.visible { display: flex; }
+    .demo-end-card {
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+    .demo-end-card h2 { font-size: 20px; font-weight: 900; color: var(--green-900); margin-bottom: 12px; }
+    .demo-end-card p { font-size: 14px; line-height: 1.6; color: var(--text); margin-bottom: 10px; }
+    .demo-end-card ul { text-align: left; margin: 12px 0 16px; padding-left: 20px; }
+    .demo-end-card li { font-size: 14px; line-height: 1.7; color: var(--text); }
+    .demo-end-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 999px;
+      background: var(--green-700);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 800;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 14px 24px rgba(24,113,79,0.22);
+      transition: transform 0.2s;
+    }
+    .demo-end-btn:hover { transform: translateY(-2px); }
+    .demo-warning {
+      display: none;
+      padding: 10px 16px;
+      background: rgba(24,113,79,0.08);
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--green-700);
+      text-align: center;
+    }
+    .demo-warning.visible { display: block; }
     @media (max-width: 768px) {
       html, body {
         width: 100%;
@@ -465,6 +601,14 @@
         font-size: 18px;
         flex-shrink: 0;
       }
+      .demo-suggestions {
+        padding: 6px 12px;
+        gap: 6px;
+      }
+      .suggestion-chip {
+        padding: 7px 12px;
+        font-size: 11px;
+      }
     }
 
     @media (max-width: 430px) {
@@ -519,7 +663,10 @@
             <div class="demo-header-sub" id="demoSubtitle">Probá reservas, preguntas y avisos por correo.</div>
           </div>
         </div>
-        <a class="back-link" href="https://jbstudio.app/ventas">Volver a /ventas</a>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="qr-btn" id="qrBtn">📱 QR</button>
+          <a class="back-link" href="https://jbstudio.app/ventas">Volver a /ventas</a>
+        </div>
       </div>
 
       <div class="demo-messages" id="demoMessages"></div>
@@ -529,15 +676,57 @@
         <div class="reservations-list" id="reservationsList"></div>
       </div>
 
+      <div class="demo-suggestions" id="demoSuggestions">
+        <button class="suggestion-chip" data-text="Quiero reservar mañana a las 4">Quiero reservar mañana a las 4</button>
+        <button class="suggestion-chip" data-text="¿Cuánto cuesta un corte?">¿Cuánto cuesta un corte?</button>
+        <button class="suggestion-chip" data-text="¿Qué horarios tienen?">¿Qué horarios tienen?</button>
+        <button class="suggestion-chip" data-text="Quiero cancelar mi reserva">Quiero cancelar mi reserva</button>
+        <button class="suggestion-chip" data-text="Quiero reagendar">Quiero reagendar</button>
+        <button class="suggestion-chip" data-text="Mandame una notificación de prueba">Mandame una notificación de prueba</button>
+      </div>
+
+      <div class="demo-warning" id="demoWarning"></div>
+
       <div class="demo-input">
         <textarea class="demo-textarea" id="demoInput" placeholder="Escribí como si fueras un cliente..." rows="1"></textarea>
         <button class="demo-send" id="demoSend">→</button>
       </div>
+
+      <div class="demo-end-overlay" id="demoEndOverlay">
+        <div class="demo-end-card">
+          <h2>Ya probaste la demo gratuita ✅</h2>
+          <p>Esto que viste puede adaptarse a tu negocio:</p>
+          <ul>
+            <li>tus servicios</li>
+            <li>tus precios</li>
+            <li>tus horarios</li>
+            <li>tu correo</li>
+            <li>tu panel de reservas</li>
+          </ul>
+          <p>Para crear uno para tu negocio, hablá con Alex:</p>
+          <a class="demo-end-btn" href="https://jbstudio.app/ventas">Hablar con Alex →</a>
+        </div>
+      </div>
     </section>
+  </div>
+
+  <div class="qr-modal" id="qrModal">
+    <div class="qr-panel">
+      <h3>Escaneá para probar la demo</h3>
+      <img id="qrImage" src="" alt="QR de la demo" />
+      <p><a href="https://jbstudio.app/chatbot" id="qrLink">https://jbstudio.app/chatbot</a></p>
+      <div class="qr-actions">
+        <button id="qrCopyBtn">Copiar link</button>
+      </div>
+      <button class="qr-close" id="qrClose">Cerrar</button>
+    </div>
   </div>
 
   <script>
     const DEMO_EMAIL_ENDPOINT = '/api/track-ventas-funnel';
+    const DEMO_URL = 'https://jbstudio.app/chatbot';
+    const DEMO_LIMIT = 10;
+    const DEMO_WARNING_AT = 8;
     const sessionId = 'demo_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
     const categories = {
       barberia: {
@@ -595,6 +784,15 @@
     const demoSubtitle = document.getElementById('demoSubtitle');
     const reservationsList = document.getElementById('reservationsList');
     const toggleReservations = document.getElementById('toggleReservations');
+    const demoSuggestions = document.getElementById('demoSuggestions');
+    const demoWarning = document.getElementById('demoWarning');
+    const demoEndOverlay = document.getElementById('demoEndOverlay');
+    const qrBtn = document.getElementById('qrBtn');
+    const qrModal = document.getElementById('qrModal');
+    const qrImage = document.getElementById('qrImage');
+    const qrLink = document.getElementById('qrLink');
+    const qrCopyBtn = document.getElementById('qrCopyBtn');
+    const qrClose = document.getElementById('qrClose');
 
     let currentCategory = null;
     let reservations = [];
@@ -603,6 +801,64 @@
     let isFetchingReservations = false;
     let reservationDraft = {};
     let chatHistory = [];
+    let messageCount = 0;
+    let demoEnded = false;
+
+    function getMessageCount() {
+      return Number(sessionStorage.getItem('demo_msg_count') || 0);
+    }
+
+    function setMessageCount(count) {
+      sessionStorage.setItem('demo_msg_count', count);
+      messageCount = count;
+    }
+
+    function incrementMessageCount() {
+      messageCount = getMessageCount() + 1;
+      setMessageCount(messageCount);
+      if (messageCount >= DEMO_WARNING_AT && messageCount < DEMO_LIMIT) {
+        const remaining = DEMO_LIMIT - messageCount;
+        demoWarning.textContent = `Te quedan ${remaining} mensaje${remaining > 1 ? 's' : ''} de prueba en esta demo. Si querés uno así para tu negocio, podés hablar con Alex.`;
+        demoWarning.classList.add('visible');
+      }
+      if (messageCount >= DEMO_LIMIT) {
+        endDemo();
+      }
+    }
+
+    function endDemo() {
+      demoEnded = true;
+      demoInput.disabled = true;
+      demoSend.disabled = true;
+      demoWarning.classList.remove('visible');
+      document.querySelectorAll('.suggestion-chip').forEach(c => c.disabled = true);
+      demoEndOverlay.classList.add('visible');
+    }
+
+    qrBtn.addEventListener('click', function () {
+      qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(DEMO_URL)}`;
+      qrModal.classList.add('visible');
+    });
+
+    qrClose.addEventListener('click', function () {
+      qrModal.classList.remove('visible');
+    });
+
+    qrModal.addEventListener('click', function (e) {
+      if (e.target === qrModal) qrModal.classList.remove('visible');
+    });
+
+    qrCopyBtn.addEventListener('click', function () {
+      navigator.clipboard.writeText(DEMO_URL).then(function () {
+        qrCopyBtn.textContent = '✓ Copiado';
+        setTimeout(function () { qrCopyBtn.textContent = 'Copiar link'; }, 2000);
+      }).catch(function () {
+        qrCopyBtn.textContent = 'No se pudo copiar';
+        setTimeout(function () { qrCopyBtn.textContent = 'Copiar link'; }, 2000);
+      });
+    });
+
+    messageCount = getMessageCount();
 
     Object.entries(categories).forEach(([key, value]) => {
       const button = document.createElement('button');
@@ -620,7 +876,13 @@
         renderReservations();
         pendingReservation = null;
         reservationDraft = {};
-        addBot(`Hola. Esta es una demo Pro para ${value.name}.\n\nPodés preguntarme precios, horarios o hacer una reserva de prueba.\n\nSi escribís 'quiero reservar', voy a simular todo el flujo: reserva, panel del dueño y correo de prueba.`);
+        demoEndOverlay.classList.remove('visible');
+        demoEnded = false;
+        demoInput.disabled = false;
+        demoSend.disabled = false;
+        demoWarning.classList.remove('visible');
+        document.querySelectorAll('.suggestion-chip').forEach(c => c.disabled = false);
+        addBot(`Hola ✨ Esta es una demo gratuita del Plan Pro para ${value.name}.\n\nPodés probar cómo el asistente:\n📅 toma una reserva\n📋 la guarda en el panel del dueño\n📩 intenta enviar una notificación de prueba\n🔁 permite cancelar o reagendar\n\nTenés 10 mensajes para probarla. Usá los botones de abajo o escribí como si fueras un cliente.`);
       });
       grid.appendChild(button);
     });
@@ -744,8 +1006,9 @@
     });
 
     async function maybeSendDemoEmail(reservation, manual) {
-      if (!reservation.email) {
-        addBot('Ahora mismo la demo de correo no está disponible, pero la reserva sí quedó simulada en la lista.');
+      const email = reservation.customerContact || reservation.email;
+      if (!email) {
+        addBot('La reserva quedó guardada en el panel del dueño ✅\nLa notificación de prueba no se pudo enviar ahora mismo, pero podés seguir probando la demo.');
         return { ok: false, unavailable: true };
       }
       if (emailSends >= 2) {
@@ -758,21 +1021,21 @@
         body: JSON.stringify({
           type: 'demo_email',
           sessionId,
-          email: reservation.email,
-          business: categories[currentCategory].business,
-          name: reservation.name,
-          service: reservation.service,
-          date: reservation.date,
-          time: reservation.time,
-          status: reservation.status,
+          email: email,
+          business: categories[currentCategory] ? categories[currentCategory].business : 'Demo',
+          name: reservation.customerName || reservation.name || 'Cliente Demo',
+          service: reservation.service || 'Servicio Demo',
+          date: reservation.date || 'Mañana',
+          time: reservation.time || '4:00 PM',
+          status: reservation.status || 'Activa',
         })
-      }).then((res) => res.json()).catch(() => ({ ok: false, unavailable: true }));
+      }).then((res) => res.json()).catch(() => ({ ok: false, unavailable: true, message: 'La reserva quedó guardada en el panel del dueño ✅\nLa notificación de prueba no se pudo enviar ahora mismo, pero podés seguir probando la demo.' }));
 
       if (response.ok) {
         emailSends++;
-        if (manual) addBot('Listo. Te mandé un correo de prueba para que veas cómo llegaría una reserva real.');
+        if (manual) addBot('Listo ✅ Te mandé un correo de prueba para que veas cómo llegaría una reserva real.');
       } else {
-        addBot(response.message || 'Ahora mismo la demo de correo no está disponible, pero la reserva sí quedó simulada en la lista.');
+        addBot(response.message || 'La reserva quedó guardada en el panel del dueño ✅\nLa notificación de prueba no se pudo enviar ahora mismo, pero podés seguir probando la demo.');
       }
       return response;
     }
@@ -810,7 +1073,7 @@
         <div class="impact-card-title">Impacto de esta reserva</div>
         <div class="impact-card-line">Cliente atendido: Sí</div>
         <div class="impact-card-line">Reserva guardada: Sí</div>
-        <div class="impact-card-line">Aviso por correo: ${emailOk ? 'Sí' : 'No disponible'}</div>
+        <div class="impact-card-line">Aviso por correo: ${emailOk ? 'Sí ✅' : 'No se pudo enviar'}</div>
         <div class="impact-card-line">Tiempo de respuesta: Instantáneo</div>
         <div class="impact-card-line">Estado: ${reservation.status}</div>
         <div class="impact-footer">En una versión real, esto se adapta a tu negocio: tus servicios, tus horarios, tus precios y tu correo.<br><a href="https://jbstudio.app/ventas">Volver a /ventas</a></div>
@@ -821,7 +1084,6 @@
       demoMessages.scrollTop = demoMessages.scrollHeight;
     }
 
-    // Typing delay helpers
     let typingTimeout = null;
     function showTypingIndicator() {
       const row = document.createElement('div');
@@ -932,7 +1194,7 @@
                 respondWithDelay('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos. El correo puede usarse solo para avisos importantes o resúmenes.');
                 showImpactCard(data.reservation, true);
               } else {
-                respondWithDelay('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nNo pude enviar el correo de prueba ahora mismo, pero podés seguir probando la demo.');
+                respondWithDelay('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nLa notificación de prueba no se pudo enviar ahora mismo, pero podés seguir probando la demo.');
                 showImpactCard(data.reservation, false);
               }
             });
@@ -1002,8 +1264,9 @@
     }
 
     async function respond(text) {
+      if (demoEnded) return;
       const category = categories[currentCategory];
-      
+
       try {
         showTypingIndicator();
 
@@ -1024,7 +1287,7 @@
             reservationDraft: reservationDraft || {}
           })
         });
-        
+
         const data = await res.json();
         console.log('[DEMO_CHAT_CLIENT] response:', JSON.stringify(data));
 
@@ -1057,31 +1320,40 @@
       }
     }
 
-    // Helper functions for delay
-    function wait(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    function randomDelay() {
-      return 1000 + Math.floor(Math.random() * 800);
+    function sendMessage(text) {
+      if (demoEnded || !text) return;
+      addUser(text);
+      incrementMessageCount();
+      if (!demoEnded) {
+        respond(text);
+      }
     }
 
     demoSend.addEventListener('click', function () {
       const text = demoInput.value.trim();
       if (!text) return;
-      addUser(text);
       demoInput.value = '';
-      respond(text);
+      sendMessage(text);
     });
 
     demoInput.addEventListener('keydown', function (event) {
       if (event.key === 'Enter' && !event.shiftKey) {
-        e.preventDefault();
+        event.preventDefault();
         demoSend.click();
       }
     });
 
-    addBot('Hola. Esta es una demo del Plan Pro.\n\nPodés probar cómo el asistente:\n✓ responde preguntas\n✓ toma una reserva\n✓ la guarda en un panel del dueño\n✓ envía un correo de prueba\n✓ permite cancelar o reagendar\n\nEscribí ‘quiero reservar’ para probarlo.');
+    document.querySelectorAll('.suggestion-chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        const text = chip.getAttribute('data-text');
+        if (text && !demoEnded) {
+          demoInput.value = '';
+          sendMessage(text);
+        }
+      });
+    });
+
+    addBot('Hola ✨ Esta es una demo gratuita del Plan Pro.\n\nPodés probar cómo el asistente:\n📅 toma una reserva\n📋 la guarda en el panel del dueño\n📩 intenta enviar una notificación de prueba\n🔁 permite cancelar o reagendar\n\nTenés 10 mensajes para probarla. Usá los botones de abajo o escribí como si fueras un cliente.');
   </script>
 </body>
 </html>
