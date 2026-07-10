@@ -596,6 +596,7 @@
     let pendingReservation = null;
     let emailSends = 0;
     let isFetchingReservations = false;
+    let reservationDraft = {};
 
     Object.entries(categories).forEach(([key, value]) => {
       const button = document.createElement('button');
@@ -807,18 +808,56 @@
       demoMessages.scrollTop = demoMessages.scrollHeight;
     }
 
+    // Typing delay helpers
+    let typingTimeout = null;
+    function showTypingIndicator() {
+      const row = document.createElement('div');
+      row.id = 'typing-indicator-row';
+      row.className = 'message-row bot';
+      const avatar = document.createElement('div');
+      avatar.className = 'mini-avatar';
+      avatar.textContent = 'A';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble typing-bubble';
+      bubble.innerHTML = '<span></span><span></span><span></span>';
+      row.appendChild(avatar);
+      row.appendChild(bubble);
+      demoMessages.appendChild(row);
+      demoMessages.scrollTop = demoMessages.scrollHeight;
+    }
+
+    function hideTypingIndicator() {
+      const el = document.getElementById('typing-indicator-row');
+      if (el) el.remove();
+    }
+
+    async function respondWithDelay(message, options = {}) {
+      showTypingIndicator();
+      await new Promise(r => { typingTimeout = setTimeout(r, 1000 + Math.random() * 800); });
+      hideTypingIndicator();
+      addBot(message, options);
+    }
+
     function extractReservationInfo(text, draft) {
       const lower = text.toLowerCase();
+      console.log('[DEMO_EXTRACT] raw message:', text);
+
       const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-      if (emailMatch && !draft.email) draft.email = emailMatch[0];
+      if (emailMatch) {
+        draft.email = emailMatch[0];
+        console.log('[DEMO_EXTRACT] extracted email:', draft.email);
+      }
 
-      const datePatterns = /(hoy|mañana|pasado mañana|lunes|martes|miércoles|jueves|viernes|sábado|domingo)/i;
+      const datePatterns = /\b(hoy|mañana|pasado mañana|lunes|martes|miércoles|jueves|viernes|sábado|domingo)\b/i;
       const dateMatch = lower.match(datePatterns);
-      if (dateMatch && !draft.date) draft.date = dateMatch[1];
+      if (dateMatch) {
+        draft.date = dateMatch[1];
+        console.log('[DEMO_EXTRACT] extracted date:', draft.date);
+      }
 
-      const timePatterns = /(?:a las |a la )?(\d{1,2})(?::(\d{2}))?\s*(am|pm|de la tarde|de la mañana|de la noche)?/i;
+      const timePatterns = /(?:a las |a la )(\d{1,2})(?::(\d{2}))?\s*(am|pm|de la tarde|de la mañana|de la noche)?/i;
       const timeMatch = lower.match(timePatterns);
-      if (timeMatch && !draft.time) {
+      if (timeMatch) {
         let hour = timeMatch[1];
         let minute = timeMatch[2] || '00';
         let period = timeMatch[3] || '';
@@ -827,16 +866,24 @@
         else if (period.includes('mañana')) period = 'AM';
         else period = 'PM';
         draft.time = `${hour}:${minute} ${period}`;
+        console.log('[DEMO_EXTRACT] extracted time:', draft.time);
       }
 
       const namePatterns = /(?:soy|me llamo|mi nombre es|a nombre de)\s+([A-ZÁÉÍÓÚáéíóúñÑ][a-zA-ZÁÉÍÓÚáéíóúñÑ]{1,20})/i;
       const nameMatch = text.match(namePatterns);
-      if (nameMatch && !draft.customerName) draft.customerName = nameMatch[1].trim();
+      if (nameMatch) {
+        draft.customerName = nameMatch[1].trim();
+        console.log('[DEMO_EXTRACT] extracted name:', draft.customerName);
+      }
 
-      const servicePatterns = /\b(corte de pelo|corte|barba|manicure|pedicure|uñas|limpieza facial|sesión de fotos|sesion de fotos|una mesa)\b/i;
+      const servicePatterns = /\b(corte de pelo|corte|barba|manicure|pedicure|uñas|limpieza facial|sesión de fotos|sesion de fotos|una mesa|reserva de mesa)\b/i;
       const serviceMatch = lower.match(servicePatterns);
-      if (serviceMatch && !draft.service) draft.service = serviceMatch[1];
+      if (serviceMatch) {
+        draft.service = serviceMatch[1];
+        console.log('[DEMO_EXTRACT] extracted service:', draft.service);
+      }
 
+      console.log('[DEMO_EXTRACT] reservationDraft after merge:', JSON.stringify(draft));
       return draft;
     }
 
@@ -857,72 +904,87 @@
         notes: pendingReservation.notes
       };
 
-      addBot(`Perfecto, ${pendingReservation.customerName}. Ya tengo los datos de la reserva:\n\nServicio: ${pendingReservation.service}\nFecha: ${pendingReservation.date}\nHora: ${pendingReservation.time}\nCorreo: ${pendingReservation.email}\n\nVoy a crear la reserva de prueba y guardarla en el panel del dueño.`);
-
-      fetch(DEMO_EMAIL_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(res => res.json()).then(data => {
-        if (data && data.ok) {
-          reservations.unshift(data.reservation);
-          renderReservations();
-          showOwnerPanelCard(data.reservation);
-          maybeSendDemoEmail(data.reservation).then(function (response) {
-            if (response && response.ok) {
-              addBot('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos. El correo puede usarse solo para avisos importantes o resúmenes.');
-              showImpactCard(data.reservation, true);
-            } else {
-              addBot('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nNo pude enviar el correo de prueba ahora mismo, pero podés seguir probando la demo.');
-              showImpactCard(data.reservation, false);
-            }
-          });
-        } else {
+      respondWithDelay(`Perfecto, ${pendingReservation.customerName}. Ya tengo los datos de la reserva:\n\nServicio: ${pendingReservation.service}\nFecha: ${pendingReservation.date}\nHora: ${pendingReservation.time}\nCorreo: ${pendingReservation.email}\n\nVoy a crear la reserva de prueba y guardarla en el panel del dueño.`).then(() => {
+        fetch(DEMO_EMAIL_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(res => res.json()).then(data => {
+          if (data && data.ok) {
+            reservations.unshift(data.reservation);
+            renderReservations();
+            showOwnerPanelCard(data.reservation);
+            maybeSendDemoEmail(data.reservation).then(function (response) {
+              if (response && response.ok) {
+                respondWithDelay('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos. El correo puede usarse solo para avisos importantes o resúmenes.');
+                showImpactCard(data.reservation, true);
+              } else {
+                respondWithDelay('Listo ✅\n\nLa reserva quedó guardada en el panel del dueño.\n\nNo pude enviar el correo de prueba ahora mismo, pero podés seguir probando la demo.');
+                showImpactCard(data.reservation, false);
+              }
+            });
+          } else {
+            const localRes = { ...pendingReservation, reservationId: 'local_' + Date.now() };
+            reservations.unshift(localRes);
+            renderReservations();
+            showOwnerPanelCard(localRes);
+            respondWithDelay('Listo ✅\n\nLa reserva quedó creada localmente.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos.');
+            showImpactCard(localRes, false);
+          }
+        }).catch(() => {
           const localRes = { ...pendingReservation, reservationId: 'local_' + Date.now() };
           reservations.unshift(localRes);
           renderReservations();
           showOwnerPanelCard(localRes);
-          addBot('Listo ✅\n\nLa reserva quedó creada localmente.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos.');
+          respondWithDelay('Listo ✅\n\nLa reserva quedó creada localmente.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos.');
           showImpactCard(localRes, false);
-        }
-      }).catch(() => {
-        const localRes = { ...pendingReservation, reservationId: 'local_' + Date.now() };
-        reservations.unshift(localRes);
-        renderReservations();
-        showOwnerPanelCard(localRes);
-        addBot('Listo ✅\n\nLa reserva quedó creada localmente.\n\nEn una versión real, el dueño puede ver sus reservas actualizadas sin depender de correos sueltos.');
-        showImpactCard(localRes, false);
+        });
       });
 
       pendingReservation = null;
     }
 
+
+    function getMissingFields(draft) {
+      const missing = [];
+      if (!draft.date) missing.push('date');
+      if (!draft.time) missing.push('time');
+      if (!draft.customerName) missing.push('customerName');
+      if (!draft.service) missing.push('service');
+      if (!draft.email) missing.push('email');
+      return missing;
+    }
+
+    function askForMissing(field) {
+      if (field === 'date') respondWithDelay('Perfecto. ¿Para qué día querés simular la reserva?');
+      else if (field === 'time') respondWithDelay('Perfecto. ¿A qué hora?');
+      else if (field === 'customerName') respondWithDelay('¿A nombre de quién pongo la reserva?');
+      else if (field === 'service') respondWithDelay('¿Qué servicio querés reservar?');
+      else if (field === 'email') respondWithDelay('Genial. Para que veas cómo llega el aviso automático, pasame un correo y te envío una notificación de prueba.');
+    }
+
     function handleReservationFlow(text) {
       if (!pendingReservation) pendingReservation = {};
       extractReservationInfo(text, pendingReservation);
+      Object.assign(reservationDraft, pendingReservation);
 
-      if (!pendingReservation.date) {
-        addBot('Perfecto. ¿Para qué día querés simular la reserva?');
-        return true;
-      }
-      if (!pendingReservation.time) {
-        addBot('Perfecto. ¿A qué hora?');
-        return true;
-      }
-      if (!pendingReservation.customerName) {
-        addBot('¿A nombre de quién pongo la reserva?');
-        return true;
-      }
-      if (!pendingReservation.service) {
-        addBot('¿Qué servicio querés reservar?');
-        return true;
-      }
-      if (!pendingReservation.email) {
-        addBot('Genial. Para que veas cómo llega el aviso automático, pasame un correo y te envío una notificación de prueba.');
+      const missing = getMissingFields(pendingReservation);
+
+      console.log('[DEMO_EXTRACT] raw message:', text);
+      console.log('[DEMO_EXTRACT] extracted email:', pendingReservation.email);
+      console.log('[DEMO_EXTRACT] extracted date:', pendingReservation.date);
+      console.log('[DEMO_EXTRACT] extracted time:', pendingReservation.time);
+      console.log('[DEMO_EXTRACT] extracted name:', pendingReservation.customerName);
+      console.log('[DEMO_EXTRACT] extracted service:', pendingReservation.service);
+      console.log('[DEMO_EXTRACT] reservationDraft after merge:', JSON.stringify(reservationDraft));
+      console.log('[DEMO_EXTRACT] missing fields:', missing);
+
+      if (missing.length === 0) {
+        createReservation();
         return true;
       }
 
-      createReservation();
+      askForMissing(missing[0]);
       return true;
     }
 
