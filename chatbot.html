@@ -1010,6 +1010,9 @@
             messages: messagesPayload,
             sessionId,
             business: category ? category.name : '',
+            businessServices: category ? category.services : [],
+            businessPrices: category ? category.prices : '',
+            businessHours: category ? category.hours : '',
             reservationDraft: reservationDraft || {}
           })
         });
