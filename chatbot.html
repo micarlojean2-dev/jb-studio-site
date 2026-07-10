@@ -988,43 +988,56 @@
       return true;
     }
 
-    function respond(text) {
-      const lower = text.toLowerCase();
+    async function respond(text) {
       const category = categories[currentCategory];
-      if (!category) {
-        addBot('Primero elegí un tipo de negocio para que pueda mostrarte una demo realista.');
-        return;
-      }
+      
+      // Always extract info into the draft via API
+      try {
+        showTypingIndicator();
+        await wait(randomDelay());
+        hideTypingIndicator();
 
-      if (pendingReservation && handleReservationFlow(text)) return;
+        const res = await fetch('/api/demo-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            sessionId,
+            business: category ? category.name : '',
+            reservationDraft: reservationDraft || {},
+            messages: []
+          })
+        });
+        
+        const data = await res.json();
+        console.log('[DEMO_CHAT_CLIENT] response:', JSON.stringify(data));
 
-      if (/demo|comprar|contratar|hablar con alex|negocio real|quiero uno/.test(lower)) {
-        addBot('Esta es solo una demo. Si querés que armemos uno para tu negocio, volvé a la página principal o hablá con Alex para dejar tus datos:\nhttps://jbstudio.app/ventas');
-        return;
-      }
-      if (/horario|horarios/.test(lower)) {
-        addBot(`Los horarios de ejemplo para ${category.name} son: ${category.hours}`);
-        return;
-      }
-      if (/precio|precios|cu[aá]nto/.test(lower)) {
-        addBot(`Como ejemplo, ${category.prices}`);
-        return;
-      }
-      if (/servicio|servicios|ofrecen|hacen/.test(lower)) {
-        addBot(`En esta demo puedo mostrarte estos servicios: ${category.services.join(', ')}.`);
-        return;
-      }
-      if (/reserva|reservar|cita|agendar|probar\s+reserva|ver\s+c[oó]mo\s+funciona|ver\s+el\s+correo/.test(lower)) {
-        pendingReservation = {};
-        addBot('Claro. Podemos hacer una prueba ahora mismo. Decime para qué día querés simular la reserva.');
-        return;
-      }
-      if (/correo|email|notificaci[oó]n/.test(lower)) {
-        addBot('Si querés, hacemos una reserva simulada y te mando un correo de prueba para que veas cómo llegaría la notificación.');
-        return;
-      }
+        // Update local draft from API response
+        if (data.reservationDraft) {
+          reservationDraft = { ...reservationDraft, ...data.reservationDraft };
+          if (!pendingReservation) pendingReservation = {};
+          pendingReservation = { ...pendingReservation, ...data.reservationDraft };
+        }
 
-      addBot(`En el Plan Pro, el asistente puede responder preguntas, tomar reservas, guardar datos y avisarte por correo. Si querés, escribime “quiero reservar” y hacemos una prueba completa.`);
+        if (data.shouldCreateReservation) {
+          createReservation();
+        } else {
+          addBot(data.reply);
+        }
+
+      } catch (e) {
+        console.error('[DEMO_CHAT_CLIENT] error:', e);
+        addBot('Hubo un error de conexión con la demo de IA.');
+      }
+    }
+
+    // Helper functions for delay
+    function wait(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function randomDelay() {
+      return 1000 + Math.floor(Math.random() * 800);
     }
 
     demoSend.addEventListener('click', function () {
@@ -1037,7 +1050,7 @@
 
     demoInput.addEventListener('keydown', function (event) {
       if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
+        e.preventDefault();
         demoSend.click();
       }
     });
