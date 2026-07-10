@@ -636,7 +636,12 @@
       }
       const bubble = document.createElement('div');
       bubble.className = 'bubble ' + role;
-      bubble.textContent = text;
+      const cleanText = (text || '')
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/\*(.*?)\*/g, '$1')
+        .replace(/__(.*?)__/g, '$1')
+        .replace(/`(.*?)`/g, '$1');
+      bubble.textContent = cleanText;
       row.appendChild(bubble);
       demoMessages.appendChild(row);
       demoMessages.scrollTop = demoMessages.scrollHeight;
