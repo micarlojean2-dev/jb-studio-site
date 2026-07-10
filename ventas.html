@@ -69,7 +69,7 @@
       justify-content: center;
       width: 100%;
       max-width: 1000px;
-      min-height: 75dvh;
+      height: min(860px, calc(100dvh - 48px));
       align-items: center;
     }
 
@@ -77,7 +77,7 @@
       display: flex;
       flex-direction: column;
       width: 100%;
-      min-height: min(78dvh, 920px);
+      height: min(860px, calc(100dvh - 48px));
       border-radius: 36px;
       overflow: hidden;
       background: var(--cream);
@@ -252,12 +252,15 @@
     /* ── Messages area ── */
     #messages {
       flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
+      overflow-x: hidden;
       padding: 22px 18px 10px;
       display: flex;
       flex-direction: column;
       gap: 6px;
       scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
       background: linear-gradient(180deg, var(--cream-soft) 0%, var(--cream) 100%);
     }
 
@@ -301,13 +304,14 @@
     }
 
     .bubble {
-      max-width: min(75%, 520px);
+      max-width: min(85%, 520px);
       padding: 13px 17px;
       border-radius: var(--radius);
       font-size: 14.5px;
       line-height: 1.68;
       white-space: pre-wrap;
       word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     .bubble-row.bot .bubble {
@@ -529,14 +533,17 @@
     }
 
     /* ── Responsive ── */
-    @media (max-width: 600px) {
+    @media (max-width: 768px) {
       body { align-items: stretch; padding: 0; }
-      #app { max-width: none; min-height: 100dvh; }
+      #app { max-width: none; height: 100dvh; }
       #chat-shell {
-        min-height: 100dvh;
+        width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
         border-radius: 0;
         transform: none;
       }
+      #chat-shell:hover { transform: none; }
       .header-info {
         gap: 12px;
         align-items: flex-start;
@@ -556,6 +563,21 @@
       .quick-replies {
         padding-left: 0;
       }
+      #messages {
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      #header {
+        padding: 12px 14px;
+      }
+      #input-area {
+        padding: 10px 12px;
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+      }
+      .bubble {
+        max-width: 90%;
+      }
     }
 
     @media (max-width: 430px) {
@@ -564,6 +586,27 @@
       }
       .header-pitch-bottom {
         white-space: normal;
+      }
+      .header-avatar {
+        width: 32px;
+        height: 32px;
+        font-size: 12px;
+      }
+      .header-title {
+        font-size: 13px;
+      }
+      .header-sub {
+        font-size: 10px;
+      }
+      .bubble {
+        max-width: 92%;
+        font-size: 14px;
+        padding: 12px 15px;
+      }
+      .avatar {
+        width: 26px;
+        height: 26px;
+        font-size: 10px;
       }
     }
 
@@ -686,7 +729,7 @@
     row.appendChild(bubble);
 
     messagesEl.appendChild(row);
-    scrollBottom();
+    scrollBottom(isNearBottom() || role === 'user');
   }
 
   function showQuickReplies() {
@@ -708,7 +751,7 @@
     });
 
     messagesEl.appendChild(wrap);
-    scrollBottom();
+    scrollBottom(isNearBottom());
   }
 
   function hideQuickReplies() {
@@ -736,18 +779,25 @@
     card.appendChild(link);
 
     messagesEl.appendChild(card);
-    scrollBottom();
+    scrollBottom(isNearBottom());
   }
 
-  function scrollBottom() {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+  function scrollBottom(force) {
+    if (force !== false) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+  }
+
+  function isNearBottom() {
+    var threshold = 80;
+    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < threshold;
   }
 
   function setWaiting(on) {
     waiting = on;
     sendBtn.disabled = on;
     typingEl.classList.toggle('visible', on);
-    if (on) scrollBottom();
+    if (on) scrollBottom(isNearBottom());
   }
 
   function containsBlockedLink(text) {
@@ -918,7 +968,7 @@
           humanNotice.className = 'limit-notice';
           humanNotice.textContent = 'Contacto listo para que el equipo de JB Studio continúe la conversación.';
           messagesEl.appendChild(humanNotice);
-          scrollBottom();
+          scrollBottom(true);
         } else if (!summaryShown && raw.includes('[MOSTRAR_RESUMEN]')) {
           summaryShown = true;
           if (leadQualified) trackLeadOnce();
@@ -932,7 +982,7 @@
           notice.className = 'limit-notice';
           notice.textContent = 'Resumen listo. Enviáselo al equipo de JB Studio para coordinar el inicio.';
           messagesEl.appendChild(notice);
-          scrollBottom();
+          scrollBottom(true);
         } else {
           addMsg('bot', raw);
           msgs.push({ role: 'user', content: text });
