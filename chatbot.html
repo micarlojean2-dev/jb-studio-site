@@ -597,6 +597,7 @@
     let emailSends = 0;
     let isFetchingReservations = false;
     let reservationDraft = {};
+    let chatHistory = [];
 
     Object.entries(categories).forEach(([key, value]) => {
       const button = document.createElement('button');
@@ -610,8 +611,10 @@
         demoSubtitle.textContent = 'Podés probar preguntas, reservas y notificaciones.';
         demoMessages.innerHTML = '';
         reservations = [];
+        chatHistory = [];
         renderReservations();
         pendingReservation = null;
+        reservationDraft = {};
         addBot(`Hola. Esta es una demo Pro para ${value.name}.\n\nPodés preguntarme precios, horarios o hacer una reserva de prueba.\n\nSi escribís 'quiero reservar', voy a simular todo el flujo: reserva, panel del dueño y correo de prueba.`);
       });
       grid.appendChild(button);
@@ -991,38 +994,42 @@
     async function respond(text) {
       const category = categories[currentCategory];
       
-      // Always extract info into the draft via API
       try {
         showTypingIndicator();
         await wait(randomDelay());
         hideTypingIndicator();
 
+        const messagesPayload = chatHistory.concat([{ role: 'user', content: text }]);
+
         const res = await fetch('/api/ventas-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: text,
+            demoMode: true,
+            source: 'chatbot_demo',
+            messages: messagesPayload,
             sessionId,
             business: category ? category.name : '',
-            reservationDraft: reservationDraft || {},
-            messages: []
+            reservationDraft: reservationDraft || {}
           })
         });
         
         const data = await res.json();
         console.log('[DEMO_CHAT_CLIENT] response:', JSON.stringify(data));
 
-        // Update local draft from API response
-        if (data.reservationDraft) {
-          reservationDraft = { ...reservationDraft, ...data.reservationDraft };
-          if (!pendingReservation) pendingReservation = {};
-          pendingReservation = { ...pendingReservation, ...data.reservationDraft };
+        if (data.text) {
+          chatHistory.push({ role: 'user', content: text });
+          chatHistory.push({ role: 'assistant', content: data.text });
+          addBot(data.text);
         }
 
-        if (data.shouldCreateReservation) {
+        if (!pendingReservation) pendingReservation = {};
+        extractReservationInfo(text, pendingReservation);
+        Object.assign(reservationDraft, pendingReservation);
+
+        const missing = getMissingFields(pendingReservation);
+        if (missing.length === 0 && pendingReservation.customerName && pendingReservation.service && pendingReservation.date && pendingReservation.time) {
           createReservation();
-        } else {
-          addBot(data.reply);
         }
 
       } catch (e) {

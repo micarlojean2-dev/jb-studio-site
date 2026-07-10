@@ -1075,7 +1075,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera un momento.' });
 
-  const { messages } = req.body || {};
+  const { messages, demoMode } = req.body || {};
   const trackerMeta = parseTrackerBody(req.body || {});
 
   if (!Array.isArray(messages) || messages.length === 0)
@@ -1181,7 +1181,7 @@ export default async function handler(req, res) {
       text = buildQualificationFollowUp(signals);
     }
 
-    if (leadQualified && !leadAlreadyTagged) {
+    if (leadQualified && !leadAlreadyTagged && !demoMode) {
       if (highIntentHandoff) {
         text = buildHumanHandoff(sanitizedMessages);
       } else {
@@ -1191,35 +1191,37 @@ export default async function handler(req, res) {
         await sendMikeTelegram('🔔 Nuevo cliente interesado — JB Studio', minimumLeadText, contactText);
         text = buildPostLeadFollowUp() + '\n\n[LEAD_MINIMO]';
       }
-    } else if (leadQualified && highIntentHandoff && !text.includes('[MOSTRAR_CONTACTO_HUMANO]') && !text.includes('[MOSTRAR_RESUMEN]')) {
+    } else if (leadQualified && highIntentHandoff && !text.includes('[MOSTRAR_CONTACTO_HUMANO]') && !text.includes('[MOSTRAR_RESUMEN]') && !demoMode) {
       text = buildHumanHandoff(sanitizedMessages);
     }
 
-    if (text.includes('[MOSTRAR_RESUMEN]')) {
-      const summaryText = text.replace('[MOSTRAR_RESUMEN]', '').trim();
-      const businessName = getBusinessNameFromSummary(summaryText);
-      const contactText = getPreferredContactFromSummary(summaryText);
-      await sendMikeEmail(`🔔 Nuevo cliente interesado — ${businessName}`, summaryText, contactText);
-      await sendMikeTelegram(`🔔 Nuevo cliente interesado — ${businessName}`, summaryText, contactText);
-    } else if (text.includes('[MOSTRAR_CONTACTO_HUMANO]')) {
-      const summaryText = text.replace('[MOSTRAR_CONTACTO_HUMANO]', '').trim();
-      const contactText = getPreferredContactFromSummary(summaryText);
-      await sendMikeEmail('⚠️ Cliente quiere hablar contigo — JB Studio', summaryText, contactText);
-      await sendMikeTelegram('⚠️ Cliente quiere hablar contigo — JB Studio', summaryText, contactText);
-    } else if (shouldSendLeadFallback(sanitizedMessages, text)) {
-      const fallbackText = buildPossibleLeadAlert(sanitizedMessages);
-      const contactText = getPreferredContactFromSummary(fallbackText);
-      await sendMikeEmail('⚠️ POSIBLE LEAD LISTO (sin tag) — JB Studio', fallbackText, contactText);
-      await sendMikeTelegram('⚠️ POSIBLE LEAD LISTO (sin tag) — JB Studio', fallbackText, contactText);
-    }
+    if (!demoMode) {
+      if (text.includes('[MOSTRAR_RESUMEN]')) {
+        const summaryText = text.replace('[MOSTRAR_RESUMEN]', '').trim();
+        const businessName = getBusinessNameFromSummary(summaryText);
+        const contactText = getPreferredContactFromSummary(summaryText);
+        await sendMikeEmail(`🔔 Nuevo cliente interesado — ${businessName}`, summaryText, contactText);
+        await sendMikeTelegram(`🔔 Nuevo cliente interesado — ${businessName}`, summaryText, contactText);
+      } else if (text.includes('[MOSTRAR_CONTACTO_HUMANO]')) {
+        const summaryText = text.replace('[MOSTRAR_CONTACTO_HUMANO]', '').trim();
+        const contactText = getPreferredContactFromSummary(summaryText);
+        await sendMikeEmail('⚠️ Cliente quiere hablar contigo — JB Studio', summaryText, contactText);
+        await sendMikeTelegram('⚠️ Cliente quiere hablar contigo — JB Studio', summaryText, contactText);
+      } else if (shouldSendLeadFallback(sanitizedMessages, text)) {
+        const fallbackText = buildPossibleLeadAlert(sanitizedMessages);
+        const contactText = getPreferredContactFromSummary(fallbackText);
+        await sendMikeEmail('⚠️ POSIBLE LEAD LISTO (sin tag) — JB Studio', fallbackText, contactText);
+        await sendMikeTelegram('⚠️ POSIBLE LEAD LISTO (sin tag) — JB Studio', fallbackText, contactText);
+      }
 
-    await trackVentasConversation(
-      trackerMeta,
-      sanitizedMessages,
-      latestUserMessage ? latestUserMessage.content : '',
-      text,
-      signals
-    );
+      await trackVentasConversation(
+        trackerMeta,
+        sanitizedMessages,
+        latestUserMessage ? latestUserMessage.content : '',
+        text,
+        signals
+      );
+    }
 
     return res.status(200).json({ text, leadQualified, sessionId: trackerMeta.sessionId });
 
