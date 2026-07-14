@@ -593,24 +593,10 @@
     .del-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* ── Templates tab ──────────────────────────────────────────────────────── */
-    .template-card {
-      background: #ffffff;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-    }
-
-    .template-label {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--green);
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      margin-bottom: 14px;
-    }
-
+    /* .template-body stays: still used as the hidden full-text data source
+       for the "Ver prompt completo" modal (Fase 2.1). The old .template-card /
+       .template-label boxes were replaced by .tpl-card in the Fase 2.1 block
+       further down this stylesheet. */
     .template-body {
       font-family: var(--mono);
       font-size: 13px;
@@ -1084,6 +1070,120 @@
       text-align: center;
       min-width: 160px;
     }
+
+    /* ── Plantillas: tarjetas resumidas + modal grande (Fase 2.1) ──────────── */
+    .tpl-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    .tpl-card-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--green);
+      letter-spacing: 0.2px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .tpl-card-desc {
+      font-size: 14px;
+      color: #444444;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+
+    .tpl-card-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    .tpl-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(20,24,22,0.55);
+      z-index: 110;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 5vh 5vw;
+    }
+
+    .tpl-modal {
+      background: #ffffff;
+      border-radius: 14px;
+      width: 90vw;
+      height: 88vh;
+      max-width: 1100px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 12px 48px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }
+
+    @media (max-width: 640px) {
+      .tpl-modal { width: 96vw; height: 92vh; }
+    }
+
+    .tpl-modal-header {
+      padding: 22px 28px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .tpl-modal-title {
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--green);
+      letter-spacing: -0.2px;
+    }
+
+    .tpl-modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 26px 32px;
+    }
+
+    .tpl-modal-text {
+      font-size: 15px;
+      line-height: 1.8;
+      color: #222222;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .tpl-modal-footer {
+      padding: 18px 28px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      flex-shrink: 0;
+    }
+
+    .tpl-toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--green);
+      color: #ffffff;
+      padding: 12px 22px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .tpl-toast.is-visible { opacity: 1; }
   </style>
 </head>
 <body>
@@ -1179,10 +1279,10 @@
           </label>
           <div id="menu-items" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
           <button type="button" id="add-menu-item" class="copy-link" style="font-size:12px;">+ Agregar item</button>
-          <p style="font-size:11px;color:#666;margin-top:8px;line-height:1.5;">
-            💡 Para mostrar las tarjetas en el chat, agrega al System Prompt:<br>
-            <code style="background:#1a1a1a;color:#4ade80;padding:2px 6px;border-radius:4px;font-size:11px;">Cuando el usuario pregunte por servicios o menú, responde e incluye: [MOSTRAR_MENU]</code>
-          </p>
+          <div style="background:var(--green-light);border:1px solid #c2dece;border-radius:8px;padding:12px 16px;margin-top:8px;">
+            <p style="font-size:11.5px;color:#555;line-height:1.5;margin-bottom:6px;">💡 Para mostrar las tarjetas en el chat, agrega al System Prompt:</p>
+            <p style="font-size:12.5px;color:var(--green);line-height:1.5;font-weight:600;">Cuando el usuario pregunte por servicios o menú, responde e incluye: [MOSTRAR_MENU]</p>
+          </div>
         </div>
 
         <button id="create-btn" class="action-btn">Create Client →</button>
@@ -1199,14 +1299,24 @@
     <div id="tab-templates" class="admin-body" style="display:none">
 
       <div class="section-title">Plantillas de System Prompt</div>
+
+      <div class="plan-info-box" style="margin-bottom:16px;">
+        Estas plantillas se usan con el formulario manual. Para crear un chatbot automáticamente, usa "+ Crear chatbot automático".
+      </div>
+
       <p style="font-size:13px;color:#555;margin-bottom:28px;line-height:1.6;">
-        Plantillas completas para el producto Pro. Copia, pega en el campo System Prompt y reemplaza los valores entre <strong>[CORCHETES]</strong>.
+        Elige una plantilla, revisa el prompt completo y pulsa <strong>"Usar plantilla"</strong> para cargarlo directamente en el formulario. Luego reemplaza los valores entre <strong>[CORCHETES]</strong>.
       </p>
 
       <!-- ── PLANTILLA 1: BARBERÍA ── -->
-      <div class="template-card">
-        <div class="template-label">✂ Plantilla 1 — Barbería / Peluquería</div>
-        <div class="template-body" id="tpl-0">REGLA CRÍTICA: Cuando el cliente pregunte por imágenes, fotos, catálogo o servicios visuales, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. NUNCA mandes al cliente a Instagram ni a ninguna red social a ver imágenes. Las imágenes se muestran aquí dentro del chat.
+      <div class="tpl-card">
+        <div class="tpl-card-name">✂ Barbería / Peluquería</div>
+        <div class="tpl-card-desc">Asistente para responder precios, horarios, servicios, catálogo y reservas.</div>
+        <div class="tpl-card-actions">
+          <button type="button" class="copy-link tpl-view-btn" data-tpl="tpl-0">Ver prompt completo</button>
+          <button type="button" class="action-btn tpl-use-btn" style="margin-top:0" data-tpl="tpl-0">Usar plantilla</button>
+        </div>
+        <div class="template-body" id="tpl-0" hidden>REGLA CRÍTICA: Cuando el cliente pregunte por imágenes, fotos, catálogo o servicios visuales, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. NUNCA mandes al cliente a Instagram ni a ninguna red social a ver imágenes. Las imágenes se muestran aquí dentro del chat.
 
 Eres el asistente virtual de [NOMBRE DE LA BARBERÍA], una barbería profesional ubicada en [DIRECCIÓN, CIUDAD]. Atiendes en nombre del negocio con un tono amable, directo y de confianza.
 
@@ -1267,13 +1377,17 @@ LÍMITES ESTRICTOS:
 - No menciones ni recomiendes negocios de la competencia.
 - No mandes al cliente a Instagram ni a redes sociales para ver imágenes. Las imágenes se muestran aquí en el chat.
 - No uses formato Markdown, asteriscos, negritas ni guiones de lista. Escribe en texto plano y natural como una conversación.</div>
-        <button class="copy-link" onclick="copyTpl('tpl-0', this)">Copiar plantilla</button>
       </div>
 
       <!-- ── PLANTILLA 2: RESTAURANTE ── -->
-      <div class="template-card">
-        <div class="template-label">🍽 Plantilla 2 — Restaurante / Cafetería</div>
-        <div class="template-body" id="tpl-1">REGLA CRÍTICA: Cuando el cliente pregunte por imágenes, fotos, catálogo, platos o carta visual, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. NUNCA mandes al cliente a Instagram ni a ninguna red social a ver el menú o fotos de los platos. Las imágenes se muestran aquí dentro del chat.
+      <div class="tpl-card">
+        <div class="tpl-card-name">🍽 Restaurante / Cafetería</div>
+        <div class="tpl-card-desc">Asistente para mostrar el menú, precios, horarios y tomar reservas de mesa.</div>
+        <div class="tpl-card-actions">
+          <button type="button" class="copy-link tpl-view-btn" data-tpl="tpl-1">Ver prompt completo</button>
+          <button type="button" class="action-btn tpl-use-btn" style="margin-top:0" data-tpl="tpl-1">Usar plantilla</button>
+        </div>
+        <div class="template-body" id="tpl-1" hidden>REGLA CRÍTICA: Cuando el cliente pregunte por imágenes, fotos, catálogo, platos o carta visual, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. NUNCA mandes al cliente a Instagram ni a ninguna red social a ver el menú o fotos de los platos. Las imágenes se muestran aquí dentro del chat.
 
 Eres el asistente virtual de [NOMBRE DEL RESTAURANTE], un restaurante / cafetería ubicado en [DIRECCIÓN, CIUDAD]. Atiendes con un tono cálido, amable y entusiasta con la gastronomía.
 
@@ -1340,13 +1454,17 @@ LÍMITES ESTRICTOS:
 - No menciones ni recomiendes otros restaurantes.
 - No mandes al cliente a Instagram ni a redes sociales para ver imágenes o platos. Las imágenes se muestran aquí en el chat.
 - No uses formato Markdown, asteriscos, negritas ni guiones de lista. Escribe en texto plano y natural.</div>
-        <button class="copy-link" onclick="copyTpl('tpl-1', this)">Copiar plantilla</button>
       </div>
 
       <!-- ── PLANTILLA 3: SALÓN DE BELLEZA ── -->
-      <div class="template-card">
-        <div class="template-label">💅 Plantilla 3 — Salón de Belleza / Spa</div>
-        <div class="template-body" id="tpl-2">REGLA CRÍTICA: Cuando el cliente pregunte por imágenes, fotos, catálogo o trabajos realizados, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. NUNCA mandes al cliente a Instagram ni a ninguna red social a ver fotos de trabajos o tratamientos. Las imágenes se muestran aquí dentro del chat.
+      <div class="tpl-card">
+        <div class="tpl-card-name">💅 Salón de Belleza / Spa</div>
+        <div class="tpl-card-desc">Asistente para servicios, tratamientos, precios y agendar citas.</div>
+        <div class="tpl-card-actions">
+          <button type="button" class="copy-link tpl-view-btn" data-tpl="tpl-2">Ver prompt completo</button>
+          <button type="button" class="action-btn tpl-use-btn" style="margin-top:0" data-tpl="tpl-2">Usar plantilla</button>
+        </div>
+        <div class="template-body" id="tpl-2" hidden>REGLA CRÍTICA: Cuando el cliente pregunte por imágenes, fotos, catálogo o trabajos realizados, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. NUNCA mandes al cliente a Instagram ni a ninguna red social a ver fotos de trabajos o tratamientos. Las imágenes se muestran aquí dentro del chat.
 
 Eres el asistente virtual de [NOMBRE DEL SALÓN], un salón de belleza y spa ubicado en [DIRECCIÓN, CIUDAD]. Atiendes con un tono elegante, cálido y profesional.
 
@@ -1416,13 +1534,17 @@ LÍMITES ESTRICTOS:
 - No menciones ni recomiendes competidores.
 - No mandes al cliente a Instagram ni a redes sociales para ver imágenes o trabajos. Las imágenes se muestran aquí en el chat.
 - No uses formato Markdown, asteriscos, negritas ni guiones de lista. Escribe en texto plano y natural.</div>
-        <button class="copy-link" onclick="copyTpl('tpl-2', this)">Copiar plantilla</button>
       </div>
 
       <!-- ── PLANTILLA 4: NAIL SALON ── -->
-      <div class="template-card">
-        <div class="template-label">💎 Plantilla 4 — Uñas / Nail Salon</div>
-        <div class="template-body" id="tpl-3">REGLA CRÍTICA: Cuando el cliente pregunte por imágenes, fotos, diseños, catálogo o nail art, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. NUNCA mandes al cliente a Instagram ni a ninguna red social a ver diseños o fotos. Las imágenes se muestran aquí dentro del chat.
+      <div class="tpl-card">
+        <div class="tpl-card-name">💎 Uñas / Nail Salon</div>
+        <div class="tpl-card-desc">Asistente para servicios, diseños, precios y agendar citas.</div>
+        <div class="tpl-card-actions">
+          <button type="button" class="copy-link tpl-view-btn" data-tpl="tpl-3">Ver prompt completo</button>
+          <button type="button" class="action-btn tpl-use-btn" style="margin-top:0" data-tpl="tpl-3">Usar plantilla</button>
+        </div>
+        <div class="template-body" id="tpl-3" hidden>REGLA CRÍTICA: Cuando el cliente pregunte por imágenes, fotos, diseños, catálogo o nail art, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. NUNCA mandes al cliente a Instagram ni a ninguna red social a ver diseños o fotos. Las imágenes se muestran aquí dentro del chat.
 
 Eres el asistente virtual de [NOMBRE DEL NAIL SALON], un salón especializado en uñas y nail art ubicado en [DIRECCIÓN, CIUDAD]. Atiendes con un tono divertido, profesional y cercano.
 
@@ -1498,13 +1620,17 @@ LÍMITES ESTRICTOS:
 - No menciones ni recomiendes competidores.
 - No mandes al cliente a Instagram ni a redes sociales para ver diseños o fotos. Las imágenes se muestran aquí en el chat.
 - No uses formato Markdown, asteriscos, negritas ni guiones de lista. Escribe en texto plano y natural.</div>
-        <button class="copy-link" onclick="copyTpl('tpl-3', this)">Copiar plantilla</button>
       </div>
 
       <!-- ── PLANTILLA 5: FOTOGRAFÍA ── -->
-      <div class="template-card">
-        <div class="template-label">📷 Plantilla 5 — Fotografía</div>
-        <div class="template-body" id="tpl-4">REGLA CRÍTICA: Cuando el cliente pregunte por imágenes, fotos, portfolio, trabajos anteriores o catálogo visual, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. NUNCA mandes al cliente a Instagram ni a ninguna red social a ver fotos o trabajos. Las imágenes y el portfolio se muestran aquí dentro del chat.
+      <div class="tpl-card">
+        <div class="tpl-card-name">📷 Fotografía</div>
+        <div class="tpl-card-desc">Asistente para paquetes, precios, portafolio y agendar sesiones.</div>
+        <div class="tpl-card-actions">
+          <button type="button" class="copy-link tpl-view-btn" data-tpl="tpl-4">Ver prompt completo</button>
+          <button type="button" class="action-btn tpl-use-btn" style="margin-top:0" data-tpl="tpl-4">Usar plantilla</button>
+        </div>
+        <div class="template-body" id="tpl-4" hidden>REGLA CRÍTICA: Cuando el cliente pregunte por imágenes, fotos, portfolio, trabajos anteriores o catálogo visual, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. NUNCA mandes al cliente a Instagram ni a ninguna red social a ver fotos o trabajos. Las imágenes y el portfolio se muestran aquí dentro del chat.
 
 Eres el asistente virtual de [NOMBRE DEL ESTUDIO / FOTÓGRAFO], un estudio de fotografía profesional ubicado en [CIUDAD]. Atiendes con un tono creativo, cálido y profesional.
 
@@ -1584,7 +1710,6 @@ LÍMITES ESTRICTOS:
 - No menciones ni recomiendes fotógrafos de la competencia.
 - No mandes al cliente a Instagram ni a redes sociales para ver fotos o portfolio. Las imágenes se muestran aquí en el chat.
 - No uses formato Markdown, asteriscos, negritas ni guiones de lista. Escribe en texto plano y natural.</div>
-        <button class="copy-link" onclick="copyTpl('tpl-4', this)">Copiar plantilla</button>
       </div>
 
     </div>
@@ -1857,6 +1982,26 @@ LÍMITES ESTRICTOS:
         </div>
       </div>
     </div>
+
+    <!-- ── Modal: "Ver prompt completo" (Plantillas — Fase 2.1) ── -->
+    <div id="tpl-modal-overlay" class="tpl-modal-overlay" style="display:none">
+      <div class="tpl-modal">
+        <div class="tpl-modal-header">
+          <div class="tpl-modal-title" id="tpl-modal-title">Plantilla</div>
+          <button type="button" id="tpl-modal-close" class="wizard-close">✕</button>
+        </div>
+        <div class="tpl-modal-body">
+          <div class="tpl-modal-text" id="tpl-modal-text"></div>
+        </div>
+        <div class="tpl-modal-footer">
+          <button type="button" id="tpl-modal-cancel" class="wizard-btn-secondary">Cerrar</button>
+          <button type="button" id="tpl-modal-copy" class="copy-link">Copiar prompt</button>
+          <button type="button" id="tpl-modal-use" class="action-btn" style="margin-top:0">Usar plantilla</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tpl-toast" class="tpl-toast" style="display:none"></div>
 
   </div><!-- /admin-panel -->
 
@@ -2168,15 +2313,6 @@ LÍMITES ESTRICTOS:
       btn.disabled = false;
       btn.textContent = 'Payment link';
     }
-
-    // ── Templates ──────────────────────────────────────────────────────────
-    window.copyTpl = function(id, btn) {
-      const text = document.getElementById(id).textContent;
-      navigator.clipboard.writeText(text).then(() => {
-        btn.textContent = 'Copied ✓';
-        setTimeout(() => btn.textContent = 'Copy template', 1800);
-      });
-    };
 
     // ── Login / Logout ─────────────────────────────────────────────────────
     async function tryLogin() {
@@ -2898,6 +3034,106 @@ LÍMITES ESTRICTOS:
       goToStep('summary');
     });
 
+  })();
+  </script>
+
+  <!-- ── Plantillas: tarjetas + modal "Ver prompt completo" — Fase 2.1 ───────
+       Own IIFE, no shared state with the legacy form's script or the wizard's.
+       Only touches: the 5 .tpl-view-btn/.tpl-use-btn buttons, the shared
+       modal, the toast, and (on "Usar plantilla") the legacy #f-prompt field
+       and the CLIENTES tab button. No API calls, no Redis. ── -->
+  <script>
+  (function () {
+    const TPL_NAMES = {
+      'tpl-0': 'Barbería / Peluquería',
+      'tpl-1': 'Restaurante / Cafetería',
+      'tpl-2': 'Salón de Belleza / Spa',
+      'tpl-3': 'Uñas / Nail Salon',
+      'tpl-4': 'Fotografía',
+    };
+
+    const modalOverlay = document.getElementById('tpl-modal-overlay');
+    const modalTitle    = document.getElementById('tpl-modal-title');
+    const modalText     = document.getElementById('tpl-modal-text');
+    const modalClose    = document.getElementById('tpl-modal-close');
+    const modalCancel   = document.getElementById('tpl-modal-cancel');
+    const modalCopy     = document.getElementById('tpl-modal-copy');
+    const modalUse      = document.getElementById('tpl-modal-use');
+    const toastEl        = document.getElementById('tpl-toast');
+
+    let activeTplId = null;
+    let toastTimer = null;
+
+    function getTplText(id) {
+      const el = document.getElementById(id);
+      return el ? el.textContent : '';
+    }
+
+    function openModal(id) {
+      activeTplId = id;
+      modalTitle.textContent = TPL_NAMES[id] || 'Plantilla';
+      modalText.textContent = getTplText(id);
+      modalOverlay.style.display = 'flex';
+    }
+
+    function closeModal() {
+      modalOverlay.style.display = 'none';
+      activeTplId = null;
+    }
+
+    function showToast(msg) {
+      toastEl.textContent = msg;
+      toastEl.style.display = 'block';
+      requestAnimationFrame(() => toastEl.classList.add('is-visible'));
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toastEl.classList.remove('is-visible');
+        setTimeout(() => { toastEl.style.display = 'none'; }, 300);
+      }, 3200);
+    }
+
+    function useTemplate(id) {
+      const text = getTplText(id);
+      const promptField = document.getElementById('f-prompt');
+      promptField.value = text;
+      promptField.dispatchEvent(new Event('input', { bubbles: true }));
+
+      const clientsTabBtn = document.querySelector('.tab-btn[data-tab="clients"]');
+      if (clientsTabBtn) clientsTabBtn.click();
+
+      requestAnimationFrame(() => {
+        promptField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        promptField.focus();
+      });
+
+      showToast('Plantilla cargada. Reemplaza los datos entre corchetes.');
+    }
+
+    document.querySelectorAll('.tpl-view-btn').forEach(btn => {
+      btn.addEventListener('click', () => openModal(btn.dataset.tpl));
+    });
+    document.querySelectorAll('.tpl-use-btn').forEach(btn => {
+      btn.addEventListener('click', () => useTemplate(btn.dataset.tpl));
+    });
+
+    modalClose.addEventListener('click', closeModal);
+    modalCancel.addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+
+    modalCopy.addEventListener('click', function () {
+      if (!activeTplId) return;
+      navigator.clipboard.writeText(getTplText(activeTplId)).then(() => {
+        this.textContent = 'Copiado ✓';
+        setTimeout(() => this.textContent = 'Copiar prompt', 1800);
+      });
+    });
+
+    modalUse.addEventListener('click', () => {
+      if (!activeTplId) return;
+      const id = activeTplId;
+      closeModal();
+      useTemplate(id);
+    });
   })();
   </script>
 </body>
