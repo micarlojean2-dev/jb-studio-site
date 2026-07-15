@@ -1184,6 +1184,195 @@
       transition: opacity 0.25s ease;
     }
     .tpl-toast.is-visible { opacity: 1; }
+
+    /* ── Fase 2.2: panel solo automático ────────────────────────────────────── */
+    .tech-mode-hidden { display: none !important; }
+
+    .clients-table-wrap {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow-x: auto;
+      background: #fff;
+    }
+
+    .clients-table { width: 100%; border-collapse: collapse; min-width: 820px; }
+
+    .clients-table th {
+      text-align: left;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      padding: 12px 16px;
+      background: #f5f5f5;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .clients-table td {
+      padding: 14px 16px;
+      font-size: 14px;
+      color: #1a1a1a;
+      border-bottom: 1px solid #eee;
+      white-space: nowrap;
+    }
+
+    .clients-table tr:last-child td { border-bottom: none; }
+    .clients-table tr:nth-child(even) td { background: #fafafa; }
+
+    .ct-business { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+
+    .ct-link {
+      background: none;
+      border: none;
+      color: var(--green);
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+    }
+    .ct-link:hover { color: var(--green-hover); }
+
+    .st-badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 11px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+    .st-green  { background: #dcf5e8; color: var(--green); }
+    .st-yellow { background: #fff4d6; color: #8a6a1a; }
+    .st-red    { background: #fde8e8; color: var(--danger); }
+    .st-gray   { background: #f0f0f0; color: #666; }
+
+    .manage-btn {
+      background: #fff;
+      border: 1px solid var(--green);
+      border-radius: 6px;
+      padding: 6px 16px;
+      color: var(--green);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .manage-btn:hover { background: var(--green-light); }
+
+    /* Administrar modal */
+    .manage-modal-overlay, .edit-modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(20,24,22,0.55);
+      z-index: 120;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    .manage-modal, .edit-modal {
+      background: #fff;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 480px;
+      max-height: calc(100vh - 48px);
+      overflow-y: auto;
+      box-shadow: 0 12px 48px rgba(0,0,0,0.25);
+    }
+
+    .edit-modal { max-width: 560px; }
+
+    .manage-modal-header, .edit-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 22px 26px 4px;
+    }
+
+    .manage-modal-title, .edit-modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--green);
+    }
+
+    .manage-modal-sub {
+      padding: 0 26px 16px;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .manage-action-list { padding: 8px 14px 20px; display: flex; flex-direction: column; gap: 2px; }
+
+    .manage-action-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 12px;
+      font-family: inherit;
+      font-size: 14.5px;
+      font-weight: 500;
+      color: #1a1a1a;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .manage-action-btn:hover { background: var(--green-light); }
+    .manage-action-btn.is-danger { color: var(--danger); }
+    .manage-action-btn.is-danger:hover { background: #fff0f0; }
+
+    .manage-action-info {
+      margin: 4px 14px 12px;
+      padding: 12px 14px;
+      background: var(--green-light);
+      border: 1px solid #c2dece;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #235c3a;
+      line-height: 1.6;
+      display: none;
+    }
+
+    .edit-modal-body { padding: 8px 26px 6px; }
+    .edit-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 16px 26px 22px;
+    }
+
+    .svc2-row {
+      display: grid;
+      grid-template-columns: 1fr 90px;
+      gap: 8px;
+      background: #f7f7f7;
+      border: 1px solid #eee;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .svc2-row input { font-size: 12px; }
+    .svc2-remove-btn {
+      grid-column: 1/3;
+      background: transparent;
+      border: 1px solid #ddd;
+      color: #888;
+      border-radius: 6px;
+      padding: 4px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 640px) {
+      .manage-modal, .edit-modal { max-width: 94vw; }
+    }
   </style>
 </head>
 <body>
@@ -1206,7 +1395,9 @@
       <div class="admin-brand">JB <span>ADMIN</span></div>
       <nav class="admin-tabs">
         <button class="tab-btn is-active" data-tab="clients">CLIENTES</button>
-        <button class="tab-btn" data-tab="templates">PLANTILLAS</button>
+        <button class="tab-btn" data-tab="pagos">PAGOS</button>
+        <!-- Modo técnico: pestaña Plantillas oculta por defecto (no se borra, ver JB_TECH_MODE). -->
+        <button class="tab-btn tech-mode-hidden" data-tab="templates">PLANTILLAS</button>
       </nav>
       <button class="admin-logout" id="logout-btn">Log out</button>
     </header>
@@ -1214,84 +1405,95 @@
     <!-- ── Tab: Clients ── -->
     <div id="tab-clients" class="admin-body">
 
+      <div class="section-title">Clientes</div>
       <div style="margin-bottom:24px;">
-        <button id="open-wizard-btn" class="action-btn wizard-open-btn" type="button">+ Crear chatbot automático</button>
+        <button id="open-wizard-btn" class="action-btn wizard-open-btn" type="button">+ Crear chatbot</button>
       </div>
 
-      <div class="section-title">New Client</div>
-      <div class="client-form">
-        <div class="form-row">
-          <div class="form-group">
-            <label>Client ID <span>(lowercase, hyphens only)</span></label>
-            <input type="text" id="f-id" placeholder="barberia-lopez" class="admin-input">
-          </div>
-          <div class="form-group">
-            <label>Business Name</label>
-            <input type="text" id="f-bname" placeholder="Barbería López" class="admin-input">
-          </div>
-          <div class="form-group">
-            <label>Owner Name <span>(optional)</span></label>
-            <input type="text" id="f-owner" placeholder="Carlos López" class="admin-input">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Plan</label>
-            <select id="f-plan" class="admin-input">
-              <option value="basic">Basic</option>
-              <option value="pro">Pro</option>
-              <option value="premium">Premium</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Language</label>
-            <select id="f-lang" class="admin-input">
-              <option value="es">Español</option>
-              <option value="en">English</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Primary Color</label>
-            <div class="color-row">
-              <input type="color" id="f-cpicker" value="#1a4a2e">
-              <input type="text" id="f-color" value="#1a4a2e" class="admin-input" placeholder="#1a4a2e" style="flex:1">
+      <!-- Modo técnico: formulario manual oculto por defecto (no se borra, ver JB_TECH_MODE). -->
+      <div id="legacy-client-form-wrap" class="tech-mode-hidden">
+        <div class="section-title">New Client (manual)</div>
+        <div class="client-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Client ID <span>(lowercase, hyphens only)</span></label>
+              <input type="text" id="f-id" placeholder="barberia-lopez" class="admin-input">
+            </div>
+            <div class="form-group">
+              <label>Business Name</label>
+              <input type="text" id="f-bname" placeholder="Barbería López" class="admin-input">
+            </div>
+            <div class="form-group">
+              <label>Owner Name <span>(optional)</span></label>
+              <input type="text" id="f-owner" placeholder="Carlos López" class="admin-input">
             </div>
           </div>
-          <div class="form-group">
-            <label>WhatsApp <span>(optional)</span></label>
-            <input type="text" id="f-wa" placeholder="+56912345678" class="admin-input">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Plan</label>
+              <select id="f-plan" class="admin-input">
+                <option value="basic">Basic</option>
+                <option value="pro">Pro</option>
+                <option value="premium">Premium</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Language</label>
+              <select id="f-lang" class="admin-input">
+                <option value="es">Español</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Primary Color</label>
+              <div class="color-row">
+                <input type="color" id="f-cpicker" value="#1a4a2e">
+                <input type="text" id="f-color" value="#1a4a2e" class="admin-input" placeholder="#1a4a2e" style="flex:1">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>WhatsApp <span>(optional)</span></label>
+              <input type="text" id="f-wa" placeholder="+56912345678" class="admin-input">
+            </div>
+            <div class="form-group">
+              <label>Owner Email <span>(for reservation alerts)</span></label>
+              <input type="email" id="f-email" placeholder="owner@negocio.com" class="admin-input">
+            </div>
           </div>
-          <div class="form-group">
-            <label>Owner Email <span>(for reservation alerts)</span></label>
-            <input type="email" id="f-email" placeholder="owner@negocio.com" class="admin-input">
+          <div class="form-group" style="margin-bottom:14px">
+            <label>System Prompt</label>
+            <textarea id="f-prompt" class="admin-input admin-textarea" placeholder="You are a helpful assistant for [Business Name]. Your role is to..."></textarea>
           </div>
-        </div>
-        <div class="form-group" style="margin-bottom:14px">
-          <label>System Prompt</label>
-          <textarea id="f-prompt" class="admin-input admin-textarea" placeholder="You are a helpful assistant for [Business Name]. Your role is to..."></textarea>
-        </div>
 
-        <!-- ── Menú / Catálogo ── -->
-        <div class="form-group" style="margin-bottom:18px">
-          <label style="display:flex;align-items:center;justify-content:space-between;">
-            <span>Menú / Catálogo <span style="font-weight:400;color:#888">(opcional)</span></span>
-            <span id="menu-count" style="font-size:11px;color:#888">0 / 20 items</span>
-          </label>
-          <div id="menu-items" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
-          <button type="button" id="add-menu-item" class="copy-link" style="font-size:12px;">+ Agregar item</button>
-          <div style="background:var(--green-light);border:1px solid #c2dece;border-radius:8px;padding:12px 16px;margin-top:8px;">
-            <p style="font-size:11.5px;color:#555;line-height:1.5;margin-bottom:6px;">💡 Para mostrar las tarjetas en el chat, agrega al System Prompt:</p>
-            <p style="font-size:12.5px;color:var(--green);line-height:1.5;font-weight:600;">Cuando el usuario pregunte por servicios o menú, responde e incluye: [MOSTRAR_MENU]</p>
+          <!-- ── Menú / Catálogo ── -->
+          <div class="form-group" style="margin-bottom:18px">
+            <label style="display:flex;align-items:center;justify-content:space-between;">
+              <span>Menú / Catálogo <span style="font-weight:400;color:#888">(opcional)</span></span>
+              <span id="menu-count" style="font-size:11px;color:#888">0 / 20 items</span>
+            </label>
+            <div id="menu-items" style="display:flex;flex-direction:column;gap:10px;margin-bottom:10px;"></div>
+            <button type="button" id="add-menu-item" class="copy-link" style="font-size:12px;">+ Agregar item</button>
+            <div style="background:var(--green-light);border:1px solid #c2dece;border-radius:8px;padding:12px 16px;margin-top:8px;">
+              <p style="font-size:11.5px;color:#555;line-height:1.5;margin-bottom:6px;">💡 Para mostrar las tarjetas en el chat, agrega al System Prompt:</p>
+              <p style="font-size:12.5px;color:var(--green);line-height:1.5;font-weight:600;">Cuando el usuario pregunte por servicios o menú, responde e incluye: [MOSTRAR_MENU]</p>
+            </div>
           </div>
-        </div>
 
-        <button id="create-btn" class="action-btn">Create Client →</button>
-        <div id="create-msg" class="create-msg"></div>
+          <button id="create-btn" class="action-btn">Create Client →</button>
+          <div id="create-msg" class="create-msg"></div>
+        </div>
       </div>
 
-      <div class="section-title">All Clients</div>
       <div id="clients-list">
         <div class="admin-loading">Loading clients…</div>
+      </div>
+    </div>
+
+    <!-- ── Tab: Pagos ── -->
+    <div id="tab-pagos" class="admin-body" style="display:none">
+      <div class="section-title">Pagos</div>
+      <div id="pagos-list">
+        <div class="admin-loading">Loading…</div>
       </div>
     </div>
 
@@ -1301,7 +1503,7 @@
       <div class="section-title">Plantillas de System Prompt</div>
 
       <div class="plan-info-box" style="margin-bottom:16px;">
-        Estas plantillas se usan con el formulario manual. Para crear un chatbot automáticamente, usa "+ Crear chatbot automático".
+        Estas plantillas se usan con el formulario manual. Para crear un chatbot automáticamente, usa "+ Crear chatbot".
       </div>
 
       <p style="font-size:13px;color:#555;margin-bottom:28px;line-height:1.6;">
@@ -1953,20 +2155,26 @@ LÍMITES ESTRICTOS:
           <div class="wizard-step" data-step="summary" style="display:none">
             <div id="w-summary-banner" class="summary-banner" style="display:none">Modo de prueba: el chatbot todavía no fue creado.</div>
 
-            <div class="summary-section" id="w-prompt-section">
-              <div class="summary-section-title">System Prompt generado automáticamente</div>
-              <p style="font-size:12px;color:#666;margin-bottom:10px;line-height:1.5;">
-                Generado localmente a partir de los datos del negocio — no se usó ninguna IA ni servicio externo.
-              </p>
-              <textarea id="w-prompt-text" class="admin-input admin-textarea" style="min-height:280px;font-family:var(--mono);font-size:12.5px;" readonly></textarea>
-              <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
-                <button type="button" id="w-prompt-copy" class="copy-link">Copiar prompt</button>
-                <button type="button" id="w-prompt-test-toggle" class="copy-link">Probar prompt</button>
-              </div>
-              <div id="w-prompt-test-panel" style="display:none;margin-top:14px;border-top:1px solid #eee;padding-top:14px;"></div>
-            </div>
-
             <div id="w-summary-content"></div>
+
+            <!-- El "cerebro" (System Prompt) se genera automáticamente pero no se
+                 muestra en el flujo normal — queda colapsado aquí por si se
+                 necesita para diagnóstico. No se elimina, solo se oculta. -->
+            <details style="margin-top:8px;">
+              <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#888;padding:8px 0;">Configuración avanzada</summary>
+              <div class="summary-section" id="w-prompt-section" style="margin-top:8px;">
+                <div class="summary-section-title">System Prompt generado automáticamente</div>
+                <p style="font-size:12px;color:#666;margin-bottom:10px;line-height:1.5;">
+                  Generado localmente a partir de los datos del negocio — no se usó ninguna IA ni servicio externo.
+                </p>
+                <textarea id="w-prompt-text" class="admin-input admin-textarea" style="min-height:280px;font-family:var(--mono);font-size:12.5px;" readonly></textarea>
+                <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+                  <button type="button" id="w-prompt-copy" class="copy-link">Copiar prompt</button>
+                  <button type="button" id="w-prompt-test-toggle" class="copy-link">Probar prompt</button>
+                </div>
+                <div id="w-prompt-test-panel" style="display:none;margin-top:14px;border-top:1px solid #eee;padding-top:14px;"></div>
+              </div>
+            </details>
           </div>
 
         </div>
@@ -2003,11 +2211,122 @@ LÍMITES ESTRICTOS:
 
     <div id="tpl-toast" class="tpl-toast" style="display:none"></div>
 
+    <!-- ── Modal: Administrar cliente (Fase 2.2) ── -->
+    <div id="manage-modal-overlay" class="manage-modal-overlay" style="display:none">
+      <div class="manage-modal">
+        <div class="manage-modal-header">
+          <div class="manage-modal-title" id="manage-modal-title">Administrar</div>
+          <button type="button" id="manage-modal-close" class="wizard-close">✕</button>
+        </div>
+        <div class="manage-modal-sub" id="manage-modal-sub"></div>
+        <div id="manage-payment-info" class="manage-action-info"></div>
+        <div class="manage-action-list">
+          <button type="button" class="manage-action-btn" id="mg-view-bot">👁 Ver chatbot</button>
+          <button type="button" class="manage-action-btn" id="mg-edit-info">✏️ Editar información</button>
+          <button type="button" class="manage-action-btn" id="mg-edit-design">🎨 Editar diseño</button>
+          <button type="button" class="manage-action-btn" id="mg-edit-services">🧾 Editar servicios</button>
+          <button type="button" class="manage-action-btn" id="mg-view-reservations">📅 Ver reservas</button>
+          <button type="button" class="manage-action-btn" id="mg-copy-link">🔗 Copiar enlace directo</button>
+          <button type="button" class="manage-action-btn" id="mg-copy-code">📋 Copiar código para web</button>
+          <button type="button" class="manage-action-btn" id="mg-view-payment">💳 Ver pago</button>
+          <button type="button" class="manage-action-btn" id="mg-toggle-active">⏸ Pausar chatbot</button>
+          <button type="button" class="manage-action-btn is-danger" id="mg-delete">🗑 Eliminar cliente</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Modal: Editar información / diseño / servicios (Fase 2.2) ──
+         Reutiliza PUT /api/clients (ya existente). No expone prompt ni
+         corchetes: solo los campos de negocio, diseño o servicios. ── -->
+    <div id="edit-modal-overlay" class="edit-modal-overlay" style="display:none">
+      <div class="edit-modal">
+        <div class="edit-modal-header">
+          <div class="edit-modal-title" id="edit-modal-title">Editar</div>
+          <button type="button" id="edit-modal-close" class="wizard-close">✕</button>
+        </div>
+        <div class="edit-modal-body">
+
+          <div id="edit-section-info">
+            <div class="form-group" style="margin-bottom:14px">
+              <label>Nombre del negocio</label>
+              <input type="text" id="e-bname" class="admin-input">
+            </div>
+            <div class="form-group" style="margin-bottom:14px">
+              <label>Nombre del dueño <span>(opcional)</span></label>
+              <input type="text" id="e-owner" class="admin-input">
+            </div>
+            <div class="form-group" style="margin-bottom:14px">
+              <label>Correo del dueño</label>
+              <input type="email" id="e-email" class="admin-input">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Plan</label>
+                <select id="e-plan" class="admin-input">
+                  <option value="basic">Básico</option>
+                  <option value="pro">Pro</option>
+                  <option value="premium">Premium</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Idioma</label>
+                <select id="e-lang" class="admin-input">
+                  <option value="es">Español</option>
+                  <option value="en">Inglés</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="margin-top:14px">
+              <label>WhatsApp / teléfono <span>(opcional)</span></label>
+              <input type="text" id="e-wa" class="admin-input">
+            </div>
+          </div>
+
+          <div id="edit-section-design" style="display:none">
+            <div class="form-group">
+              <label>Color principal</label>
+              <div class="color-row">
+                <input type="color" id="e-cpicker" value="#1a4a2e">
+                <input type="text" id="e-color" class="admin-input" style="flex:1">
+              </div>
+            </div>
+          </div>
+
+          <div id="edit-section-services" style="display:none">
+            <div class="form-group">
+              <label style="display:flex;align-items:center;justify-content:space-between;">
+                <span>Servicios</span>
+                <span id="e-svc-count" style="font-size:11px;color:#888">0 / 20</span>
+              </label>
+              <div id="e-svc-items"></div>
+              <button type="button" id="e-svc-add" class="copy-link" style="font-size:12px;margin-top:6px;">+ Agregar servicio</button>
+            </div>
+          </div>
+
+          <div id="edit-msg" class="create-msg"></div>
+        </div>
+        <div class="edit-modal-footer">
+          <button type="button" id="edit-modal-cancel" class="wizard-btn-secondary">Cancelar</button>
+          <button type="button" id="edit-modal-save" class="action-btn" style="margin-top:0">Guardar cambios</button>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /admin-panel -->
 
   <script>
   (function () {
     let token = '';
+
+    // Modo técnico (Fase 2.2): revela el formulario manual y la pestaña
+    // Plantillas para diagnóstico. No hay botón visible para activarlo —
+    // se enciende a propósito desde la consola con:
+    //   localStorage.setItem('jb_modo_tecnico', '1')
+    // Nada se borró: esto solo cambia qué se muestra.
+    const JB_TECH_MODE = localStorage.getItem('jb_modo_tecnico') === '1';
+    if (JB_TECH_MODE) {
+      document.querySelectorAll('.tech-mode-hidden').forEach(el => el.classList.remove('tech-mode-hidden'));
+    }
 
     const loginScreen = document.getElementById('login-screen');
     const adminPanel  = document.getElementById('admin-panel');
@@ -2023,8 +2342,10 @@ LÍMITES ESTRICTOS:
         btn.classList.add('is-active');
         const tab = btn.dataset.tab;
         document.getElementById('tab-clients').style.display   = tab === 'clients'   ? '' : 'none';
+        document.getElementById('tab-pagos').style.display     = tab === 'pagos'     ? '' : 'none';
         document.getElementById('tab-templates').style.display = tab === 'templates' ? '' : 'none';
         if (tab === 'clients') loadClients();
+        if (tab === 'pagos') loadPagos();
       });
     });
 
@@ -2057,58 +2378,89 @@ LÍMITES ESTRICTOS:
       }
     }
 
+    // Precios públicos por plan (los mismos que ya usa el guion de ventas de
+    // Alex en ventas.html) — no existe un campo de monto guardado por cliente,
+    // así que se muestra el precio de lista del plan en vez de inventar uno.
+    const PLAN_PRICES = { basic: 49, pro: 65 };
+    const PLAN_LABELS = { basic: 'Básico', pro: 'Pro', premium: 'Premium' };
+
+    function planPriceLabel(plan) {
+      const price = PLAN_PRICES[plan];
+      return price != null ? ('$' + price) : 'Sin monto';
+    }
+
+    function paymentStatusInfo(c) {
+      if (c.subscriptionEnded) return { label: 'Cancelado', cls: 'st-red' };
+      if (c.paymentFailed)     return { label: 'Pago fallido', cls: 'st-red' };
+      if (c.paidUntil) {
+        const today = new Date().toISOString().slice(0, 10);
+        return c.paidUntil >= today ? { label: 'Pagado', cls: 'st-green' } : { label: 'Pago pendiente', cls: 'st-yellow' };
+      }
+      return { label: 'No pagado', cls: 'st-red' };
+    }
+
+    function chatbotStatusInfo(c) {
+      return c.active ? { label: 'Activo', cls: 'st-green' } : { label: 'Pausado', cls: 'st-gray' };
+    }
+
+    function openChatbotPreview(c) {
+      const w = window.open('', '_blank');
+      if (!w) return;
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escHTML(c.businessName)} — Vista previa</title></head><body style="margin:0;">${c.widgetSnippet || ''}</body></html>`);
+      w.document.close();
+    }
+
+    let clientsCache = [];
+
     function renderClients(clients) {
+      clientsCache = clients;
       if (!clients.length) {
-        clientsListEl.innerHTML = '<div class="admin-empty">No clients yet. Create the first one above.</div>';
+        clientsListEl.innerHTML = '<div class="admin-empty">Todavía no hay clientes. Crea el primero con "+ Crear chatbot".</div>';
         return;
       }
-      const html = clients.map(c => {
-        const payBadge = c.paymentFailed
-          ? '<span class="pay-status failed">⚠ PAYMENT FAILED</span>'
-          : c.paidUntil
-            ? `<span class="pay-status paid">🟢 PAID</span>`
-            : '<span class="pay-status unpaid">🔴 NOT PAID</span>';
-        const stripeInfo = [
-          c.stripeCustomerId ? `cus: ${escHTML(c.stripeCustomerId)}` : '',
-          c.paidUntil        ? `paid until: ${escHTML(c.paidUntil)}`  : '',
-        ].filter(Boolean).join(' · ');
-
+      const rows = clients.map(c => {
+        const pay = paymentStatusInfo(c);
+        const bot = chatbotStatusInfo(c);
         return `
-        <div class="client-row ${c.active ? 'is-active' : 'is-paused'}" data-id="${escHTML(c.id)}">
-          <div class="client-info">
-            <div class="client-name">
+        <tr data-id="${escHTML(c.id)}">
+          <td>
+            <div class="ct-business">
               <span class="client-color-dot" style="background:${escHTML(c.color || '#1a4a2e')}"></span>
               ${escHTML(c.businessName)}
-              ${payBadge}
             </div>
-            <div class="client-meta">
-              ${escHTML(c.id)} · ${escHTML(c.plan)} · ${escHTML(c.language)} · ${escHTML(c.createdAt || '')}
-            </div>
-            ${stripeInfo ? `<div class="client-stripe">${stripeInfo}</div>` : ''}
-          </div>
-          <div class="client-actions">
-            <button class="toggle-btn ${c.active ? 'active' : 'paused'}" data-cid="${escHTML(c.id)}" data-active="${c.active}">
-              ${c.active ? '● Active' : '○ Paused'}
-            </button>
-            <button class="pay-link-btn" data-cid="${escHTML(c.id)}" data-plan="${escHTML(c.plan)}">Payment link</button>
-            <button class="snippet-btn" data-snippet="${escHTML(c.widgetSnippet || '')}">Snippet</button>
-            <button class="del-btn" data-cid="${escHTML(c.id)}">Delete</button>
-          </div>
-        </div>`;
+          </td>
+          <td>${escHTML(PLAN_LABELS[c.plan] || c.plan)}</td>
+          <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver</button></td>
+          <td>${planPriceLabel(c.plan)}</td>
+          <td>${escHTML(c.paidUntil || 'Sin fecha')}</td>
+          <td><span class="st-badge ${pay.cls}">${pay.label}</span></td>
+          <td><span class="st-badge ${bot.cls}">${bot.label}</span></td>
+          <td><button type="button" class="manage-btn ct-manage" data-cid="${escHTML(c.id)}">Administrar</button></td>
+        </tr>`;
       }).join('');
-      clientsListEl.innerHTML = `<div class="client-list">${html}</div>`;
 
-      clientsListEl.querySelectorAll('.toggle-btn').forEach(btn => {
-        btn.addEventListener('click', () => toggleClient(btn.dataset.cid, btn.dataset.active === 'true', btn));
+      clientsListEl.innerHTML = `
+        <div class="clients-table-wrap">
+          <table class="clients-table">
+            <thead><tr>
+              <th>Negocio</th><th>Plan</th><th>Chatbot</th><th>Mensualidad</th>
+              <th>Próximo pago</th><th>Pago</th><th>Estado</th><th>Acciones</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+
+      clientsListEl.querySelectorAll('.ct-view-bot').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const c = clientsCache.find(x => x.id === btn.dataset.cid);
+          if (c) openChatbotPreview(c);
+        });
       });
-      clientsListEl.querySelectorAll('.pay-link-btn').forEach(btn => {
-        btn.addEventListener('click', () => generatePaymentLink(btn.dataset.cid, btn.dataset.plan, btn));
-      });
-      clientsListEl.querySelectorAll('.snippet-btn').forEach(btn => {
-        btn.addEventListener('click', () => showSnippet(btn.dataset.snippet, btn));
-      });
-      clientsListEl.querySelectorAll('.del-btn').forEach(btn => {
-        btn.addEventListener('click', () => deleteClient(btn.dataset.cid, btn));
+      clientsListEl.querySelectorAll('.ct-manage').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const c = clientsCache.find(x => x.id === btn.dataset.cid);
+          if (c) openManageModal(c);
+        });
       });
     }
 
@@ -2278,9 +2630,11 @@ LÍMITES ESTRICTOS:
 
     // ── Generate Payment Link ──────────────────────────────────────────────
     async function generatePaymentLink(clientId, plan, btn) {
-      const existing = btn.closest('.client-row').querySelector('.pay-link-inline');
+      const container = btn.parentElement;
+      const existing = container.querySelector('.pay-link-inline');
       if (existing) { existing.remove(); return; }
 
+      const originalLabel = btn.textContent;
       btn.disabled = true;
       btn.textContent = '…';
 
@@ -2296,22 +2650,327 @@ LÍMITES ESTRICTOS:
         const box = document.createElement('div');
         box.className = 'pay-link-inline';
         box.innerHTML = `
-          <div class="pay-link-label">Payment link — send to client via WhatsApp</div>
+          <div class="pay-link-label">Enlace de pago — envíalo al cliente</div>
           <div class="snippet-box" style="word-break:break-all;">${escHTML(d.url)}</div>
-          <button class="copy-link" style="margin-top:8px">Copy link</button>`;
+          <button class="copy-link" style="margin-top:8px">Copiar enlace</button>`;
         box.querySelector('.copy-link').addEventListener('click', function () {
           navigator.clipboard.writeText(d.url).then(() => {
-            this.textContent = 'Copied ✓';
-            setTimeout(() => this.textContent = 'Copy link', 1800);
+            this.textContent = 'Copiado ✓';
+            setTimeout(() => this.textContent = 'Copiar enlace', 1800);
           });
         });
-        btn.closest('.client-row').appendChild(box);
+        container.appendChild(box);
       } catch (err) {
-        alert('Error generating payment link: ' + err.message);
+        alert('Error generando el enlace de pago: ' + err.message);
       }
 
       btn.disabled = false;
-      btn.textContent = 'Payment link';
+      btn.textContent = originalLabel;
+    }
+
+    // ── Administrar (Fase 2.2) ──────────────────────────────────────────────
+    const manageOverlay  = document.getElementById('manage-modal-overlay');
+    const manageTitle    = document.getElementById('manage-modal-title');
+    const manageSub      = document.getElementById('manage-modal-sub');
+    const managePayInfo  = document.getElementById('manage-payment-info');
+    const manageCloseBtn = document.getElementById('manage-modal-close');
+
+    let manageClient = null;
+
+    function openManageModal(c) {
+      manageClient = c;
+      manageTitle.textContent = c.businessName;
+      manageSub.textContent = `Plan ${PLAN_LABELS[c.plan] || c.plan}`;
+      managePayInfo.style.display = 'none';
+      document.getElementById('mg-toggle-active').textContent = c.active ? '⏸ Pausar chatbot' : '▶ Reanudar chatbot';
+      manageOverlay.style.display = 'flex';
+    }
+
+    function closeManageModal() {
+      manageOverlay.style.display = 'none';
+      manageClient = null;
+    }
+
+    manageCloseBtn.addEventListener('click', closeManageModal);
+    manageOverlay.addEventListener('click', (e) => { if (e.target === manageOverlay) closeManageModal(); });
+
+    document.getElementById('mg-view-bot').addEventListener('click', () => {
+      if (manageClient) openChatbotPreview(manageClient);
+    });
+
+    document.getElementById('mg-edit-info').addEventListener('click', () => {
+      if (manageClient) openEditModal(manageClient, 'info');
+    });
+    document.getElementById('mg-edit-design').addEventListener('click', () => {
+      if (manageClient) openEditModal(manageClient, 'design');
+    });
+    document.getElementById('mg-edit-services').addEventListener('click', () => {
+      if (manageClient) openEditModal(manageClient, 'services');
+    });
+
+    document.getElementById('mg-view-reservations').addEventListener('click', () => {
+      if (manageClient) window.open(`https://jbstudio.app/reservas/${encodeURIComponent(manageClient.id)}`, '_blank');
+    });
+
+    document.getElementById('mg-copy-link').addEventListener('click', function () {
+      if (!manageClient) return;
+      navigator.clipboard.writeText(`https://jbstudio.app/reservas/${manageClient.id}`).then(() => {
+        this.textContent = '✓ Enlace copiado';
+        setTimeout(() => this.textContent = '🔗 Copiar enlace directo', 1600);
+      });
+    });
+
+    document.getElementById('mg-copy-code').addEventListener('click', function () {
+      if (!manageClient) return;
+      navigator.clipboard.writeText(manageClient.widgetSnippet || '').then(() => {
+        this.textContent = '✓ Código copiado';
+        setTimeout(() => this.textContent = '📋 Copiar código para web', 1600);
+      });
+    });
+
+    document.getElementById('mg-view-payment').addEventListener('click', () => {
+      if (!manageClient) return;
+      const c = manageClient;
+      const pay = paymentStatusInfo(c);
+      const lines = [
+        `Estado: ${pay.label}`,
+        `Próximo pago: ${c.paidUntil || 'Sin fecha'}`,
+        c.stripeCustomerId ? null : 'Todavía no hay un pago registrado para este cliente.',
+      ].filter(Boolean);
+      managePayInfo.innerHTML = lines.map(l => escHTML(l)).join('<br>');
+      managePayInfo.style.display = managePayInfo.style.display === 'none' ? 'block' : 'none';
+    });
+
+    document.getElementById('mg-toggle-active').addEventListener('click', function () {
+      if (!manageClient) return;
+      const c = manageClient;
+      toggleClient(c.id, c.active, this);
+      closeManageModal();
+    });
+
+    document.getElementById('mg-delete').addEventListener('click', function () {
+      if (!manageClient) return;
+      deleteClient(manageClient.id, this);
+      closeManageModal();
+    });
+
+    // ── Editar información / diseño / servicios (Fase 2.2) ─────────────────
+    // Reutiliza el mismo endpoint PUT /api/clients que ya usa el panel — solo
+    // envía los campos de la sección que se está editando. No toca prompt ni
+    // ningún campo técnico.
+    const editOverlay      = document.getElementById('edit-modal-overlay');
+    const editTitle        = document.getElementById('edit-modal-title');
+    const editCloseBtn     = document.getElementById('edit-modal-close');
+    const editCancelBtn    = document.getElementById('edit-modal-cancel');
+    const editSaveBtn      = document.getElementById('edit-modal-save');
+    const editMsg          = document.getElementById('edit-msg');
+    const editSectionInfo     = document.getElementById('edit-section-info');
+    const editSectionDesign   = document.getElementById('edit-section-design');
+    const editSectionServices = document.getElementById('edit-section-services');
+
+    let editClient  = null;
+    let editSection = 'info';
+    let editServices = [];
+
+    const eCPicker = document.getElementById('e-cpicker');
+    const eColor   = document.getElementById('e-color');
+    eCPicker.addEventListener('input', () => { eColor.value = eCPicker.value; });
+    eColor.addEventListener('input', () => {
+      if (/^#[0-9a-fA-F]{3,6}$/.test(eColor.value)) eCPicker.value = eColor.value;
+    });
+
+    function renderEditServices() {
+      const container = document.getElementById('e-svc-items');
+      container.innerHTML = '';
+      editServices.forEach((svc, idx) => {
+        const row = document.createElement('div');
+        row.className = 'svc2-row';
+        row.innerHTML = `
+          <input class="admin-input" placeholder="Nombre (ej: Corte clásico)" style="grid-column:1;" value="${escHTML(svc.nombre || '')}">
+          <input class="admin-input" placeholder="$15" style="grid-column:2;" value="${escHTML(svc.precio || '')}">
+          <input class="admin-input" placeholder="Descripción breve" style="grid-column:1/3;" value="${escHTML(svc.descripcion || '')}">
+          <button type="button" class="svc2-remove-btn">✕ Eliminar</button>`;
+        const inputs = row.querySelectorAll('input');
+        inputs[0].addEventListener('input', e => editServices[idx].nombre = e.target.value);
+        inputs[1].addEventListener('input', e => editServices[idx].precio = e.target.value);
+        inputs[2].addEventListener('input', e => editServices[idx].descripcion = e.target.value);
+        row.querySelector('.svc2-remove-btn').addEventListener('click', () => {
+          editServices.splice(idx, 1);
+          renderEditServices();
+        });
+        container.appendChild(row);
+      });
+      document.getElementById('e-svc-count').textContent = editServices.length + ' / 20';
+    }
+
+    document.getElementById('e-svc-add').addEventListener('click', () => {
+      if (editServices.length >= 20) return;
+      editServices.push({ nombre: '', precio: '', descripcion: '', imagen: '' });
+      renderEditServices();
+    });
+
+    function openEditModal(c, section) {
+      editClient  = c;
+      editSection = section;
+      editMsg.style.display = 'none';
+
+      editSectionInfo.style.display     = section === 'info'     ? '' : 'none';
+      editSectionDesign.style.display   = section === 'design'   ? '' : 'none';
+      editSectionServices.style.display = section === 'services' ? '' : 'none';
+
+      editTitle.textContent = section === 'info' ? 'Editar información'
+        : section === 'design' ? 'Editar diseño' : 'Editar servicios';
+
+      if (section === 'info') {
+        document.getElementById('e-bname').value = c.businessName || '';
+        document.getElementById('e-owner').value = c.ownerName || '';
+        document.getElementById('e-email').value = c.ownerEmail || '';
+        document.getElementById('e-plan').value  = c.plan || 'basic';
+        document.getElementById('e-lang').value  = c.language || 'es';
+        document.getElementById('e-wa').value    = c.whatsapp || '';
+      } else if (section === 'design') {
+        const color = c.color || '#1a4a2e';
+        eColor.value = color;
+        eCPicker.value = color;
+      } else if (section === 'services') {
+        editServices = Array.isArray(c.menu) ? c.menu.map(i => ({ ...i })) : [];
+        renderEditServices();
+      }
+
+      closeManageModal();
+      editOverlay.style.display = 'flex';
+    }
+
+    function closeEditModal() {
+      editOverlay.style.display = 'none';
+      editClient = null;
+    }
+
+    editCloseBtn.addEventListener('click', closeEditModal);
+    editCancelBtn.addEventListener('click', closeEditModal);
+    editOverlay.addEventListener('click', (e) => { if (e.target === editOverlay) closeEditModal(); });
+
+    editSaveBtn.addEventListener('click', async () => {
+      if (!editClient) return;
+      const body = { id: editClient.id };
+
+      if (editSection === 'info') {
+        body.businessName = document.getElementById('e-bname').value.trim();
+        body.ownerName    = document.getElementById('e-owner').value.trim();
+        body.ownerEmail    = document.getElementById('e-email').value.trim();
+        body.plan          = document.getElementById('e-plan').value;
+        body.language       = document.getElementById('e-lang').value;
+        body.whatsapp       = document.getElementById('e-wa').value.trim();
+        if (!body.businessName) {
+          editMsg.textContent = 'Falta el nombre del negocio.';
+          editMsg.className = 'create-msg err';
+          editMsg.style.display = 'block';
+          return;
+        }
+      } else if (editSection === 'design') {
+        body.color = eColor.value.trim();
+        if (!/^#[0-9a-fA-F]{3,6}$/.test(body.color)) {
+          editMsg.textContent = 'Color inválido.';
+          editMsg.className = 'create-msg err';
+          editMsg.style.display = 'block';
+          return;
+        }
+      } else if (editSection === 'services') {
+        body.menu = editServices.filter(s => s.nombre && s.nombre.trim());
+      }
+
+      editSaveBtn.disabled = true;
+      editSaveBtn.textContent = 'Guardando…';
+      try {
+        const res = await fetch('/api/clients', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.status);
+        closeEditModal();
+        loadClients();
+      } catch (err) {
+        editMsg.textContent = 'Error: ' + err.message;
+        editMsg.className = 'create-msg err';
+        editMsg.style.display = 'block';
+      }
+      editSaveBtn.disabled = false;
+      editSaveBtn.textContent = 'Guardar cambios';
+    });
+
+    // ── Pagos (Fase 2.2) ─────────────────────────────────────────────────────
+    // Reutiliza los mismos datos de /api/clients y la misma lógica de Stripe
+    // (create-checkout) que ya existía — solo se reorganiza cómo se muestra.
+    const pagosListEl = document.getElementById('pagos-list');
+
+    async function loadPagos() {
+      pagosListEl.innerHTML = '<div class="admin-loading">Loading…</div>';
+      try {
+        const res = await fetch('/api/clients', { headers: { 'x-admin-token': token } });
+        if (!res.ok) throw new Error(res.status);
+        const clients = await res.json();
+        renderPagos(clients);
+      } catch (err) {
+        pagosListEl.innerHTML = `<div class="admin-empty">Error loading payments: ${escHTML(String(err.message))}</div>`;
+      }
+    }
+
+    function daysRemainingLabel(paidUntil) {
+      if (!paidUntil) return 'Pendiente';
+      const today = new Date();
+      const until  = new Date(paidUntil + 'T00:00:00');
+      const diff   = Math.round((until - today) / 86400000);
+      if (isNaN(diff)) return 'Pendiente';
+      if (diff < 0) return 'Vencido';
+      return diff + ' días';
+    }
+
+    function renderPagos(clients) {
+      if (!clients.length) {
+        pagosListEl.innerHTML = '<div class="admin-empty">Todavía no hay clientes.</div>';
+        return;
+      }
+      const rows = clients.map(c => {
+        const pay = paymentStatusInfo(c);
+
+        let actionHtml;
+        if (c.paymentFailed) {
+          actionHtml = `<button type="button" class="manage-btn ct-pay-action" data-cid="${escHTML(c.id)}" data-plan="${escHTML(c.plan)}">Reintentar cobro</button>`;
+        } else if (!c.stripeCustomerId) {
+          actionHtml = `<button type="button" class="manage-btn ct-pay-action" data-cid="${escHTML(c.id)}" data-plan="${escHTML(c.plan)}">Generar enlace de pago</button>`;
+        } else {
+          actionHtml = `<a class="ct-link" href="https://dashboard.stripe.com/customers/${escHTML(c.stripeCustomerId)}" target="_blank" rel="noopener noreferrer">Abrir en Stripe</a>`;
+        }
+
+        return `
+        <tr data-id="${escHTML(c.id)}">
+          <td>${escHTML(c.businessName)}</td>
+          <td>${escHTML(PLAN_LABELS[c.plan] || c.plan)}</td>
+          <td>${planPriceLabel(c.plan)}</td>
+          <td>Sin fecha</td>
+          <td>${escHTML(c.paidUntil || 'Sin fecha')}</td>
+          <td>${daysRemainingLabel(c.paidUntil)}</td>
+          <td><span class="st-badge ${pay.cls}">${pay.label}</span></td>
+          <td>${actionHtml}</td>
+        </tr>`;
+      }).join('');
+
+      pagosListEl.innerHTML = `
+        <div class="clients-table-wrap">
+          <table class="clients-table">
+            <thead><tr>
+              <th>Cliente</th><th>Plan</th><th>Mensualidad</th><th>Último pago</th>
+              <th>Próximo pago</th><th>Faltan</th><th>Estado</th><th>Acción</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+
+      pagosListEl.querySelectorAll('.ct-pay-action').forEach(btn => {
+        btn.addEventListener('click', () => generatePaymentLink(btn.dataset.cid, btn.dataset.plan, btn));
+      });
     }
 
     // ── Login / Logout ─────────────────────────────────────────────────────
