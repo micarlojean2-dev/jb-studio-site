@@ -389,7 +389,7 @@
       padding: 10px 14px;
       color: #1a1a1a;
       font-family: inherit;
-      font-size: 15px;
+      font-size: 16px;
       outline: none;
       width: 100%;
       transition: border-color 0.2s, box-shadow 0.2s;
@@ -929,6 +929,55 @@
       padding: 4px 8px;
     }
     .svc-empty { padding: 18px; text-align: center; color: #888; font-size: 13px; }
+    .svc-field-label { display: none; }
+    .svc-remove-label { display: none; }
+
+    /* Servicios (Paso 3) en móvil: cada servicio pasa de fila de tabla a
+       tarjeta editable de una sola columna, con labels visibles y campos
+       de 44px de alto — sin duplicar la lógica de estado/render de arriba. */
+    @media (max-width: 768px) {
+      .svc-table { border: none; border-radius: 0; overflow: visible; }
+      .svc-row.svc-header { display: none; }
+      .svc-row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 16px;
+        border: 1px solid var(--border);
+        border-top: 1px solid var(--border);
+        border-radius: 12px;
+        margin-bottom: 12px;
+      }
+      .svc-field-label {
+        display: block;
+        font-size: 12px;
+        font-weight: 700;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        margin-bottom: 4px;
+      }
+      .svc-row input {
+        font-size: 16px;
+        padding: 11px 12px;
+        min-height: 44px;
+        width: 100%;
+      }
+      .svc-remove-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        width: 100%;
+        min-height: 44px;
+        border: 1.5px solid var(--danger);
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .svc-remove-label { display: inline; }
+
+      #w-svc-add { width: 100%; min-height: 44px; font-size: 15px; }
+    }
 
     /* Feature toggles (step 3) */
     .feature-list { display: flex; flex-direction: column; gap: 2px; }
@@ -1562,7 +1611,7 @@
             </div>
             <div class="form-group">
               <label>WhatsApp <span>(optional)</span></label>
-              <input type="text" id="f-wa" placeholder="+56912345678" class="admin-input">
+              <input type="tel" id="f-wa" placeholder="+56912345678" class="admin-input">
             </div>
             <div class="form-group">
               <label>Owner Email <span>(for reservation alerts)</span></label>
@@ -2102,7 +2151,7 @@ LÍMITES ESTRICTOS:
               </div>
               <div class="form-group">
                 <label>WhatsApp o teléfono <span>(opcional)</span></label>
-                <input type="text" id="w-b-phone" class="admin-input" placeholder="+56912345678">
+                <input type="tel" id="w-b-phone" class="admin-input" placeholder="+56912345678">
               </div>
             </div>
           </div>
@@ -2387,7 +2436,7 @@ LÍMITES ESTRICTOS:
             </div>
             <div class="form-group" style="margin-top:14px">
               <label>WhatsApp / teléfono <span>(opcional)</span></label>
-              <input type="text" id="e-wa" class="admin-input">
+              <input type="tel" id="e-wa" class="admin-input">
             </div>
           </div>
 
@@ -3573,11 +3622,11 @@ LÍMITES ESTRICTOS:
         const row = document.createElement('div');
         row.className = 'svc-row';
         row.innerHTML = `
-          <input class="admin-input svc-nombre" placeholder="Corte clásico" value="${esc(svc.nombre)}">
-          <input class="admin-input svc-precio" placeholder="$15" value="${esc(svc.precio)}">
-          <input class="admin-input svc-duracion" placeholder="30 min" value="${esc(svc.duracion)}">
-          <input class="admin-input svc-desc" placeholder="Descripción breve" value="${esc(svc.descripcion)}">
-          <button type="button" class="svc-remove-btn" title="Eliminar">✕</button>`;
+          <div><span class="svc-field-label">Nombre</span><input class="admin-input svc-nombre" placeholder="Corte clásico" value="${esc(svc.nombre)}"></div>
+          <div><span class="svc-field-label">Precio</span><input class="admin-input svc-precio" placeholder="$15" value="${esc(svc.precio)}"></div>
+          <div><span class="svc-field-label">Duración</span><input class="admin-input svc-duracion" placeholder="30 min" value="${esc(svc.duracion)}"></div>
+          <div><span class="svc-field-label">Descripción</span><input class="admin-input svc-desc" placeholder="Descripción breve" value="${esc(svc.descripcion)}"></div>
+          <button type="button" class="svc-remove-btn" title="Eliminar"><span aria-hidden="true">✕</span><span class="svc-remove-label">Eliminar servicio</span></button>`;
         row.querySelector('.svc-nombre').addEventListener('input', e => state.services[idx].nombre = e.target.value);
         row.querySelector('.svc-precio').addEventListener('input', e => state.services[idx].precio = e.target.value);
         row.querySelector('.svc-duracion').addEventListener('input', e => state.services[idx].duracion = e.target.value);
