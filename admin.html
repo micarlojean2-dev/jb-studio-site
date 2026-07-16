@@ -1763,6 +1763,9 @@
   }
   #auto-falta-section { border: 1.5px solid #f0b5b5; background: #fff5f5; border-radius: 12px; padding: 14px 16px; }
   #auto-falta-section h3 { color: #a01b1b; }
+  .auto-dur-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .auto-dur-row .nom { flex: 1; font-size: 13.5px; font-weight: 600; }
+  .auto-dur-row select { width: 130px; font-size: 13px; }
   .auto-falta-list { margin: 8px 0 0; padding-left: 4px; list-style: none; }
   .auto-falta-list li { font-size: 13.5px; color: #a01b1b; padding: 3px 0; }
   .auto-falta-help { font-size: 12.5px; color: #7a3b3b; margin-top: 8px; }
@@ -5082,10 +5085,19 @@ LÍMITES ESTRICTOS:
           <div class="auto-owner-error" id="auto-owner-error" hidden>Escribe un correo válido.</div>
         </div>
 
+        <!-- Duraciones: si la información pegada no las menciona, la IA las deja
+             vacías y sin esto el creador bloquearía la activación sin dar
+             forma de arreglarlo. Se piden aquí, solo las que falten. -->
+        <div class="auto-summary-section" id="auto-dur-section" hidden>
+          <h3>¿Cuánto dura cada servicio?</h3>
+          <p class="auto-owner-help">El asistente lo usa para no agendar un servicio que no cabe antes del cierre.</p>
+          <div id="auto-dur-list"></div>
+        </div>
+
         <!-- Lo que impide activar. Se enumera en vez de deshabilitar el botón
              sin explicar: un botón muerto y mudo es peor que un "no". -->
         <div class="auto-summary-section" id="auto-falta-section" hidden>
-          <h3>No puedes activar tu asistente todavía</h3>
+          <h3>Completa estos datos para activar reservas</h3>
           <ul class="auto-falta-list" id="auto-falta-list"></ul>
           <p class="auto-falta-help">Completa estos datos para continuar.</p>
         </div>
@@ -5590,6 +5602,46 @@ LÍMITES ESTRICTOS:
     return EMAIL_RE.test(ownerEmailValue());
   }
 
+  // Duraciones que falten: se piden con un desplegable, no en texto libre.
+  // "45 min" y "45m" y "cuarenta y cinco" acabarían todos en el mismo campo.
+  var DUR_OPCIONES = ['15 min', '30 min', '45 min', '60 min', '90 min', '120 min'];
+
+  function renderDuraciones() {
+    var sec = document.getElementById('auto-dur-section');
+    var list = document.getElementById('auto-dur-list');
+    if (!sec || !list || !generatedConfig) return;
+    var svc = generatedConfig.services || [];
+    var faltan = svc.filter(function (x) { return !x.duracion; });
+    sec.hidden = faltan.length === 0;
+    if (!faltan.length) { list.innerHTML = ''; return; }
+    if (list.dataset.pintado === String(faltan.length)) return;
+    list.dataset.pintado = String(faltan.length);
+    list.innerHTML = '';
+    faltan.forEach(function (x) {
+      var row = document.createElement('div');
+      row.className = 'auto-dur-row';
+      var nom = document.createElement('span');
+      nom.className = 'nom';
+      nom.textContent = x.nombre;
+      var sel = document.createElement('select');
+      sel.className = 'admin-input';
+      var vacia = document.createElement('option');
+      vacia.value = ''; vacia.textContent = 'Elige…';
+      sel.appendChild(vacia);
+      DUR_OPCIONES.forEach(function (d) {
+        var o = document.createElement('option');
+        o.value = d; o.textContent = d;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', function () {
+        x.duracion = sel.value;          // se escribe en el config que se envía
+        syncDisplayUI();
+      });
+      row.appendChild(nom); row.appendChild(sel);
+      list.appendChild(row);
+    });
+  }
+
   // Lo que falta para poder activar. Se comprueba sobre lo que se va a enviar,
   // no sobre lo que devolvió la IA: el admin puede haberlo corregido a mano.
   function loQueFalta() {
@@ -5618,6 +5670,7 @@ LÍMITES ESTRICTOS:
   }
 
   function renderFalta() {
+    renderDuraciones();
     var f = loQueFalta();
     var sec = document.getElementById('auto-falta-section');
     var list = document.getElementById('auto-falta-list');
