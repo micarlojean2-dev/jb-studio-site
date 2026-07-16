@@ -23,6 +23,87 @@ function checkRateLimit(ip) {
 
 // ── Email helpers ────────────────────────────────────────────────────────────
 
+// Normaliza la fecha de la cita a ISO (YYYY-MM-DD) desde el texto libre del
+// chat. Conservador a propósito: ante la duda devuelve '' en vez de adivinar.
+// Un recordatorio enviado el día equivocado es peor que no enviarlo.
+function rollYear(d, base, y, mon, day) {
+  const mk = (x) => x.toISOString().slice(0, 10);
+  const diasPasados = Math.floor((base - d) / 86400000);
+  if (diasPasados > 30) {                    // muy atrás: se refiere al año que viene
+    const next = new Date(Date.UTC(y + 1, mon, day));
+    return next.getUTCDate() === day ? mk(next) : '';
+  }
+  if (diasPasados > 0) return '';            // pasó hace poco: ambiguo, no adivinamos
+  return d.getUTCDate() === day ? mk(d) : '';
+}
+
+function parseFechaISO(raw, now) {
+  const txt = String(raw || '').toLowerCase().trim();
+  if (!txt) return '';
+  const base = now ? new Date(now) : new Date();
+  const mk = (d) => d.toISOString().slice(0, 10);
+  const addDays = (d, n) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x; };
+
+  if (/\bpasado\s+ma(ñ|n)ana\b/.test(txt)) return mk(addDays(base, 2));
+  if (/\bhoy\b|\btoday\b/.test(txt)) return mk(base);
+  if (/\bma(ñ|n)ana\b|\btomorrow\b/.test(txt)) return mk(addDays(base, 1));
+
+  const DIAS = { domingo:0, lunes:1, martes:2, 'miercoles':3, 'miércoles':3, jueves:4, viernes:5, 'sabado':6, 'sábado':6,
+                 sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6 };
+  const MESES = { enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5, julio:6, agosto:7,
+                  septiembre:8, setiembre:8, octubre:9, noviembre:10, diciembre:11,
+                  january:0, february:1, march:2, april:3, may:4, june:5, july:6, august:7,
+                  september:8, october:9, november:10, december:11 };
+
+  // "15 de julio" / "july 15" / "18 julio"
+  const dm = txt.match(/\b(\d{1,2})\s*(?:de\s+)?([a-záéíóú]+)/);
+  if (dm && MESES[dm[2]] !== undefined) {
+    const day = parseInt(dm[1], 10), mon = MESES[dm[2]];
+    if (day >= 1 && day <= 31) {
+      let y = base.getUTCFullYear();
+      let d = new Date(Date.UTC(y, mon, day));
+      const r = rollYear(d, base, y, mon, day);
+      if (r) return r;
+    }
+  }
+  const md = txt.match(/\b([a-záéíóú]+)\s+(\d{1,2})\b/);
+  if (md && MESES[md[1]] !== undefined) {
+    const day = parseInt(md[2], 10), mon = MESES[md[1]];
+    if (day >= 1 && day <= 31) {
+      let y = base.getUTCFullYear();
+      let d = new Date(Date.UTC(y, mon, day));
+      const r = rollYear(d, base, y, mon, day);
+      if (r) return r;
+    }
+  }
+
+  // "este sábado" / "el viernes" / "sábado"
+  for (const name in DIAS) {
+    if (new RegExp('\\b' + name + '\\b').test(txt)) {
+      const target = DIAS[name];
+      let delta = (target - base.getUTCDay() + 7) % 7;
+      if (delta === 0) delta = 7;                       // "el sábado" dicho un sábado = el próximo
+      if (/\bpróximo\b|\bproximo\b|\bnext\b/.test(txt) && delta < 7) delta += 7;
+      return mk(addDays(base, delta));
+    }
+  }
+
+  // "2026-07-18" / "18/07" / "18-07-2026"
+  const iso = txt.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (iso) return iso[0];
+  const dmy = txt.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+  if (dmy) {
+    const day = +dmy[1], mon = +dmy[2] - 1;
+    let y = dmy[3] ? +dmy[3] : base.getUTCFullYear();
+    if (y < 100) y += 2000;
+    if (day >= 1 && day <= 31 && mon >= 0 && mon <= 11) {
+      const d = new Date(Date.UTC(y, mon, day));
+      if (d.getUTCDate() === day) return mk(d);
+    }
+  }
+  return '';
+}
+
 // El chat entrega texto libre ("2", "dos", "para 4 personas"). Guardamos un
 // entero cuando se puede deducir; si no, lo dejamos vacío en vez de inventar.
 function normalizePersonas(v) {
@@ -161,6 +242,9 @@ export default async function handler(req, res) {
       telefono:       String(telefono).slice(0, 30),
       email:          String(email || '').slice(0, 120),
       fecha:          String(fecha).slice(0, 60),
+      // Copia normalizada para poder consultar por día (recordatorios,
+      // resumen, filtros). '' cuando el texto no permite deducirla sin riesgo.
+      fechaISO:       parseFechaISO(fecha),
       hora:           String(hora).slice(0, 30),
       servicio:       String(servicio || '').slice(0, 200),
       personas:       normalizePersonas(personas),
