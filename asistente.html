@@ -740,7 +740,7 @@ function extractBooking(text, menu) {
 
   // El nombre solo se toma si la persona lo marca ("soy Ana", "me llamo…").
   // Sin marcador, en texto libre se confunde con cualquier palabra.
-  var nm = t.match(/\b(?:soy|me\s+llamo|mi\s+nombre\s+es)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}(?:\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,})?)/);
+  var nm = t.match(/\b(?:soy|me\s+llamo|mi\s+nombre\s+es)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}(?:\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,})?)/i);
   if (nm) {
     var cand = nm[1].trim();
     if (!/^(que|quien|el|la|un|una|para|de|del)$/i.test(cand.split(/\s+/)[0])) out.nombre = cand;
