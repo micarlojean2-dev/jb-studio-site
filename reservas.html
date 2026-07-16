@@ -548,6 +548,7 @@
         '<td>' + esc(r.fecha) + '</td>' +
         '<td>' + esc(r.hora) + '</td>' +
         '<td class="muted">' + esc(r.servicio || '—') + '</td>' +
+        '<td>' + (r.personas ? esc(r.personas) : '<span class="muted">—</span>') + '</td>' +
         '<td class="muted">' + esc(r.nota || '—') + '</td>' +
         '<td>' + badge(r.estado) + '</td>' +
         '<td>' + actionBtns(r) + '</td>' +
@@ -557,7 +558,7 @@
     wrap.innerHTML = '<table>' +
       '<thead><tr>' +
         '<th>Solicitud</th><th>Nombre</th><th>Teléfono</th><th>Email</th>' +
-        '<th>Fecha</th><th>Hora</th><th>Servicio</th><th>Nota</th>' +
+        '<th>Fecha</th><th>Hora</th><th>Servicio</th><th>Personas</th><th>Nota</th>' +
         '<th>Estado</th><th>Acciones</th>' +
       '</tr></thead>' +
       '<tbody>' + rows + '</tbody>' +

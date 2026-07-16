@@ -23,6 +23,25 @@ function checkRateLimit(ip) {
 
 // ── Email helpers ────────────────────────────────────────────────────────────
 
+// El chat entrega texto libre ("2", "dos", "para 4 personas"). Guardamos un
+// entero cuando se puede deducir; si no, lo dejamos vacío en vez de inventar.
+function normalizePersonas(v) {
+  if (v === undefined || v === null || v === '') return '';
+  const raw = String(v).trim();
+  const digits = raw.match(/\d{1,3}/);
+  if (digits) {
+    const n = parseInt(digits[0], 10);
+    return n >= 1 && n <= 200 ? n : '';
+  }
+  const words = { un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6,
+                  siete: 7, ocho: 8, nueve: 9, diez: 10, one: 1, two: 2, three: 3,
+                  four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+  for (const w in words) {
+    if (new RegExp('\\b' + w + '\\b', 'i').test(raw)) return words[w];
+  }
+  return '';
+}
+
 function ownerHtml(r, businessName) {
   const row = (label, val) => val
     ? `<tr><td style="padding:6px 12px;color:#555;width:130px">${label}</td><td style="padding:6px 12px;color:#111;font-weight:500">${val}</td></tr>`
@@ -41,6 +60,7 @@ function ownerHtml(r, businessName) {
       ${row('Fecha',    r.fecha)}
       ${row('Hora',     r.hora)}
       ${row('Servicio', r.servicio)}
+      ${r.personas ? row('Personas', r.personas) : ''}
       ${r.nota ? row('Nota', r.nota) : ''}
       ${row('Estado',   'Pendiente')}
       ${row('Recibida', new Date(r.fechaSolicitud).toLocaleString('es'))}
@@ -70,7 +90,10 @@ function clientHtml(r, businessName, lang) {
       Recibimos tu solicitud de cita para el <strong>${r.fecha}</strong> a las <strong>${r.hora}</strong>.
       El equipo de <strong>${businessName}</strong> revisará disponibilidad y te confirmará pronto.
     </p>
-    ${r.servicio ? `<p style="font-size:13px;color:#555;background:#f5f5f5;padding:12px 16px;border-radius:8px;margin-top:16px">Servicio: <strong>${r.servicio}</strong></p>` : ''}
+    ${r.servicio || r.personas ? `<div style="font-size:13px;color:#555;background:#f5f5f5;padding:12px 16px;border-radius:8px;margin-top:16px">
+      ${r.servicio ? `<div>Servicio: <strong>${r.servicio}</strong></div>` : ''}
+      ${r.personas ? `<div style="margin-top:4px">Personas: <strong>${r.personas}</strong></div>` : ''}
+    </div>` : ''}
     <p style="margin:24px 0 0;font-size:12px;color:#aaa;border-top:1px solid #eee;padding-top:16px">
       Asistente virtual powered by <a href="https://jbstudio.app" style="color:#1a4a2e">JB Studio</a>
     </p>
@@ -92,7 +115,10 @@ function clientHtml(r, businessName, lang) {
       We received your appointment request for <strong>${r.fecha}</strong> at <strong>${r.hora}</strong>.
       The <strong>${businessName}</strong> team will review availability and confirm with you soon.
     </p>
-    ${r.servicio ? `<p style="font-size:13px;color:#555;background:#f5f5f5;padding:12px 16px;border-radius:8px;margin-top:16px">Service: <strong>${r.servicio}</strong></p>` : ''}
+    ${r.servicio || r.personas ? `<div style="font-size:13px;color:#555;background:#f5f5f5;padding:12px 16px;border-radius:8px;margin-top:16px">
+      ${r.servicio ? `<div>Service: <strong>${r.servicio}</strong></div>` : ''}
+      ${r.personas ? `<div style="margin-top:4px">People: <strong>${r.personas}</strong></div>` : ''}
+    </div>` : ''}
     <p style="margin:24px 0 0;font-size:12px;color:#aaa;border-top:1px solid #eee;padding-top:16px">
       Virtual assistant powered by <a href="https://jbstudio.app" style="color:#1a4a2e">JB Studio</a>
     </p>
@@ -114,7 +140,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, nombre, telefono, email, fecha, hora, servicio, nota } = req.body || {};
+  const { clientId, nombre, telefono, email, fecha, hora, servicio, personas, nota } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -137,6 +163,7 @@ export default async function handler(req, res) {
       fecha:          String(fecha).slice(0, 60),
       hora:           String(hora).slice(0, 30),
       servicio:       String(servicio || '').slice(0, 200),
+      personas:       normalizePersonas(personas),
       nota:           /^no$/i.test(String(nota || '').trim()) ? '' : String(nota || '').slice(0, 500),
       estado:         'pendiente',
       fechaSolicitud: new Date(ts).toISOString(),

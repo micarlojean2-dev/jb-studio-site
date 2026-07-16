@@ -75,7 +75,8 @@
     { field: 'email',    ask: { es: '¿Cuál es tu email?',                                     en: "What's your email address?" } },
     { field: 'fecha',    ask: { es: '¿Qué fecha prefieres? (ej: 15 de julio)',                 en: 'What date do you prefer? (e.g. July 15)' } },
     { field: 'hora',     ask: { es: '¿A qué hora? (ej: 3:00 PM)',                             en: 'What time? (e.g. 3:00 PM)' } },
-    { field: 'servicio', ask: { es: '¿Qué servicio deseas o para cuántas personas?',           en: 'What service do you need, or how many people?' } },
+    { field: 'servicio', ask: { es: '¿Qué servicio te gustaría?',                                en: 'Which service would you like?' } },
+    { field: 'personas', ask: { es: '¿Para cuántas personas sería? (escribe 1 si es solo para ti)', en: 'For how many people? (write 1 if it is just you)' } },
     { field: 'nota',     ask: { es: '¿Alguna nota adicional? (escribe "no" si no tienes ninguna)', en: 'Any additional notes? (write "no" if none)' } },
   ];
 
@@ -201,27 +202,26 @@
     '}',
 
     '.jbw-cards-wrap{width:100%;padding:2px 0 0;}',
-    '.jbw-cards{display:flex;flex-direction:column;gap:8px;padding:0 0 4px;}',
-    '.jbw-card{display:flex;align-items:flex-start;gap:11px;width:100%;',
-    'text-align:left;font-family:inherit;cursor:pointer;background:#fff;',
-    'border:1.5px solid rgba(0,0,0,.06);border-radius:16px;padding:12px 13px;',
-    'min-height:54px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.04);',
+    '.jbw-cards{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:0 0 4px;}',
+    '.jbw-card{display:flex;flex-direction:column;align-items:center;text-align:center;',
+    'gap:2px;width:100%;font-family:inherit;cursor:pointer;background:#fff;',
+    'border:1.5px solid rgba(0,0,0,.06);border-radius:18px;padding:16px 12px 14px;',
+    'min-height:124px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.05);',
     'transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s,border-color .18s;',
     'opacity:0;animation:jbw-card-in .34s cubic-bezier(.22,1,.36,1) forwards;}',
-    '@keyframes jbw-card-in{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}',
-    '.jbw-card:hover{transform:translateY(-2px);border-color:rgba(0,0,0,.10);',
-    'box-shadow:0 2px 4px rgba(0,0,0,.05),0 10px 24px rgba(0,0,0,.09);}',
-    '.jbw-card:active{transform:translateY(0) scale(.99);}',
-    '.jbw-card-ico{width:40px;height:40px;border-radius:11px;flex-shrink:0;',
-    'display:flex;align-items:center;justify-content:center;font-size:19px;}',
-    '.jbw-card-img{width:40px;height:40px;border-radius:11px;object-fit:cover;',
-    'flex-shrink:0;display:block;background:#f2f2f4;}',
-    '.jbw-card-body{flex:1;min-width:0;}',
-    '.jbw-card-top{display:flex;align-items:baseline;justify-content:space-between;gap:9px;}',
-    '.jbw-card-name{font-size:13.5px;font-weight:650;line-height:1.3;color:#16181d;}',
-    '.jbw-card-price{font-size:13.5px;font-weight:700;flex-shrink:0;}',
-    '.jbw-card-desc{font-size:11.5px;color:#6b6f76;line-height:1.45;margin-top:3px;}',
-    '.jbw-card-cta{font-size:11px;color:#a8acb3;margin-top:5px;font-weight:500;}',
+    '@keyframes jbw-card-in{from{opacity:0;transform:translateY(10px) scale(.97);}to{opacity:1;transform:none;}}',
+    '.jbw-card:hover{transform:translateY(-3px);border-color:rgba(0,0,0,.10);',
+    'box-shadow:0 2px 4px rgba(0,0,0,.05),0 12px 28px rgba(0,0,0,.10);}',
+    '.jbw-card:active{transform:translateY(-1px) scale(.97);}',
+    '.jbw-card-ico{width:52px;height:52px;border-radius:15px;margin-bottom:8px;',
+    'display:flex;align-items:center;justify-content:center;font-size:25px;}',
+    '.jbw-card-img{width:52px;height:52px;border-radius:15px;object-fit:cover;',
+    'margin-bottom:8px;display:block;background:#f2f2f4;}',
+    '.jbw-card-name{font-size:13px;font-weight:650;line-height:1.3;color:#16181d;}',
+    '.jbw-card-price{font-size:14.5px;font-weight:700;margin-top:4px;}',
+    '.jbw-card-badge{font-size:10px;font-weight:600;margin-top:5px;padding:3px 8px;',
+    'border-radius:20px;background:#fff5e0;color:#8a5a00;}',
+    '.jbw-card-desc{font-size:11px;color:#6b6f76;line-height:1.4;margin-top:6px;}',
     '@media(prefers-reduced-motion:reduce){.jbw-card{animation:none;opacity:1;}}',
 
   ].join('');
@@ -276,6 +276,16 @@
   var statusEl = document.getElementById('jbw-status');
 
   // ── Apply color theme ────────────────────────────────────────────────────
+  function greeting() {
+    var n = cfg.businessName || '';
+    if (cfg.language === 'en') {
+      return "Hi! 😊 Great to have you here.\n\nI'm " + (n ? n + "'s assistant" : 'the assistant') +
+             '.\n\nWould you like to see our services, or shall I help you book an appointment?';
+    }
+    return '¡Hola! 😊 Qué gusto tenerte por aquí.\n\nSoy el asistente de ' + (n || 'este negocio') +
+           '.\n\n¿Quieres conocer nuestros servicios o te ayudo a reservar una cita?';
+  }
+
   function paint() {
     var c = cfg.color;
     fab.style.background    = c;
@@ -385,6 +395,11 @@
   }
 
   // ── Render menu card carousel ─────────────────────────────────────────────
+  function isPopular(item) {
+    return item.popular === true || item.destacado === true ||
+           /^(popular|destacado|favorito)$/i.test(String(item.etiqueta || '').trim());
+  }
+
   function renderMenu() {
     var items = Array.isArray(cfg.menu) ? cfg.menu : [];
     if (!items.length) return;
@@ -414,45 +429,39 @@
         card.appendChild(buildIcon(item.nombre));
       }
 
-      var body = document.createElement('div');
-      body.className = 'jbw-card-body';
-
-      var top = document.createElement('div');
-      top.className = 'jbw-card-top';
-      var name = document.createElement('span');
+      var name = document.createElement('div');
       name.className = 'jbw-card-name';
       name.textContent = item.nombre || 'Servicio';
-      top.appendChild(name);
+      card.appendChild(name);
+
       if (item.precio) {
-        var price = document.createElement('span');
+        var price = document.createElement('div');
         price.className = 'jbw-card-price';
         price.style.color = cfg.color;
         price.textContent = item.precio;
-        top.appendChild(price);
+        card.appendChild(price);
       }
-      body.appendChild(top);
+
+      if (isPopular(item)) {
+        var badge = document.createElement('div');
+        badge.className = 'jbw-card-badge';
+        badge.textContent = '⭐ Popular';
+        card.appendChild(badge);
+      }
 
       if (item.descripcion) {
         var desc = document.createElement('div');
         desc.className = 'jbw-card-desc';
         desc.textContent = item.descripcion;
-        body.appendChild(desc);
+        card.appendChild(desc);
       }
 
-      var cta = document.createElement('div');
-      cta.className = 'jbw-card-cta';
-      cta.textContent = cfg.language === 'en' ? 'Tap to ask about this' : 'Toca para consultar este servicio';
-      body.appendChild(cta);
-
-      card.appendChild(body);
-
-      // Tocar continúa la conversación sin que el cliente escriba nada.
       card.addEventListener('click', function () {
         if (inp.disabled) return;
         var nom = item.nombre || 'este servicio';
         send(cfg.language === 'en'
-          ? "I'm interested in the " + nom + ' service'
-          : 'Me interesa el servicio ' + nom);
+          ? 'I am interested in the service: ' + nom
+          : 'Me interesa el servicio: ' + nom);
       });
 
       row.appendChild(card);
@@ -696,9 +705,7 @@
     if (open) {
       if (!greeted) {
         greeted = true;
-        var g = cfg.language === 'en'
-          ? "Hi! 👋 How can I help you today?"
-          : "¡Hola! 👋 ¿En qué puedo ayudarte hoy?";
+        var g = greeting();
         addMsg('bot', g);
         msgs.push({ role: 'assistant', content: g });
         save();
