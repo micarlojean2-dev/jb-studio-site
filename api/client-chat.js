@@ -71,7 +71,8 @@ async function callDeepSeek(messages, systemPrompt, maxTokens) {
     temperature: 0.7,
   };
 
-  const upstream = await fetch(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com', {
+  const baseUrl = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '');
+  const upstream = await fetch(baseUrl + '/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
