@@ -10,7 +10,35 @@
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId)) return;
 
   var API  = 'https://jbstudio.app';
+  var CORE, RESUMEN_ICONOS, RESUMEN_LABEL, BOOKING_STEPS, CANCEL_STEPS, CORRECCION_RE, CAMPO_MENCIONADO;
   var SESS = 'jbw_' + clientId;
+
+  // El motor compartido vive en jbstudio.app, el mismo origen del que este
+  // widget ya depende para /api/client-config y /api/client-chat: no añade
+  // un punto de fallo nuevo. Si no carga, no pintamos nada — mejor ausente
+  // que a medias.
+  if (window.JBChatCore) { arrancar(); }
+  else {
+    var _core = document.createElement('script');
+    _core.src = API + '/chat-core.js';
+    _core.onload = arrancar;
+    _core.onerror = function () { /* sin motor no hay widget */ };
+    document.head.appendChild(_core);
+  }
+
+  function arrancar() {
+    CORE = window.JBChatCore;
+    if (!CORE) return;
+    RESUMEN_ICONOS = CORE.RESUMEN_ICONOS;
+    RESUMEN_LABEL  = CORE.RESUMEN_LABEL;
+    BOOKING_STEPS  = CORE.BOOKING_STEPS;
+    CANCEL_STEPS   = CORE.CANCEL_STEPS;
+    CORRECCION_RE  = CORE.CORRECCION_RE;
+    CAMPO_MENCIONADO = CORE.CAMPO_MENCIONADO;
+    iniciar();
+  }
+
+  function iniciar() {
 
   // Posición del botón flotante. Prioridad: data-position del <script> y, si
   // no viene, lo que tenga guardado el cliente. Los clientes antiguos no
@@ -50,12 +78,7 @@
   // created by the automatic wizard, with an explicit "false", turns a
   // behavior off. Keep this regex/gating pattern in sync with asistente.html
   // (no shared module in this vanilla codebase to dedupe against).
-  function featureOn(key) {
-    // Un negocio sin configurar no puede tomar reservas: el servidor las
-    // rechazaría igualmente. Mejor no ofrecerlas que prometer y fallar.
-    if ((key === 'reservations' || key === 'cancellation') && cfg.needsSetup === true) return false;
-    return !cfg.features || cfg.features[key] !== false;
-  }
+  function featureOn(key) { return CORE.featureOn(cfg, key); }
   var msgs    = [];
   var open    = false;
   var busy    = false;
@@ -72,17 +95,6 @@
   var CANCEL_TRIGGERS  = /\bcancel(ar)?\b|quiero cancelar/i;
   var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserva|hora libre|turno|quiero una cita/i;
 
-  var BOOKING_STEPS = [
-    { field: 'nombre',   ask: { es: '¿Cuál es tu nombre completo?',                           en: 'What is your full name?' } },
-    { field: 'telefono', ask: { es: '¿Cuál es tu número de teléfono?',                        en: "What's your phone number?" } },
-    { field: 'email',    ask: { es: '¿Cuál es tu email?',                                     en: "What's your email address?" } },
-    { field: 'fecha',    ask: { es: '¿Qué fecha prefieres? (ej: 15 de julio)',                 en: 'What date do you prefer? (e.g. July 15)' } },
-    { field: 'hora',     ask: { es: '¿A qué hora? (ej: 3:00 PM)',                             en: 'What time? (e.g. 3:00 PM)' } },
-    { field: 'servicio', ask: { es: '¿Qué servicio te gustaría?',                                en: 'Which service would you like?' } },
-    { field: 'personas', ask: { es: '¿Para cuántas personas sería? (escribe 1 si es solo para ti)', en: 'For how many people? (write 1 if it is just you)' } },
-    { field: 'nota',     ask: { es: '¿Alguna nota adicional? (escribe "no" si no tienes ninguna)', en: 'Any additional notes? (write "no" if none)' } },
-  ];
-
   try { msgs = JSON.parse(sessionStorage.getItem(SESS) || '[]'); } catch (e) { msgs = []; }
   if (msgs.length) greeted = true;
 
@@ -92,12 +104,6 @@
 
   // Halo del pulso: mismo color del negocio, translúcido. Si el color no es
   // un hex reconocible, caemos a un negro suave en vez de romper el CSS.
-  function hexToRgba(hex, a) {
-    var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex || '').trim());
-    if (!m) return 'rgba(0,0,0,' + a + ')';
-    return 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + a + ')';
-  }
-
   // ── Inject CSS ───────────────────────────────────────────────────────────
   var css = document.createElement('style');
   css.textContent = [
@@ -333,14 +339,14 @@
       wrap.appendChild(b);
     });
     msgsEl.appendChild(wrap);
-    irAlFondo();
+    CORE.irAlFondo(msgsEl, );
   }
 
   function paint() {
     var c = cfg.color;
     fab.style.background    = c;
     // El halo del pulso usa el color del negocio, translúcido.
-    fab.style.setProperty('--jbw-pulse', hexToRgba(c, 0.45));
+    fab.style.setProperty('--jbw-pulse', CORE.hexToRgba(c, 0.45));
     headEl.style.background = c;
     snd.style.background    = c;
     nameEl.textContent      = cfg.businessName || 'Assistant';
@@ -388,7 +394,7 @@
     }
     row.appendChild(bub);
     msgsEl.appendChild(row);
-    irAlFondo(role === 'user');   // tu propio mensaje siempre te lleva abajo
+    CORE.irAlFondo(msgsEl, role === 'user');   // tu propio mensaje siempre te lleva abajo
   }
 
   function showTyping() {
@@ -405,7 +411,7 @@
     row.appendChild(av);
     row.appendChild(b);
     msgsEl.appendChild(row);
-    irAlFondo();
+    CORE.irAlFondo(msgsEl, );
   }
 
   function hideTyping() {
@@ -416,40 +422,16 @@
   // Render any saved messages from this session
   msgs.forEach(function (m) { addMsg(m.role === 'user' ? 'user' : 'bot', m.content); });
 
-  // Icono por palabra clave del servicio. No adivina de más: si no reconoce
-  // nada, cae en un símbolo neutro y elegante en vez de un placeholder roto.
-  var ICON_RULES = [
-    [/masaj|spa|relaj|facial|belle|estét/i, '💆'],
-    [/pelo|corte|barb|peluqu|cabello/i,     '✂️'],
-    [/uña|manicur|pedicur/i,                '💅'],
-    [/comida|men[uú]|plato|pizza|burger|caf[eé]|bebida|restaur/i, '🍽'],
-    [/diente|dental|odont/i,                '🦷'],
-    [/consulta|m[eé]dic|salud|terap/i,      '🩺'],
-    [/clase|curso|taller|entren|gym|fitness/i, '🏋'],
-    [/foto|video|estudio/i,                 '📸'],
-    [/limpieza|hogar|lavad/i,               '🧼'],
-    [/auto|coche|mec[aá]nic|taller/i,       '🚗'],
-  ];
-
+  // El icono lo elige el motor; aquí solo se pinta con las clases del widget.
   function buildIcon(nombre) {
     var el = document.createElement('div');
     el.className = 'jbw-card-ico';
-    var txt = String(nombre || '');
-    var chosen = '✨';
-    for (var i = 0; i < ICON_RULES.length; i++) {
-      if (ICON_RULES[i][0].test(txt)) { chosen = ICON_RULES[i][1]; break; }
-    }
-    el.textContent = chosen;
-    el.style.background = hexToRgba(cfg.color, 0.12);
+    el.textContent = CORE.iconFor(nombre);
+    el.style.background = CORE.hexToRgba(cfg.color, 0.12);
     return el;
   }
 
   // ── Render menu card carousel ─────────────────────────────────────────────
-  function isPopular(item) {
-    return item.popular === true || item.destacado === true ||
-           /^(popular|destacado|favorito)$/i.test(String(item.etiqueta || '').trim());
-  }
-
   function renderMenu() {
     var items = Array.isArray(cfg.menu) ? cfg.menu : [];
     if (!items.length) return;
@@ -492,7 +474,7 @@
         card.appendChild(price);
       }
 
-      if (isPopular(item)) {
+      if (CORE.isPopular(item)) {
         var badge = document.createElement('div');
         badge.className = 'jbw-card-badge';
         badge.textContent = '⭐ Popular';
@@ -519,13 +501,8 @@
 
     wrap.appendChild(row);
     msgsEl.appendChild(wrap);
-    irAlFondo();
+    CORE.irAlFondo(msgsEl, );
   }
-
-  var CANCEL_STEPS = [
-    { field: 'contacto', ask: { es: '¿Cuál es el email o teléfono con el que hiciste la reserva?', en: 'What email or phone number did you use to book?' } },
-    { field: 'fecha',    ask: { es: '¿Cuál es la fecha de tu reserva? (ej: 15 de julio)',           en: 'What is the date of your reservation? (e.g. July 15)' } },
-  ];
 
   // ── Submit cancel request to /api/cancel-reservation ────────────────────
   function submitCancellation() {
@@ -636,45 +613,13 @@ function resolverHora(n, minutos, sufijo, businessHours) {
   // pintaba tal cual: al confirmar una reserva el visitante veía
   // "[RESERVA_CONFIRMADA]" en pantalla. Se limpian todos por patrón, así que
   // un marcador nuevo tampoco se escapará.
-  var MARCADOR_RE = /\[[A-Z_]{3,}\]/g;
 
   // El prompt pide texto plano, pero el modelo se escapa y manda **negritas**
   // o ### títulos de vez en cuando. Aquí se limpian: en una burbuja de chat
   // los asteriscos se ven como un error, no como énfasis.
-  function limpiarMarkdown(t) {
-    return t
-      .replace(/```[a-z]*\n?/gi, '')          // vallas de código
-      .replace(/\*\*(.+?)\*\*/g, '$1')       // **negrita**
-      .replace(/__(.+?)__/g, '$1')            // __negrita__
-      .replace(/(^|[\s(])\*(?!\s)([^*\n]+?)\*(?=[\s).,;:!?]|$)/g, '$1$2')  // *cursiva*, sin tocar 2*3
-      .replace(/(^|[\s(])_(?!\s)([^_\n]+?)_(?=[\s).,;:!?]|$)/g, '$1$2')      // _cursiva_
-      .replace(/`([^`\n]+)`/g, '$1')          // `código`
-      .replace(/^#{1,6}\s+/gm, '')            // ### títulos
-      .replace(/^\s*[-*+]\s+/gm, '• ')        // viñetas markdown -> punto
-      .replace(/^\s*>\s?/gm, '');             // citas
-  }
-
-  function limpiarMarcadores(txt) {
-    return limpiarMarkdown(String(txt || ''))
-      .replace(MARCADOR_RE, '')
-      .replace(/[ \t]{2,}/g, ' ')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-  }
-
   // Solo bajamos solos si ya estabas abajo. Si subiste a releer algo, un
   // mensaje nuevo ya no te arrastra: era imposible leer el historial mientras
   // el bot escribía.
-  function estaAlFondo() {
-    if (!msgsEl) return true;
-    return msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 80;
-  }
-
-  function irAlFondo(forzar) {
-    if (!msgsEl) return;
-    if (forzar || estaAlFondo()) msgsEl.scrollTop = msgsEl.scrollHeight;
-  }
-
 function extractBooking(text, menu) {
   var t = String(text || '');
   var out = {};
@@ -749,24 +694,10 @@ function extractBooking(text, menu) {
   // BOOKING_TRIGGERS no lo pillaba. Si hay intención + un servicio real + día
   // u hora, es una reserva. Se exige la palabra de intención a propósito:
   // "¿cuánto cuesta el corte mañana?" es una pregunta de precio, no una cita.
-  var INTENT_RE = /\b(quiero|quisiera|necesito|me\s+gustar[ií]a|puedo|ap[uú]ntame|ag[eé]ndame|d[ae]me)\b/i;
-
-  function pareceReserva(t, extraido) {
-    if (BOOKING_TRIGGERS.test(t)) return true;
-    if (!INTENT_RE.test(t)) return false;
-    return !!(extraido.servicio && (extraido.fecha || extraido.hora));
-  }
 
   // El paso pregunta un campo concreto, pero la persona puede responder otra
   // cosa ("Somos 3 personas" cuando se pedía el email). Sin esto, esa frase se
   // guardaba como email y el cliente nunca recibía su confirmación.
-  function valorValido(field, t) {
-    if (field === 'email')    return EMAIL_RE2.test(t) || /^(no|ninguno|skip|omitir)$/i.test(t.trim());
-    if (field === 'telefono') return t.replace(/\D/g, '').length >= 7;
-    if (field === 'personas') return /\d|\b(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/i.test(t);
-    return true;
-  }
-
   // Primer campo sin rellenar, o -1 si ya está todo. `nota` no necesita trato
   // especial: ya es el último paso de la lista.
   // Cuando la hora podría ser AM o PM y el horario no lo aclara, se pregunta
@@ -795,33 +726,11 @@ function extractBooking(text, menu) {
     return true;
   }
 
-  function nextMissingIndex() {
-    for (var i = 0; i < BOOKING_STEPS.length; i++) {
-      if (!bookingData[BOOKING_STEPS[i].field]) return i;
-    }
-    return -1;
-  }
-
-  function resumenDeLoCapturado(data, lang) {
-    var L = RESUMEN_LABEL[lang];
-    return ['servicio', 'fecha', 'hora', 'personas']
-      .filter(function (k) { return data[k]; })
-      .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + L[k] + ': ' + data[k]; })
-      .join('\n');
-  }
-
   // Correcciones a media reserva: "me equivoqué, somos 3", "quiero cambiar la
   // hora". Se actualiza lo que se pueda extraer y se repregunta solo eso.
-  var CORRECCION_RE = /(me\s+equivoqu[eé]|cambiar|corregir|est[aá]\s+mal|mejor|en realidad|prefiero)/i;
-  var CAMPO_MENCIONADO = [
-    [/hora|horario/i, 'hora'], [/fecha|d[ií]a/i, 'fecha'], [/personas?|somos/i, 'personas'],
-    [/servicio/i, 'servicio'], [/correo|email/i, 'email'], [/tel[eé]fono|n[uú]mero/i, 'telefono'],
-    [/nombre/i, 'nombre']
-  ];
-
   function intentarCorreccion(t, lang) {
     if (!CORRECCION_RE.test(t)) return false;
-    var extraido = extractBooking(t, cfg.menu);
+    var extraido = CORE.extractBooking(t, cfg.menu, cfg.businessHours);
     var campos = Object.keys(extraido);
     if (campos.length) {
       campos.forEach(function (k) { bookingData[k] = extraido[k]; });
@@ -850,25 +759,12 @@ function extractBooking(text, menu) {
   }
 
   function seguirDesdeLoQueFalta(lang) {
-    var i = nextMissingIndex();
+    var i = CORE.nextMissingIndex(bookingData);
     if (i === -1) { showBookingSummary(); return; }
     bookingStep = i + 1;
-    addMsg('bot', askConProgreso(i, lang));
+    addMsg('bot', CORE.askConProgreso(i, lang));
   }
 
-  function askConProgreso(i, lang) {
-    var etiqueta = (lang === 'en' ? 'Step ' : 'Paso ') + (i + 1) + '/' + BOOKING_STEPS.length;
-    return etiqueta + '\n' + BOOKING_STEPS[i].ask[lang];
-  }
-
-  var RESUMEN_ICONOS = { nombre: '👤', servicio: '✂️', fecha: '📅', hora: '⏰',
-                         personas: '👥', telefono: '📞', email: '✉️' };
-  var RESUMEN_LABEL = {
-    es: { nombre: 'Nombre', servicio: 'Servicio', fecha: 'Fecha', hora: 'Hora',
-          personas: 'Personas', telefono: 'Teléfono', email: 'Email' },
-    en: { nombre: 'Name', servicio: 'Service', fecha: 'Date', hora: 'Time',
-          personas: 'People', telefono: 'Phone', email: 'Email' }
-  };
 
   // Revisar antes de guardar: un dedazo en el teléfono o la fecha se corrige
   // aquí, no cuando el dueño intenta llamar y el número no existe.
@@ -902,12 +798,12 @@ function extractBooking(text, menu) {
         bookingData = {};
         bookingStep = 1;
         addMsg('bot', (lang === 'en' ? 'No problem 😊 let\'s do it again.\n\n' : 'Sin problema 😊 lo hacemos de nuevo.\n\n') +
-          askConProgreso(0, lang));
+          CORE.askConProgreso(0, lang));
       });
       wrap.appendChild(b);
     });
     msgsEl.appendChild(wrap);
-    irAlFondo();
+    CORE.irAlFondo(msgsEl, );
   }
 
   function submitBooking() {
@@ -1011,8 +907,8 @@ function extractBooking(text, menu) {
       addMsg('user', t);
       if (resolverHoraPendiente(t, lang)) return;
       if (intentarCorreccion(t, lang)) return;
-      var yaVisto = extractBooking(t, cfg.menu);
-      if (!valorValido(step.field, t)) {
+      var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours);
+      if (!CORE.valorValido(step.field, t)) {
         // No sirve para este campo. Si aun así traía datos útiles se guardan,
         // y se repregunta solo este, sin regañar.
         var aplicados = Object.keys(yaVisto).filter(function (k) { return !bookingData[k]; });
@@ -1021,7 +917,7 @@ function extractBooking(text, menu) {
           addMsg('bot', (lang === 'en' ? 'Got it 😊 noted:\n\n' : 'Anotado 😊:\n\n') +
             aplicados.map(function (k) { return RESUMEN_ICONOS[k] + ' ' + RESUMEN_LABEL[lang][k] + ': ' + bookingData[k]; }).join('\n'));
         }
-        addMsg('bot', askConProgreso(bookingStep - 1, lang));
+        addMsg('bot', CORE.askConProgreso(bookingStep - 1, lang));
         return;
       }
       bookingData[step.field] = t;
@@ -1045,8 +941,8 @@ function extractBooking(text, menu) {
     }
 
     // ── Booking intent detected: start flow ──────────────────────────────
-    var preExtraido = featureOn('reservations') ? extractBooking(t, cfg.menu) : {};
-    if (featureOn('reservations') && pareceReserva(t, preExtraido)) {
+    var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours) : {};
+    if (featureOn('reservations') && CORE.pareceReserva(t, preExtraido)) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
       save();
@@ -1058,7 +954,7 @@ function extractBooking(text, menu) {
       var ambigua = yaDicho.__horaAmbigua;
       delete bookingData.__horaAmbigua;
 
-      var capturado = resumenDeLoCapturado(bookingData, lang);
+      var capturado = CORE.resumenDeLoCapturado(bookingData, lang);
       var intro = capturado
         ? (lang === 'en' ? '¡Perfect! 😄 Let me help you book your appointment.\n\nI\'ve got:\n' : '¡Perfecto! 😄 Te ayudo a reservar tu cita.\n\nTengo anotado:\n') + capturado +
           (lang === 'en' ? '\n\nAlmost done 😊\n' : '\n\nYa casi terminamos 😊\n')
@@ -1066,10 +962,10 @@ function extractBooking(text, menu) {
                          : '📅 ¡Con gusto! Te ayudo a solicitar una cita. Escribe "cancelar" en cualquier momento para salir.\n\n');
 
       if (ambigua) { addMsg('bot', intro.trim()); preguntarHoraAmbigua(ambigua, lang); return; }
-      var i0 = nextMissingIndex();
+      var i0 = CORE.nextMissingIndex(bookingData);
       if (i0 === -1) { addMsg('bot', intro.trim()); showBookingSummary(); return; }
       bookingStep = i0 + 1;
-      addMsg('bot', intro + askConProgreso(i0, lang));
+      addMsg('bot', intro + CORE.askConProgreso(i0, lang));
       return;
     }
 
@@ -1099,7 +995,7 @@ function extractBooking(text, menu) {
             : 'Este servicio no está disponible temporalmente.'));
         } else if (d.text) {
           var showMenu   = /\[MOSTRAR_MENU\]/.test(d.text);
-          var cleanText  = limpiarMarcadores(d.text);
+          var cleanText  = CORE.limpiarMarcadores(d.text);
           if (cleanText) addMsg('bot', cleanText);
           if (showMenu)  renderMenu();
           msgs.push({ role: 'assistant', content: d.text });
@@ -1168,4 +1064,5 @@ function extractBooking(text, menu) {
     }
   });
 
+  }   // fin de iniciar()
 })();
