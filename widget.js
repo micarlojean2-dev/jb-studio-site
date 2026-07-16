@@ -567,6 +567,57 @@
   }
 
   // ── Submit completed booking to /api/reservations ────────────────────────
+  function askConProgreso(i, lang) {
+    var etiqueta = (lang === 'en' ? 'Step ' : 'Paso ') + (i + 1) + '/' + BOOKING_STEPS.length;
+    return etiqueta + '\n' + BOOKING_STEPS[i].ask[lang];
+  }
+
+  var RESUMEN_ICONOS = { nombre: '👤', servicio: '✂️', fecha: '📅', hora: '⏰',
+                         personas: '👥', telefono: '📞', email: '✉️' };
+  var RESUMEN_LABEL = {
+    es: { nombre: 'Nombre', servicio: 'Servicio', fecha: 'Fecha', hora: 'Hora',
+          personas: 'Personas', telefono: 'Teléfono', email: 'Email' },
+    en: { nombre: 'Name', servicio: 'Service', fecha: 'Date', hora: 'Time',
+          personas: 'People', telefono: 'Phone', email: 'Email' }
+  };
+
+  // Revisar antes de guardar: un dedazo en el teléfono o la fecha se corrige
+  // aquí, no cuando el dueño intenta llamar y el número no existe.
+  function showBookingSummary() {
+    var lang = cfg.language === 'en' ? 'en' : 'es';
+    var L = RESUMEN_LABEL[lang];
+    var lineas = ['nombre', 'servicio', 'fecha', 'hora', 'personas', 'telefono', 'email']
+      .filter(function (k) { return bookingData[k]; })
+      .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + L[k] + ': ' + bookingData[k]; });
+
+    addMsg('bot', (lang === 'en' ? 'Perfect 😊 let\'s review:\n\n' : 'Perfecto 😊 revisemos:\n\n') +
+      lineas.join('\n') + (lang === 'en' ? '\n\nShall we confirm your appointment?' : '\n\n¿Confirmamos tu cita?'));
+
+    var wrap = document.createElement('div');
+    wrap.className = 'jbw-quick';
+    [{ label: lang === 'en' ? '✅ Confirm' : '✅ Confirmar', ok: true },
+     { label: lang === 'en' ? '✏️ Change details' : '✏️ Cambiar datos', ok: false }
+    ].forEach(function (a, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'jbw-quick-btn';
+      b.textContent = a.label;
+      b.style.animationDelay = (i * 60) + 'ms';
+      b.addEventListener('click', function () {
+        wrap.remove();
+        addMsg('user', a.label);
+        if (a.ok) { submitBooking(); return; }
+        bookingData = {};
+        bookingStep = 1;
+        addMsg('bot', (lang === 'en' ? 'No problem 😊 let\'s do it again.\n\n' : 'Sin problema 😊 lo hacemos de nuevo.\n\n') +
+          askConProgreso(0, lang));
+      });
+      wrap.appendChild(b);
+    });
+    msgsEl.appendChild(wrap);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
   function submitBooking() {
     var lang = cfg.language === 'en' ? 'en' : 'es';
     busy = true;
@@ -653,9 +704,9 @@
       addMsg('user', t);
       bookingStep++;
       if (bookingStep <= BOOKING_STEPS.length) {
-        addMsg('bot', BOOKING_STEPS[bookingStep - 1].ask[lang]);
+        addMsg('bot', askConProgreso(bookingStep - 1, lang));
       } else {
-        submitBooking();
+        showBookingSummary();
       }
       return;
     }
@@ -680,7 +731,7 @@
       var intro = lang === 'en'
         ? '📅 Sure! I\'ll help you request an appointment. Write "cancel" at any time to stop.\n\n'
         : '📅 ¡Con gusto! Te ayudo a solicitar una cita. Escribe "cancelar" en cualquier momento para salir.\n\n';
-      addMsg('bot', intro + BOOKING_STEPS[0].ask[lang]);
+      addMsg('bot', intro + askConProgreso(0, lang));
       return;
     }
 
