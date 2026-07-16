@@ -99,76 +99,90 @@
   css.textContent = [
     // --jbw-edge: separación al borde. Una sola variable para el botón y el
     // panel, para que ambos se muevan juntos y el móvil solo la redefina.
-    '#jbw-fab,#jbw-panel{--jbw-edge:20px;}',
-    '#jbw-fab{position:fixed;bottom:var(--jbw-edge);height:54px;',
-    'border-radius:27px;border:none;cursor:pointer;display:flex;',
-    'align-items:center;justify-content:center;gap:9px;padding:0 18px;',
-    'box-shadow:0 6px 20px rgba(0,0,0,.26),0 2px 6px rgba(0,0,0,.16);z-index:2147483646;',
-    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;',
-    'font-size:15.5px;font-weight:600;color:#fff;line-height:1;white-space:nowrap;',
-    'transition:transform .2s,box-shadow .2s;}',
+    '#jbw-fab,#jbw-panel{--jbw-edge:20px;',
+      "font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;}",
+    '#jbw-fab{position:fixed;bottom:var(--jbw-edge);height:46px;',
+    'border-radius:23px;border:none;cursor:pointer;display:flex;',
+    'align-items:center;justify-content:center;gap:8px;padding:0 16px;',
+    'box-shadow:0 4px 16px rgba(0,0,0,.18),0 1px 4px rgba(0,0,0,.12);z-index:2147483646;',
+    'font-size:14.5px;font-weight:600;color:#fff;line-height:1;white-space:nowrap;',
+    'letter-spacing:-0.01em;',
+    'transition:transform .22s cubic-bezier(.22,1,.36,1),box-shadow .22s;}',
     '#jbw-fab.jbw-right{right:var(--jbw-edge);left:auto;}',
     '#jbw-fab.jbw-left{left:var(--jbw-edge);right:auto;}',
-    '#jbw-fab:hover{transform:scale(1.05);box-shadow:0 10px 28px rgba(0,0,0,.34),0 3px 8px rgba(0,0,0,.2);}',
-    '#jbw-fab svg{flex-shrink:0;width:21px;height:21px;}',
+    '#jbw-fab:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.24),0 2px 6px rgba(0,0,0,.14);}',
+    '#jbw-fab:active{transform:translateY(0);}',
+    '#jbw-fab svg{flex-shrink:0;width:18px;height:18px;}',
 
     // Pulso suave cada 4s. Se detiene con el panel abierto y respeta a quien
     // pidio menos movimiento en el sistema.
-    '@keyframes jbw-pulse{0%,88%,100%{box-shadow:0 8px 28px rgba(0,0,0,.30),0 2px 8px rgba(0,0,0,.18),0 0 0 0 var(--jbw-pulse);}',
-    '94%{box-shadow:0 8px 28px rgba(0,0,0,.30),0 2px 8px rgba(0,0,0,.18),0 0 0 14px transparent;}}',
-    '#jbw-fab.jbw-pulsing{animation:jbw-pulse 4s ease-out infinite;}',
+    // Respiración muy leve cada 5s: se nota por el rabillo del ojo sin
+    // reclamar atención. Un anillo expansivo resultaba agresivo.
+    '@keyframes jbw-breathe{0%,90%,100%{box-shadow:0 4px 16px rgba(0,0,0,.18),0 1px 4px rgba(0,0,0,.12),0 0 0 0 var(--jbw-pulse);}',
+    '95%{box-shadow:0 4px 16px rgba(0,0,0,.18),0 1px 4px rgba(0,0,0,.12),0 0 0 7px transparent;}}',
+    '#jbw-fab.jbw-pulsing{animation:jbw-breathe 5s ease-out infinite;}',
     '@media(prefers-reduced-motion:reduce){#jbw-fab.jbw-pulsing{animation:none;}}',
 
-    '#jbw-panel{position:fixed;bottom:86px;width:360px;height:500px;',
-    'border-radius:18px;background:#fff;z-index:2147483645;display:flex;',
+    '#jbw-panel{position:fixed;bottom:78px;width:400px;height:600px;',
+    'max-height:calc(100vh - 100px);',
+    'border-radius:24px;background:#fff;z-index:2147483645;display:flex;',
     'flex-direction:column;overflow:hidden;',
-    'box-shadow:0 16px 56px rgba(0,0,0,.22),0 0 0 1px rgba(0,0,0,.06);',
-    'transform:scale(.92) translateY(16px);transform-origin:bottom right;',
+    'box-shadow:0 24px 70px rgba(0,0,0,.20),0 8px 24px rgba(0,0,0,.10),0 0 0 1px rgba(0,0,0,.05);',
+    'transform:scale(.96) translateY(12px);transform-origin:bottom right;',
     'opacity:0;pointer-events:none;',
-    'transition:transform .22s cubic-bezier(.22,1,.36,1),opacity .22s ease;',
-    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;}',
+    'transition:transform .26s cubic-bezier(.22,1,.36,1),opacity .2s ease;',
+    'letter-spacing:-0.01em;}',
+    '#jbw-panel.jbw-left{transform-origin:bottom left;}',
     '#jbw-panel.jbw-open{transform:scale(1) translateY(0);opacity:1;pointer-events:all;}',
     '#jbw-panel.jbw-right{right:var(--jbw-edge);left:auto;}',
     '#jbw-panel.jbw-left{left:var(--jbw-edge);right:auto;}',
 
-    '#jbw-head{padding:14px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;}',
+    '#jbw-head{padding:18px 18px;display:flex;align-items:center;gap:12px;flex-shrink:0;}',
     '.jbw-hi{flex:1;min-width:0;}',
     '#jbw-close{width:32px;height:32px;border-radius:50%;border:none;cursor:pointer;',
     'background:rgba(255,255,255,.20);color:#fff;display:flex;align-items:center;',
     'justify-content:center;flex-shrink:0;padding:0;transition:background .15s;}',
     '#jbw-close:hover{background:rgba(255,255,255,.34);}',
-    '#jbw-av{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.22);',
-    'display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}',
-    '.jbw-hi h4{margin:0;font-size:14px;font-weight:600;color:#fff;line-height:1.2;}',
-    '.jbw-hi p{margin:2px 0 0;font-size:11px;color:rgba(255,255,255,.78);',
-    'display:flex;align-items:center;gap:4px;}',
+    '#jbw-av{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.20);',
+    'display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;',
+    'box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);}',
+    '.jbw-hi h4{margin:0;font-size:15.5px;font-weight:650;color:#fff;line-height:1.25;}',
+    '.jbw-hi p{margin:3px 0 0;font-size:11.5px;color:rgba(255,255,255,.75);',
+    'display:flex;align-items:center;gap:5px;font-weight:500;}',
     '.jbw-dot{width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block;}',
 
-    '#jbw-msgs{flex:1;overflow-y:auto;padding:14px 12px;display:flex;',
-    'flex-direction:column;gap:10px;background:#f7f7f8;}',
+    '#jbw-msgs{flex:1;overflow-y:auto;padding:18px 16px;display:flex;',
+    'flex-direction:column;gap:14px;background:#fafafa;}',
     '#jbw-msgs::-webkit-scrollbar{width:4px;}',
     '#jbw-msgs::-webkit-scrollbar-thumb{background:rgba(0,0,0,.14);border-radius:2px;}',
 
     '.jbw-r{display:flex;align-items:flex-end;gap:6px;}',
     '.jbw-r.jbw-u{justify-content:flex-end;}',
-    '.jbw-b{max-width:80%;padding:9px 12px;border-radius:14px;font-size:13.5px;',
-    'line-height:1.5;word-break:break-word;}',
-    '.jbw-r.jbw-bot .jbw-b{background:#fff;color:#1a1a1a;',
-    'border-radius:14px 14px 14px 3px;box-shadow:0 1px 4px rgba(0,0,0,.09);}',
-    '.jbw-r.jbw-u .jbw-b{color:#fff;border-radius:14px 14px 3px 14px;}',
+    '.jbw-b{max-width:80%;padding:11px 14px;border-radius:18px;font-size:14px;',
+    'line-height:1.55;word-break:break-word;white-space:pre-wrap;',
+    'animation:jbw-in .26s cubic-bezier(.22,1,.36,1);}',
+    '@keyframes jbw-in{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}',
+    '@media(prefers-reduced-motion:reduce){.jbw-b{animation:none;}}',
+    '.jbw-r.jbw-bot .jbw-b{background:#fff;color:#16181d;',
+    'border-radius:18px 18px 18px 5px;',
+    'box-shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.05);}',
+    '.jbw-r.jbw-u .jbw-b{color:#fff;border-radius:18px 18px 5px 18px;',
+    'box-shadow:0 2px 10px rgba(0,0,0,.10);}',
     '.jbw-ba{width:24px;height:24px;border-radius:50%;display:flex;',
     'align-items:center;justify-content:center;font-size:10px;flex-shrink:0;color:#fff;}',
     '.jbw-ty{background:#fff;color:#aaa;padding:9px 12px;',
     'border-radius:14px 14px 14px 3px;font-size:20px;letter-spacing:4px;',
     'box-shadow:0 1px 4px rgba(0,0,0,.09);}',
 
-    '#jbw-foot{padding:10px 12px 14px;background:#fff;',
-    'border-top:1px solid rgba(0,0,0,.07);display:flex;gap:8px;align-items:center;}',
-    '#jbw-inp{flex:1;border:1px solid rgba(0,0,0,.14);border-radius:22px;',
-    'padding:9px 14px;font-size:13.5px;outline:none;background:#f5f5f5;',
-    'color:#1a1a1a;font-family:inherit;transition:border-color .15s,background .15s;}',
-    '#jbw-inp:focus{border-color:rgba(0,0,0,.28);background:#fff;}',
-    '#jbw-inp::placeholder{color:#bbb;}',
+    '#jbw-foot{padding:12px 14px 16px;background:#fff;',
+    'border-top:1px solid rgba(0,0,0,.06);display:flex;gap:9px;align-items:center;}',
+    '#jbw-inp{flex:1;border:1.5px solid transparent;border-radius:22px;',
+    'padding:11px 16px;font-size:14px;outline:none;background:#f2f3f5;',
+    'color:#16181d;font-family:inherit;letter-spacing:-0.01em;',
+    'transition:border-color .18s,background .18s,box-shadow .18s;}',
+    '#jbw-inp:focus{border-color:rgba(0,0,0,.10);background:#fff;',
+    'box-shadow:0 2px 10px rgba(0,0,0,.06);}',
+    '#jbw-inp::placeholder{color:#a8acb3;}',
     '#jbw-inp:disabled{opacity:.5;cursor:not-allowed;}',
     '#jbw-snd{width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;',
     'display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;',
@@ -176,26 +190,33 @@
     '#jbw-snd:hover:not(:disabled){transform:scale(1.08);}',
     '#jbw-snd:disabled{opacity:.4;cursor:not-allowed;}',
     '#jbw-snd svg{width:15px;height:15px;}',
+    // Cerrado, el botón sigue discreto. Abierto, el panel ocupa casi toda la
+    // pantalla: en un móvil una tarjeta pequeña se lee mal.
     '@media(max-width:600px){',
-      '#jbw-fab,#jbw-panel{--jbw-edge:18px;}',
-      '#jbw-fab{height:58px;border-radius:29px;font-size:16px;padding:0 18px;}',
-      '#jbw-fab svg{width:22px;height:22px;}',
-      '#jbw-panel{width:88vw;max-width:88vw;height:75vh;max-height:75vh;bottom:88px;}',
+      '#jbw-fab,#jbw-panel{--jbw-edge:16px;}',
+      '#jbw-fab{height:46px;border-radius:23px;font-size:14.5px;padding:0 16px;}',
+      '#jbw-fab svg{width:18px;height:18px;}',
+      '#jbw-panel{width:94vw;max-width:94vw;height:86vh;max-height:86vh;bottom:74px;',
+      'border-radius:22px;}',
     '}',
 
     '.jbw-cards-wrap{width:100%;overflow-x:auto;padding:4px 0 0;}',
     '.jbw-cards-wrap::-webkit-scrollbar{height:3px;}',
     '.jbw-cards-wrap::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:2px;}',
-    '.jbw-cards{display:flex;gap:10px;padding:0 4px 10px;}',
-    '.jbw-card{flex:0 0 138px;background:#fff;border-radius:12px;overflow:hidden;',
-    'box-shadow:0 1px 8px rgba(0,0,0,.10);cursor:default;}',
-    '.jbw-card-img{width:100%;height:88px;object-fit:cover;display:block;background:#eee;}',
-    '.jbw-card-ph{width:100%;height:88px;background:#f0f0f0;display:flex;',
-    'align-items:center;justify-content:center;font-size:26px;}',
-    '.jbw-card-body{padding:8px 9px 10px;}',
-    '.jbw-card-name{font-size:12px;font-weight:600;color:#1a1a1a;line-height:1.3;margin-bottom:2px;}',
-    '.jbw-card-price{font-size:12.5px;font-weight:700;margin-bottom:4px;}',
-    '.jbw-card-desc{font-size:10.5px;color:#666;line-height:1.4;}',
+    '.jbw-cards{display:flex;gap:12px;padding:2px 4px 12px;}',
+    '.jbw-card{flex:0 0 152px;background:#fff;border-radius:16px;overflow:hidden;',
+    'box-shadow:0 1px 2px rgba(0,0,0,.05),0 6px 18px rgba(0,0,0,.06);',
+    'transition:transform .2s cubic-bezier(.22,1,.36,1),box-shadow .2s;}',
+    '.jbw-card:hover{transform:translateY(-3px);box-shadow:0 2px 4px rgba(0,0,0,.06),0 12px 28px rgba(0,0,0,.10);}',
+    '.jbw-card-img{width:100%;height:92px;object-fit:cover;display:block;background:#f2f2f4;}',
+    // Sin imagen real no inventamos un hueco gris: un icono sobre un degradado
+    // suave del color del negocio se ve intencional, no roto.
+    '.jbw-card-ph{width:100%;height:92px;display:flex;align-items:center;',
+    'justify-content:center;font-size:26px;}',
+    '.jbw-card-body{padding:11px 12px 13px;}',
+    '.jbw-card-name{font-size:13px;font-weight:650;color:#16181d;line-height:1.3;margin-bottom:3px;}',
+    '.jbw-card-price{font-size:13.5px;font-weight:700;margin-bottom:5px;}',
+    '.jbw-card-desc{font-size:11px;color:#6b6f76;line-height:1.45;}',
   ].join('');
   document.head.appendChild(css);
 
@@ -206,7 +227,7 @@
   fab.className = 'jbw-pulsing ' + (SIDE_CSS === 'left' ? 'jbw-left' : 'jbw-right');
   fab.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="white" aria-hidden="true">' +
     '<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>' +
-    '<span id="jbw-fab-label">Habla con nosotros</span>';
+    '<span id="jbw-fab-label">Hola 👋</span>';
 
   var panel = document.createElement('div');
   panel.id = 'jbw-panel';
@@ -328,6 +349,34 @@
   // Render any saved messages from this session
   msgs.forEach(function (m) { addMsg(m.role === 'user' ? 'user' : 'bot', m.content); });
 
+  // Icono por palabra clave del servicio. No adivina de más: si no reconoce
+  // nada, cae en un símbolo neutro y elegante en vez de un placeholder roto.
+  var ICON_RULES = [
+    [/masaj|spa|relaj|facial|belle|estét/i, '💆'],
+    [/pelo|corte|barb|peluqu|cabello/i,     '✂️'],
+    [/uña|manicur|pedicur/i,                '💅'],
+    [/comida|men[uú]|plato|pizza|burger|caf[eé]|bebida|restaur/i, '🍽'],
+    [/diente|dental|odont/i,                '🦷'],
+    [/consulta|m[eé]dic|salud|terap/i,      '🩺'],
+    [/clase|curso|taller|entren|gym|fitness/i, '🏋'],
+    [/foto|video|estudio/i,                 '📸'],
+    [/limpieza|hogar|lavad/i,               '🧼'],
+    [/auto|coche|mec[aá]nic|taller/i,       '🚗'],
+  ];
+
+  function buildIcon(nombre) {
+    var el = document.createElement('div');
+    el.className = 'jbw-card-ph';
+    var txt = String(nombre || '');
+    var chosen = '✨';
+    for (var i = 0; i < ICON_RULES.length; i++) {
+      if (ICON_RULES[i][0].test(txt)) { chosen = ICON_RULES[i][1]; break; }
+    }
+    el.textContent = chosen;
+    el.style.background = 'linear-gradient(135deg,' + hexToRgba(cfg.color, 0.13) + ',' + hexToRgba(cfg.color, 0.05) + ')';
+    return el;
+  }
+
   // ── Render menu card carousel ─────────────────────────────────────────────
   function renderMenu() {
     var items = Array.isArray(cfg.menu) ? cfg.menu : [];
@@ -348,18 +397,14 @@
         img.src     = item.imagen;
         img.alt     = item.nombre || '';
         img.loading = 'lazy';
+        // Una imagen rota se ve peor que no tener imagen: la sustituimos por
+        // el icono, igual que si el servicio nunca hubiera traído foto.
         img.onerror = function () {
-          var ph = document.createElement('div');
-          ph.className = 'jbw-card-ph';
-          ph.textContent = '🖼';
-          img.parentNode.replaceChild(ph, img);
+          if (img.parentNode) img.parentNode.replaceChild(buildIcon(item.nombre), img);
         };
         card.appendChild(img);
       } else {
-        var ph = document.createElement('div');
-        ph.className = 'jbw-card-ph';
-        ph.textContent = '🖼';
-        card.appendChild(ph);
+        card.appendChild(buildIcon(item.nombre));
       }
 
       var body = document.createElement('div');
