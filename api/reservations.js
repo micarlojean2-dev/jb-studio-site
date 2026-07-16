@@ -208,13 +208,217 @@ function clientHtml(r, businessName, lang) {
 </body></html>`;
 }
 
+
+
+// ── Plantillas del proceso diario ───────────────────────────────────────────
+const esc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function shell(inner, titulo, color, kicker) {
+  return `<!DOCTYPE html><html><body style="font-family:-apple-system,Segoe UI,sans-serif;background:#eef0f3;padding:32px 16px;margin:0">
+<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.10)">
+  <div style="background:${esc(color)};padding:24px 28px">
+    <p style="margin:0;color:rgba(255,255,255,.72);font-size:11px;letter-spacing:.08em;text-transform:uppercase">${esc(kicker)}</p>
+    <h1 style="margin:6px 0 0;color:#fff;font-size:21px">${esc(titulo)}</h1>
+  </div>
+  <div style="padding:24px 28px">${inner}</div>
+  <div style="padding:0 28px 22px">
+    <p style="margin:0;font-size:11.5px;color:#a8acb3;border-top:1px solid #eee;padding-top:14px">
+      Tu asistente de <a href="https://jbstudio.app" style="color:${esc(color)};text-decoration:none">JB Studio</a> preparó esto por ti.
+    </p>
+  </div>
+</div>
+</body></html>`;
+}
+
+function citaCard(r, color) {
+  return `<div style="border:1px solid #eaecef;border-radius:12px;padding:14px 16px;margin-bottom:10px">
+    <div style="font-size:17px;font-weight:700;color:${esc(color)}">${esc(r.hora)}</div>
+    <div style="font-size:15px;font-weight:600;color:#16181d;margin-top:2px">${esc(r.nombre)}</div>
+    ${r.servicio ? `<div style="font-size:13px;color:#6b6f76;margin-top:2px">${esc(r.servicio)}</div>` : ''}
+    ${r.personas ? `<div style="font-size:13px;color:#6b6f76;margin-top:2px">${esc(r.personas)} persona${r.personas > 1 ? 's' : ''}</div>` : ''}
+    ${r.telefono ? `<div style="font-size:12px;color:#a8acb3;margin-top:6px">${esc(r.telefono)}</div>` : ''}
+  </div>`;
+}
+
+function dailySummaryHtml(citas, negocio, color) {
+  // Ordenadas por hora para que se lean como una agenda, no como una lista.
+  const ord = citas.slice().sort((a, b) => String(a.hora).localeCompare(String(b.hora), 'es', { numeric: true }));
+  const inner = `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 16px">
+      Estas son tus citas de hoy en <strong>${esc(negocio)}</strong>:
+    </p>
+    ${ord.map((r) => citaCard(r, color)).join('')}
+    <p style="font-size:12.5px;color:#8a8f96;margin:14px 0 0">
+      ${ord.length} cita${ord.length > 1 ? 's' : ''} en total.
+    </p>`;
+  return shell(inner, 'Buenos días ☀️', color, negocio);
+}
+
+function fila(label, val, color) {
+  if (!val) return '';
+  return `<tr>
+    <td style="padding:8px 0;color:#8a8f96;font-size:13px;width:110px;vertical-align:top">${esc(label)}</td>
+    <td style="padding:8px 0;color:#16181d;font-size:14px;font-weight:600">${esc(val)}</td>
+  </tr>`;
+}
+
+function reminderClientHtml(r, negocio, color) {
+  const inner = `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 4px">Hola <strong>${esc(r.nombre)}</strong> 👋</p>
+    <p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 18px">
+      Te recordamos que <strong>mañana</strong> tienes tu cita en ${esc(negocio)}.
+    </p>
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">
+      ${fila('Servicio', r.servicio, color)}
+      ${fila('Fecha',    r.fecha,    color)}
+      ${fila('Hora',     r.hora,     color)}
+      ${fila('Personas', r.personas, color)}
+    </table>
+    <p style="font-size:15px;color:#333;margin:20px 0 0">Te esperamos ✨</p>`;
+  return shell(inner, 'Recordatorio de tu cita 😊', color, negocio);
+}
+
+function reminderOwnerHtml(r, negocio, color) {
+  const inner = `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 18px">
+      Mañana tienes esta cita agendada:
+    </p>
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">
+      ${fila('Cliente',  r.nombre,   color)}
+      ${fila('Servicio', r.servicio, color)}
+      ${fila('Fecha',    r.fecha,    color)}
+      ${fila('Hora',     r.hora,     color)}
+      ${fila('Personas', r.personas, color)}
+      ${fila('Contacto', r.email || r.telefono, color)}
+    </table>`;
+  return shell(inner, 'Cita próxima', color, negocio);
+}
+
+// ── Proceso diario: resumen al dueño + recordatorios de mañana ───────────────
+// Una sola pasada al día (límite del plan Hobby), así que el recordatorio de
+// "24 horas antes" es en realidad "el día antes": suficiente para que no se
+// pierda una cita, y honesto sobre lo que hace.
+
+function isoOffset(days) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function activa(r) {
+  return r && r.estado !== 'cancelada' && r.estado !== 'rechazada';
+}
+
+async function runDailyJob() {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return { ok: false, reason: 'RESEND_API_KEY not configured' };
+  const resend = new Resend(apiKey);
+
+  const hoy    = isoOffset(0);
+  const manana = isoOffset(1);
+
+  const keys = await redis.keys('reservations:*');
+  if (!keys.length) return { ok: true, resumenes: 0, recordatorios: 0, reservas: 0 };
+
+  const items = keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys);
+  const rows = [];
+  keys.forEach((k, i) => { if (items[i]) rows.push({ key: k, r: items[i] }); });
+
+  // Agrupar por cliente para mandar un solo correo por negocio.
+  const porCliente = {};
+  rows.forEach(({ key, r }) => {
+    const cid = r.clientId;
+    if (!cid) return;
+    (porCliente[cid] = porCliente[cid] || []).push({ key, r });
+  });
+
+  let resumenes = 0, recordatorios = 0;
+
+  for (const cid of Object.keys(porCliente)) {
+    const client = await redis.get(`client:${cid}`);
+    if (!client || !client.active) continue;              // impagos fuera
+    const notifica = !client.features || client.features.emailNotifications !== false;
+    const nombreNegocio = client.businessName || 'tu negocio';
+    const color = client.color || '#1a4a2e';
+
+    const deHoy    = porCliente[cid].filter(x => x.r.fechaISO === hoy    && activa(x.r)).map(x => x.r);
+    const deManana = porCliente[cid].filter(x => x.r.fechaISO === manana && activa(x.r));
+
+    // 1) Resumen de hoy al dueño. Si no hay citas no se manda nada: un correo
+    //    vacío cada mañana es ruido y acaba en la papelera.
+    if (notifica && client.ownerEmail && deHoy.length) {
+      try {
+        await resend.emails.send({
+          from: FROM, to: client.ownerEmail,
+          subject: `Buenos días ☀️ Tus citas de hoy (${deHoy.length})`,
+          html: dailySummaryHtml(deHoy, nombreNegocio, color),
+        });
+        resumenes++;
+      } catch (e) { console.error('[cron] resumen', cid, e.message); }
+    }
+
+    // 2) Recordatorios de mañana.
+    for (const { key, r } of deManana) {
+      if (r.recordatorioEnviado === manana) continue;      // ya avisado: no repetir
+      let enviado = false;
+
+      if (r.email) {
+        try {
+          await resend.emails.send({
+            from: FROM, to: r.email,
+            subject: 'Recordatorio de tu cita 😊',
+            html: reminderClientHtml(r, nombreNegocio, color),
+          });
+          enviado = true;
+        } catch (e) { console.error('[cron] recordatorio cliente', key, e.message); }
+      }
+
+      if (notifica && client.ownerEmail) {
+        try {
+          await resend.emails.send({
+            from: FROM, to: client.ownerEmail,
+            subject: `Cita próxima: ${r.nombre} — ${r.hora}`,
+            html: reminderOwnerHtml(r, nombreNegocio, color),
+          });
+          enviado = true;
+        } catch (e) { console.error('[cron] recordatorio dueño', key, e.message); }
+      }
+
+      if (enviado) {
+        try {
+          await redis.set(key, Object.assign({}, r, { recordatorioEnviado: manana }));
+          recordatorios++;
+        } catch (e) { console.error('[cron] marcar', key, e.message); }
+      }
+    }
+  }
+
+  return { ok: true, hoy, manana, resumenes, recordatorios, reservas: rows.length };
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin',  '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(204).end();
+
+  // Proceso diario (Vercel Cron). Vive aquí y no en api/cron.js porque el
+  // proyecto está en el límite de 12 funciones del plan Hobby.
+  if (req.method === 'GET' && req.query?.cron === 'daily') {
+    const secret = process.env.CRON_SECRET;
+    const auth = req.headers.authorization || '';
+    if (!secret || auth !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    try {
+      const result = await runDailyJob();
+      return res.status(200).json(result);
+    } catch (err) {
+      console.error('[api/reservations] cron:', err.message);
+      return res.status(500).json({ error: 'Cron failed' });
+    }
+  }
+
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';

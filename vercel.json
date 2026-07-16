@@ -53,5 +53,11 @@
         }
       ]
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/reservations?cron=daily",
+      "schedule": "0 13 * * *"
+    }
   ]
 }
