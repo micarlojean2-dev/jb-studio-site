@@ -3030,11 +3030,36 @@ LÍMITES ESTRICTOS:
       return c.active ? { label: 'Activo', cls: 'st-green' } : { label: 'Pausado', cls: 'st-gray' };
     }
 
+    // Antes esto abría un about:blank y le escribía el snippet dentro. Esa
+    // página no tenía ?preview= en la URL, así que widget.js no encontraba
+    // token, no lo enviaba, y un cliente sin pagar respondía "no disponible"
+    // sobre un fondo en blanco. Ahora pedimos un token de prueba y abrimos la
+    // vista real. La ventana se abre de forma síncrona para que el navegador
+    // no la trate como popup; el destino se fija cuando llega el token.
     function openChatbotPreview(c) {
-      const w = window.open('', '_blank');
+      const w = window.open('about:blank', '_blank');
       if (!w) return;
-      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escHTML(c.businessName)} — Vista previa</title></head><body style="margin:0;">${c.widgetSnippet || ''}</body></html>`);
-      w.document.close();
+      const position = c.widgetPosition === 'bottom-left' ? 'bottom-left' : 'bottom-right';
+      const isWidget = c.displayMode === 'widget';
+      fetch('/api/clients?action=preview-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+        body: JSON.stringify({ id: c.id }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (!d || !d.previewToken) {
+            w.document.write('<p style="font:15px system-ui;padding:24px">No se pudo abrir la vista previa.</p>');
+            return;
+          }
+          const cid = encodeURIComponent(c.id);
+          w.location.replace(isWidget
+            ? `/vista-previa?id=${cid}&position=${position}&preview=${d.previewToken}`
+            : `/asistente/${cid}?preview=${d.previewToken}`);
+        })
+        .catch(() => {
+          w.document.write('<p style="font:15px system-ui;padding:24px">No se pudo abrir la vista previa.</p>');
+        });
     }
 
     let clientsCache = [];

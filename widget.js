@@ -34,12 +34,11 @@
   })();
 
   function applyPosition(side) {
-    var fab = document.getElementById('jbw-fab');
-    var panel = document.getElementById('jbw-panel');
-    [fab, panel].forEach(function (el) {
+    var els = [document.getElementById('jbw-fab'), document.getElementById('jbw-panel')];
+    els.forEach(function (el) {
       if (!el) return;
-      if (side === 'left') { el.style.left = '24px'; el.style.right = 'auto'; }
-      else { el.style.right = '24px'; el.style.left = 'auto'; }
+      el.classList.toggle('jbw-left', side === 'left');
+      el.classList.toggle('jbw-right', side !== 'left');
     });
   }
 
@@ -98,15 +97,20 @@
   // ── Inject CSS ───────────────────────────────────────────────────────────
   var css = document.createElement('style');
   css.textContent = [
-    '#jbw-fab{position:fixed;bottom:24px;' + SIDE_CSS + ':24px;min-height:64px;',
-    'border-radius:34px;border:none;cursor:pointer;display:flex;',
-    'align-items:center;justify-content:center;gap:10px;padding:0 22px 0 18px;',
-    'box-shadow:0 8px 28px rgba(0,0,0,.30),0 2px 8px rgba(0,0,0,.18);z-index:2147483646;',
+    // --jbw-edge: separación al borde. Una sola variable para el botón y el
+    // panel, para que ambos se muevan juntos y el móvil solo la redefina.
+    '#jbw-fab,#jbw-panel{--jbw-edge:20px;}',
+    '#jbw-fab{position:fixed;bottom:var(--jbw-edge);height:54px;',
+    'border-radius:27px;border:none;cursor:pointer;display:flex;',
+    'align-items:center;justify-content:center;gap:9px;padding:0 18px;',
+    'box-shadow:0 6px 20px rgba(0,0,0,.26),0 2px 6px rgba(0,0,0,.16);z-index:2147483646;',
     'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;',
     'font-size:15.5px;font-weight:600;color:#fff;line-height:1;white-space:nowrap;',
     'transition:transform .2s,box-shadow .2s;}',
-    '#jbw-fab:hover{transform:scale(1.05);box-shadow:0 12px 36px rgba(0,0,0,.38),0 3px 10px rgba(0,0,0,.22);}',
-    '#jbw-fab svg{flex-shrink:0;}',
+    '#jbw-fab.jbw-right{right:var(--jbw-edge);left:auto;}',
+    '#jbw-fab.jbw-left{left:var(--jbw-edge);right:auto;}',
+    '#jbw-fab:hover{transform:scale(1.05);box-shadow:0 10px 28px rgba(0,0,0,.34),0 3px 8px rgba(0,0,0,.2);}',
+    '#jbw-fab svg{flex-shrink:0;width:21px;height:21px;}',
 
     // Pulso suave cada 4s. Se detiene con el panel abierto y respeta a quien
     // pidio menos movimiento en el sistema.
@@ -115,7 +119,7 @@
     '#jbw-fab.jbw-pulsing{animation:jbw-pulse 4s ease-out infinite;}',
     '@media(prefers-reduced-motion:reduce){#jbw-fab.jbw-pulsing{animation:none;}}',
 
-    '#jbw-panel{position:fixed;bottom:100px;' + SIDE_CSS + ':24px;width:360px;height:500px;',
+    '#jbw-panel{position:fixed;bottom:86px;width:360px;height:500px;',
     'border-radius:18px;background:#fff;z-index:2147483645;display:flex;',
     'flex-direction:column;overflow:hidden;',
     'box-shadow:0 16px 56px rgba(0,0,0,.22),0 0 0 1px rgba(0,0,0,.06);',
@@ -124,6 +128,8 @@
     'transition:transform .22s cubic-bezier(.22,1,.36,1),opacity .22s ease;',
     'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;}',
     '#jbw-panel.jbw-open{transform:scale(1) translateY(0);opacity:1;pointer-events:all;}',
+    '#jbw-panel.jbw-right{right:var(--jbw-edge);left:auto;}',
+    '#jbw-panel.jbw-left{left:var(--jbw-edge);right:auto;}',
 
     '#jbw-head{padding:14px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;}',
     '.jbw-hi{flex:1;min-width:0;}',
@@ -171,10 +177,10 @@
     '#jbw-snd:disabled{opacity:.4;cursor:not-allowed;}',
     '#jbw-snd svg{width:15px;height:15px;}',
     '@media(max-width:600px){',
-      '#jbw-fab{min-height:72px;border-radius:38px;font-size:16.5px;padding:0 24px 0 20px;}',
-      '#jbw-panel{width:88vw;max-width:88vw;height:75vh;max-height:75vh;bottom:108px;}',
-      '#jbw-panel.jbw-left{left:24px;right:auto;}',
-      '#jbw-panel.jbw-right{right:24px;left:auto;}',
+      '#jbw-fab,#jbw-panel{--jbw-edge:18px;}',
+      '#jbw-fab{height:58px;border-radius:29px;font-size:16px;padding:0 18px;}',
+      '#jbw-fab svg{width:22px;height:22px;}',
+      '#jbw-panel{width:88vw;max-width:88vw;height:75vh;max-height:75vh;bottom:88px;}',
     '}',
 
     '.jbw-cards-wrap{width:100%;overflow-x:auto;padding:4px 0 0;}',
@@ -197,7 +203,7 @@
   var fab = document.createElement('button');
   fab.id = 'jbw-fab';
   fab.setAttribute('aria-label', 'Abrir chat');
-  fab.className = 'jbw-pulsing';
+  fab.className = 'jbw-pulsing ' + (SIDE_CSS === 'left' ? 'jbw-left' : 'jbw-right');
   fab.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="white" aria-hidden="true">' +
     '<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>' +
     '<span id="jbw-fab-label">Habla con nosotros</span>';
