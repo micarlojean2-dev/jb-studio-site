@@ -2,9 +2,10 @@
   "outputDirectory": ".",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/ventas",          "destination": "/ventas.html"   },
-    { "source": "/demo",            "destination": "/chatbot.html"  },
-    { "source": "/reservas/:path*", "destination": "/reservas.html" }
+    { "source": "/ventas",           "destination": "/ventas.html"    },
+    { "source": "/demo",             "destination": "/chatbot.html"   },
+    { "source": "/reservas/:path*",  "destination": "/reservas.html"  },
+    { "source": "/asistente/:path*", "destination": "/asistente.html" }
   ],
   "headers": [
     {

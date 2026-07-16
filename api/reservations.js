@@ -153,8 +153,10 @@ export default async function handler(req, res) {
       const businessName = client.businessName || clientId;
       const lang         = client.language || 'es';
       const emails       = [];
+      // Legacy clients (no features object) keep the old always-on behavior.
+      const notifyOwner  = !client.features || client.features.emailNotifications !== false;
 
-      if (client.ownerEmail) {
+      if (notifyOwner && client.ownerEmail) {
         emails.push(
           resend.emails.send({
             from:    FROM,

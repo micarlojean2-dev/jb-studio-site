@@ -14,6 +14,15 @@
 
   // ── State ────────────────────────────────────────────────────────────────
   var cfg     = { businessName: 'Chat', color: '#1a4a2e', language: 'es', active: true };
+
+  // Feature gating — legacy clients (no cfg.features at all) keep every
+  // behavior enabled, exactly like before this was added. Only a client
+  // created by the automatic wizard, with an explicit "false", turns a
+  // behavior off. Keep this regex/gating pattern in sync with asistente.html
+  // (no shared module in this vanilla codebase to dedupe against).
+  function featureOn(key) {
+    return !cfg.features || cfg.features[key] !== false;
+  }
   var msgs    = [];
   var open    = false;
   var busy    = false;
@@ -444,7 +453,7 @@
     }
 
     // ── Cancel intent detected: start flow ──────────────────────────────
-    if (CANCEL_TRIGGERS.test(t)) {
+    if (featureOn('cancellation') && CANCEL_TRIGGERS.test(t)) {
       addMsg('user', t);
       cancelStep = 1;
       var cancelIntro = lang === 'en'
@@ -455,7 +464,7 @@
     }
 
     // ── Booking intent detected: start flow ──────────────────────────────
-    if (BOOKING_TRIGGERS.test(t)) {
+    if (featureOn('reservations') && BOOKING_TRIGGERS.test(t)) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
       save();

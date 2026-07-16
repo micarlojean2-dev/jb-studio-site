@@ -112,8 +112,11 @@ export default async function handler(req, res) {
     const data = await upstream.json();
     let text = data.content?.[0]?.text || '';
 
-    // Auto-inject [MOSTRAR_MENU] if keywords detected and marker not already present
-    if (text && !text.includes('[MOSTRAR_MENU]')) {
+    // Auto-inject [MOSTRAR_MENU] if keywords detected and marker not already present.
+    // Gated on features.catalog — legacy clients without a features object
+    // keep the old always-on behavior ("!== false" defaults to enabled).
+    const catalogEnabled = !client.features || client.features.catalog !== false;
+    if (catalogEnabled && text && !text.includes('[MOSTRAR_MENU]')) {
       const MENU_KEYWORDS = /cat[áa]logo|im[áa]genes?|fotos?|servicios?|precios?|tratamientos?|productos?/i;
       const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
       if (MENU_KEYWORDS.test(lastUserMsg) || MENU_KEYWORDS.test(text)) {

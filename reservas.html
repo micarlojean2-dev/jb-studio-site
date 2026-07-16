@@ -374,9 +374,24 @@
   var activeFilter = 'all';
 
   // ── Try saved token on load ───────────────────────────────────────────────
+  // A token can also arrive once via a URL fragment (#t=...) — e.g. from the
+  // admin panel's "Ver panel de reservas" button right after creating a
+  // client. The fragment is never sent to the server and is scrubbed from
+  // the visible address bar immediately, so the token is never shown as
+  // plain text anywhere in the admin UI.
   window.addEventListener('DOMContentLoaded', function () {
-    var saved = localStorage.getItem(STORE_KEY);
-    if (saved) tryToken(saved);
+    var fragToken = '';
+    if (window.location.hash && window.location.hash.indexOf('t=') !== -1) {
+      fragToken = decodeURIComponent(window.location.hash.replace(/^#t=/, ''));
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+
+    if (fragToken) {
+      tryToken(fragToken);
+    } else {
+      var saved = localStorage.getItem(STORE_KEY);
+      if (saved) tryToken(saved);
+    }
 
     document.getElementById('token-inp').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') doLogin();

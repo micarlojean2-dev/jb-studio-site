@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Asistente virtual</title>
+  <meta name="robots" content="noindex" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      min-height: 100dvh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: #f2f2f2;
+      color: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    #a-head {
+      flex-shrink: 0;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #fff;
+    }
+    #a-av {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: rgba(255,255,255,.22);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px; flex-shrink: 0;
+    }
+    #a-name { font-size: 16px; font-weight: 700; line-height: 1.2; }
+    #a-status { font-size: 12.5px; color: rgba(255,255,255,.8); margin-top: 2px; display: flex; align-items: center; gap: 5px; }
+    .a-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; display: inline-block; }
+
+    /* ── Message list ───────────────────────────────────────────────────── */
+    #a-msgs {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 14px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .a-r { display: flex; align-items: flex-end; gap: 8px; }
+    .a-r.a-u { justify-content: flex-end; }
+    .a-b {
+      max-width: 82%;
+      padding: 11px 14px;
+      border-radius: 16px;
+      font-size: 15px;
+      line-height: 1.5;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .a-r.a-bot .a-b { background: #fff; color: #1a1a1a; border-radius: 16px 16px 16px 3px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .a-r.a-u .a-b { color: #fff; border-radius: 16px 16px 3px 16px; }
+    .a-ba { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; color: #fff; }
+    .a-ty { background: #fff; color: #aaa; padding: 11px 14px; border-radius: 16px 16px 16px 3px; font-size: 20px; letter-spacing: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+
+    /* ── Menu carousel ──────────────────────────────────────────────────── */
+    .a-cards-wrap { width: 100%; overflow-x: auto; padding: 2px 0 4px; -webkit-overflow-scrolling: touch; }
+    .a-cards { display: flex; gap: 10px; padding: 0 2px 8px; }
+    .a-card { flex: 0 0 150px; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 8px rgba(0,0,0,.1); }
+    .a-card-img { width: 100%; height: 96px; object-fit: cover; display: block; background: #eee; }
+    .a-card-ph { width: 100%; height: 96px; background: #eee; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+    .a-card-body { padding: 9px 10px 11px; }
+    .a-card-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .a-card-price { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .a-card-desc { font-size: 11.5px; color: #666; line-height: 1.4; }
+
+    /* ── Footer / input ─────────────────────────────────────────────────── */
+    #a-foot {
+      flex-shrink: 0;
+      padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+      background: #fff;
+      border-top: 1px solid rgba(0,0,0,.08);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    #a-inp {
+      flex: 1;
+      border: 1px solid rgba(0,0,0,.16);
+      border-radius: 24px;
+      padding: 12px 16px;
+      font-size: 16px; /* avoid iOS auto-zoom */
+      min-height: 44px;
+      outline: none;
+      background: #f5f5f5;
+      color: #1a1a1a;
+      font-family: inherit;
+    }
+    #a-inp:focus { border-color: rgba(0,0,0,.3); background: #fff; }
+    #a-inp:disabled { opacity: .5; }
+    #a-snd {
+      width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff;
+    }
+    #a-snd:disabled { opacity: .4; cursor: not-allowed; }
+    #a-snd svg { width: 18px; height: 18px; }
+
+    /* ── Loading / error states ────────────────────────────────────────── */
+    #a-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 32px 20px;
+      text-align: center;
+      color: #888;
+    }
+    .a-spinner {
+      width: 30px; height: 30px; border: 3px solid rgba(0,0,0,.1);
+      border-top-color: #1a4a2e; border-radius: 50%;
+      animation: a-spin .8s linear infinite;
+    }
+    @keyframes a-spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <div id="a-loading" style="display:flex;flex:1;flex-direction:column;">
+    <div id="a-state"><div class="a-spinner"></div><span>Cargando asistente…</span></div>
+  </div>
+
+  <div id="a-app" style="display:none;flex:1;flex-direction:column;min-height:0;">
+    <div id="a-head">
+      <div id="a-av">✦</div>
+      <div>
+        <div id="a-name">Asistente</div>
+        <div id="a-status"><span class="a-dot"></span><span id="a-status-text">En línea</span></div>
+      </div>
+    </div>
+    <div id="a-msgs"></div>
+    <div id="a-foot">
+      <input id="a-inp" type="text" placeholder="Escribe un mensaje…" />
+      <button id="a-snd" disabled aria-label="Enviar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="a-notfound" style="display:none;flex:1;">
+    <div id="a-state">
+      <div style="font-size:44px;">🔎</div>
+      <div style="font-weight:700;color:#333;">Asistente no encontrado</div>
+      <div style="max-width:320px;font-size:13.5px;">Este enlace no corresponde a ningún negocio activo en JB Studio.</div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  // clientId comes from the path — vercel.json rewrites /asistente/:path*
+  // to this file WITHOUT changing the visible URL, same pattern as
+  // /reservas/:path* → reservas.html.
+  var pathParts = window.location.pathname.split('/').filter(Boolean);
+  var clientId  = pathParts[1] || '';
+
+  var API = window.location.origin;
+
+  var loadingEl  = document.getElementById('a-loading');
+  var appEl      = document.getElementById('a-app');
+  var notfoundEl = document.getElementById('a-notfound');
+
+  if (!clientId || !/^[a-z0-9-]+$/.test(clientId)) {
+    loadingEl.style.display = 'none';
+    notfoundEl.style.display = 'flex';
+    return;
+  }
+
+  var SESS = 'jba_' + clientId;
+  var cfg  = { businessName: 'Asistente', color: '#1a4a2e', language: 'es', active: true };
+  var msgs = [];
+  var busy = false;
+
+  // Feature gating — same "!== false" backward-compatible pattern as
+  // widget.js (legacy clients with no cfg.features keep everything on).
+  // Keep this in sync with widget.js's featureOn() — no shared module in
+  // this vanilla codebase to dedupe against.
+  function featureOn(key) {
+    return !cfg.features || cfg.features[key] !== false;
+  }
+
+  var bookingStep = 0, bookingData = {};
+  var cancelStep  = 0, cancelData  = {};
+
+  var CANCEL_TRIGGERS  = /\bcancel(ar)?\b|quiero cancelar/i;
+  var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserva|hora libre|turno|quiero una cita/i;
+
+  var BOOKING_STEPS = [
+    { field: 'nombre',   ask: { es: '¿Cuál es tu nombre completo?',                           en: 'What is your full name?' } },
+    { field: 'telefono', ask: { es: '¿Cuál es tu número de teléfono?',                        en: "What's your phone number?" } },
+    { field: 'email',    ask: { es: '¿Cuál es tu email?',                                     en: "What's your email address?" } },
+    { field: 'fecha',    ask: { es: '¿Qué fecha prefieres? (ej: 15 de julio)',                 en: 'What date do you prefer? (e.g. July 15)' } },
+    { field: 'hora',     ask: { es: '¿A qué hora? (ej: 3:00 PM)',                             en: 'What time? (e.g. 3:00 PM)' } },
+    { field: 'servicio', ask: { es: '¿Qué servicio deseas o para cuántas personas?',           en: 'What service do you need, or how many people?' } },
+    { field: 'nota',     ask: { es: '¿Alguna nota adicional? (escribe "no" si no tienes ninguna)', en: 'Any additional notes? (write "no" if none)' } },
+  ];
+  var CANCEL_STEPS = [
+    { field: 'contacto', ask: { es: '¿Cuál es el email o teléfono con el que hiciste la reserva?', en: 'What email or phone number did you use to book?' } },
+    { field: 'fecha',    ask: { es: '¿Cuál es la fecha de tu reserva? (ej: 15 de julio)',           en: 'What is the date of your reservation? (e.g. July 15)' } },
+  ];
+
+  try { msgs = JSON.parse(sessionStorage.getItem(SESS) || '[]'); } catch (e) { msgs = []; }
+  function save() { try { sessionStorage.setItem(SESS, JSON.stringify(msgs.slice(-40))); } catch (e) {} }
+
+  var msgsEl = document.getElementById('a-msgs');
+  var inp    = document.getElementById('a-inp');
+  var snd    = document.getElementById('a-snd');
+  var nameEl = document.getElementById('a-name');
+  var headEl = document.getElementById('a-head');
+  var statusText = document.getElementById('a-status-text');
+
+  function paint() {
+    var c = cfg.color;
+    document.body.style.background = '#f2f2f2';
+    headEl.style.background = c;
+    snd.style.background    = c;
+    nameEl.textContent      = cfg.businessName || 'Asistente';
+    document.title          = (cfg.businessName || 'Asistente') + ' — Chat';
+    inp.placeholder = cfg.language === 'en' ? 'Type a message…' : 'Escribe un mensaje…';
+    statusText.textContent  = cfg.language === 'en' ? 'Online now' : 'En línea';
+    var ubs = msgsEl.querySelectorAll('.a-r.a-u .a-b');
+    for (var i = 0; i < ubs.length; i++) ubs[i].style.background = c;
+    var avs = msgsEl.querySelectorAll('.a-ba');
+    for (var j = 0; j < avs.length; j++) avs[j].style.background = c;
+  }
+
+  function addMsg(role, text) {
+    var row = document.createElement('div');
+    row.className = 'a-r ' + (role === 'user' ? 'a-u' : 'a-bot');
+    var bub = document.createElement('div');
+    bub.className = 'a-b';
+    bub.textContent = text;
+    if (role === 'bot') {
+      var av = document.createElement('div');
+      av.className = 'a-ba';
+      av.style.background = cfg.color;
+      av.textContent = '✦';
+      row.appendChild(av);
+    } else {
+      bub.style.background = cfg.color;
+    }
+    row.appendChild(bub);
+    msgsEl.appendChild(row);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
+  function showTyping() {
+    var row = document.createElement('div');
+    row.className = 'a-r a-bot';
+    row.id = 'a-ty';
+    var av = document.createElement('div');
+    av.className = 'a-ba';
+    av.style.background = cfg.color;
+    av.textContent = '✦';
+    var b = document.createElement('div');
+    b.className = 'a-ty';
+    b.textContent = '···';
+    row.appendChild(av);
+    row.appendChild(b);
+    msgsEl.appendChild(row);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+  function hideTyping() {
+    var el = document.getElementById('a-ty');
+    if (el) el.remove();
+  }
+
+  function renderMenu() {
+    var items = Array.isArray(cfg.menu) ? cfg.menu : [];
+    if (!items.length) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'a-cards-wrap';
+    var row = document.createElement('div');
+    row.className = 'a-cards';
+    items.forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'a-card';
+      if (item.imagen) {
+        var img = document.createElement('img');
+        img.className = 'a-card-img';
+        img.src = item.imagen;
+        img.alt = item.nombre || '';
+        img.loading = 'lazy';
+        img.onerror = function () {
+          var ph = document.createElement('div');
+          ph.className = 'a-card-ph';
+          ph.textContent = '🖼';
+          img.parentNode.replaceChild(ph, img);
+        };
+        card.appendChild(img);
+      } else {
+        var ph = document.createElement('div');
+        ph.className = 'a-card-ph';
+        ph.textContent = '🖼';
+        card.appendChild(ph);
+      }
+      var body = document.createElement('div');
+      body.className = 'a-card-body';
+      if (item.nombre) {
+        var name = document.createElement('div');
+        name.className = 'a-card-name';
+        name.textContent = item.nombre;
+        body.appendChild(name);
+      }
+      if (item.precio) {
+        var price = document.createElement('div');
+        price.className = 'a-card-price';
+        price.style.color = cfg.color;
+        price.textContent = item.precio;
+        body.appendChild(price);
+      }
+      if (item.descripcion) {
+        var desc = document.createElement('div');
+        desc.className = 'a-card-desc';
+        desc.textContent = item.descripcion;
+        body.appendChild(desc);
+      }
+      card.appendChild(body);
+      row.appendChild(card);
+    });
+    wrap.appendChild(row);
+    msgsEl.appendChild(wrap);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
+  function submitBooking() {
+    var lang = cfg.language === 'en' ? 'en' : 'es';
+    busy = true; inp.disabled = true; snd.disabled = true;
+    showTyping();
+    fetch(API + '/api/reservations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ clientId: clientId }, bookingData)),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        hideTyping();
+        addMsg('bot', d.ok
+          ? (lang === 'en' ? '✅ Your request has been received! The business will review availability and confirm with you soon.' : '✅ Tu solicitud fue recibida. El negocio revisará disponibilidad y te confirmará pronto.')
+          : (lang === 'en' ? 'There was an error saving your request. Please try again.' : 'Hubo un error al guardar tu solicitud. Por favor intenta de nuevo.'));
+      })
+      .catch(function () {
+        hideTyping();
+        addMsg('bot', lang === 'en' ? 'Connection error. Please try again.' : 'Error de conexión. Por favor intenta de nuevo.');
+      })
+      .finally(function () {
+        bookingStep = 0; bookingData = {};
+        busy = false; inp.disabled = false; snd.disabled = false; inp.focus();
+      });
+  }
+
+  function submitCancellation() {
+    var lang = cfg.language === 'en' ? 'en' : 'es';
+    busy = true; inp.disabled = true; snd.disabled = true;
+    showTyping();
+    fetch(API + '/api/cancel-reservation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: clientId, contacto: cancelData.contacto, fecha: cancelData.fecha }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        hideTyping();
+        addMsg('bot', d.found
+          ? (lang === 'en' ? '✅ Your reservation has been cancelled. We hope to see you again soon!' : '✅ Tu reserva fue cancelada correctamente. ¡Esperamos verte pronto!')
+          : (lang === 'en' ? 'No reservation was found with those details. Please verify your email/phone and date, then try again.' : 'No encontramos una reserva con esos datos. Verifica el email/teléfono y la fecha e intenta de nuevo.'));
+      })
+      .catch(function () {
+        hideTyping();
+        addMsg('bot', lang === 'en' ? 'Connection error. Please try again.' : 'Error de conexión. Por favor intenta de nuevo.');
+      })
+      .finally(function () {
+        cancelStep = 0; cancelData = {};
+        busy = false; inp.disabled = false; snd.disabled = false; inp.focus();
+      });
+  }
+
+  function send(text) {
+    if (busy || !text.trim()) return;
+    var t = text.trim();
+    var lang = cfg.language === 'en' ? 'en' : 'es';
+
+    if (cancelStep > 0) {
+      if (/^(salir|exit)$/i.test(t)) {
+        cancelStep = 0; cancelData = {};
+        addMsg('user', t);
+        addMsg('bot', lang === 'en' ? 'Process cancelled. Is there anything else I can help with?' : 'Proceso cancelado. ¿Hay algo más en lo que pueda ayudarte?');
+        return;
+      }
+      var cstep = CANCEL_STEPS[cancelStep - 1];
+      cancelData[cstep.field] = t;
+      addMsg('user', t);
+      cancelStep++;
+      if (cancelStep <= CANCEL_STEPS.length) addMsg('bot', CANCEL_STEPS[cancelStep - 1].ask[lang]);
+      else submitCancellation();
+      return;
+    }
+
+    if (bookingStep > 0) {
+      if (/^(cancelar|cancel|salir|exit)$/i.test(t)) {
+        bookingStep = 0; bookingData = {};
+        addMsg('user', t);
+        addMsg('bot', lang === 'en' ? 'Reservation cancelled. Is there anything else I can help with?' : 'Reserva cancelada. ¿Hay algo más en lo que pueda ayudarte?');
+        return;
+      }
+      var step = BOOKING_STEPS[bookingStep - 1];
+      bookingData[step.field] = t;
+      addMsg('user', t);
+      bookingStep++;
+      if (bookingStep <= BOOKING_STEPS.length) addMsg('bot', BOOKING_STEPS[bookingStep - 1].ask[lang]);
+      else submitBooking();
+      return;
+    }
+
+    if (featureOn('cancellation') && CANCEL_TRIGGERS.test(t)) {
+      addMsg('user', t);
+      cancelStep = 1;
+      var cancelIntro = lang === 'en'
+        ? '🗓️ I\'ll help you cancel your reservation. Write "exit" at any time to stop.\n\n'
+        : '🗓️ Te ayudo a cancelar tu reserva. Escribe "salir" en cualquier momento para salir.\n\n';
+      addMsg('bot', cancelIntro + CANCEL_STEPS[0].ask[lang]);
+      return;
+    }
+
+    if (featureOn('reservations') && BOOKING_TRIGGERS.test(t)) {
+      addMsg('user', t);
+      msgs.push({ role: 'user', content: t });
+      save();
+      bookingStep = 1;
+      var intro = lang === 'en'
+        ? '📅 Sure! I\'ll help you request an appointment. Write "cancel" at any time to stop.\n\n'
+        : '📅 ¡Con gusto! Te ayudo a solicitar una cita. Escribe "cancelar" en cualquier momento para salir.\n\n';
+      addMsg('bot', intro + BOOKING_STEPS[0].ask[lang]);
+      return;
+    }
+
+    busy = true; inp.disabled = true; snd.disabled = true;
+    addMsg('user', text);
+    msgs.push({ role: 'user', content: text });
+    save();
+    showTyping();
+
+    fetch(API + '/api/client-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: clientId, messages: msgs }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        hideTyping();
+        if (d.error === 'inactive') {
+          addMsg('bot', d.message || (cfg.language === 'en' ? 'This service is temporarily unavailable.' : 'Este servicio no está disponible temporalmente.'));
+        } else if (d.text) {
+          var showMenu  = /\[MOSTRAR_MENU\]/.test(d.text);
+          var cleanText = d.text.replace(/\[MOSTRAR_MENU\]/g, '').trim();
+          if (cleanText) addMsg('bot', cleanText);
+          if (showMenu)  renderMenu();
+          msgs.push({ role: 'assistant', content: d.text });
+          save();
+        } else {
+          addMsg('bot', cfg.language === 'en' ? 'Something went wrong. Please try again.' : 'Algo salió mal. Por favor intenta de nuevo.');
+        }
+      })
+      .catch(function () {
+        hideTyping();
+        addMsg('bot', cfg.language === 'en' ? 'Connection error. Please try again.' : 'Error de conexión. Por favor intenta de nuevo.');
+      })
+      .finally(function () {
+        busy = false; inp.disabled = false; snd.disabled = false; inp.focus();
+      });
+  }
+
+  snd.addEventListener('click', function () {
+    var t = inp.value.trim();
+    inp.value = '';
+    send(t);
+  });
+  inp.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      var t = inp.value.trim();
+      inp.value = '';
+      send(t);
+    }
+  });
+
+  // ── Load client config, then show the chat ──────────────────────────────
+  fetch(API + '/api/client-config?id=' + encodeURIComponent(clientId))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d) {
+        loadingEl.style.display = 'none';
+        notfoundEl.style.display = 'flex';
+        return;
+      }
+      Object.assign(cfg, d);
+      loadingEl.style.display = 'none';
+      appEl.style.display = 'flex';
+      paint();
+      snd.disabled = false;
+
+      msgs.forEach(function (m) { addMsg(m.role === 'user' ? 'user' : 'bot', m.content); });
+      if (!msgs.length) {
+        var g = cfg.language === 'en' ? "Hi! 👋 How can I help you today?" : "¡Hola! 👋 ¿En qué puedo ayudarte hoy?";
+        addMsg('bot', g);
+        msgs.push({ role: 'assistant', content: g });
+        save();
+      }
+      setTimeout(function () { inp.focus(); }, 200);
+    })
+    .catch(function () {
+      loadingEl.style.display = 'none';
+      notfoundEl.style.display = 'flex';
+    });
+
+})();
+</script>
+</body>
+</html>

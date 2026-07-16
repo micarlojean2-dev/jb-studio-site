@@ -1041,6 +1041,12 @@
       margin-bottom: 16px;
     }
 
+    /* Creando chatbot — pasos visuales (Fase 3) */
+    .create-step { display: flex; align-items: center; gap: 12px; font-size: 14.5px; color: #999; transition: color .15s; }
+    .create-step .cs-icon { width: 22px; text-align: center; font-size: 15px; flex-shrink: 0; }
+    .create-step.is-active { color: #1a1a1a; font-weight: 600; }
+    .create-step.is-done   { color: var(--green); }
+
     /* Billing (step 4) */
     .billing-toggle-row {
       display: flex;
@@ -2159,7 +2165,7 @@ LÍMITES ESTRICTOS:
           <!-- ── Paso 2: Diseño ── -->
           <div class="wizard-step" data-step="2" style="display:none">
             <div class="wizard-step-title">Diseño del chatbot</div>
-            <div class="wizard-step-sub">Las imágenes son solo vista previa local por ahora — no se suben a ningún lado todavía.</div>
+            <div class="wizard-step-sub">Las imágenes son solo vista previa local por ahora — no se guardan al crear el chatbot. La subida permanente de imágenes estará disponible en la siguiente fase.</div>
             <div class="wizard-design-layout">
               <div>
                 <div class="wizard-grid-2" style="margin-bottom:16px">
@@ -2333,6 +2339,41 @@ LÍMITES ESTRICTOS:
                 <div id="w-prompt-test-panel" style="display:none;margin-top:14px;border-top:1px solid #eee;padding-top:14px;"></div>
               </div>
             </details>
+          </div>
+
+          <!-- ── Creando (Fase 3) ── -->
+          <div class="wizard-step" data-step="creating" style="display:none">
+            <div class="wizard-step-title">Creando chatbot…</div>
+            <div class="wizard-step-sub">No cierres esta ventana.</div>
+            <div id="w-create-steps" style="margin-top:24px;display:flex;flex-direction:column;gap:16px;">
+              <div class="create-step" data-cs="config"><span class="cs-icon">○</span><span>Generando configuración</span></div>
+              <div class="create-step" data-cs="save"><span class="cs-icon">○</span><span>Guardando negocio</span></div>
+              <div class="create-step" data-cs="services"><span class="cs-icon">○</span><span>Preparando servicios</span></div>
+              <div class="create-step" data-cs="links"><span class="cs-icon">○</span><span>Creando enlaces</span></div>
+              <div class="create-step" data-cs="done"><span class="cs-icon">○</span><span>Listo</span></div>
+            </div>
+            <div id="w-create-error" style="display:none;margin-top:20px;padding:14px 16px;background:#fff5f5;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-size:13.5px;line-height:1.5;"></div>
+            <button type="button" id="w-create-retry" class="action-btn" style="display:none;margin-top:16px;">Reintentar</button>
+          </div>
+
+          <!-- ── Éxito (Fase 3) ── -->
+          <div class="wizard-step" data-step="success" style="display:none">
+            <div class="wizard-step-title">CHATBOT CREADO</div>
+            <div style="margin:18px 0 26px;">
+              <div class="summary-row"><span>Nombre</span><span id="w-success-name"></span></div>
+              <div class="summary-row"><span>Estado</span><span class="st-badge st-yellow">Pendiente de pago</span></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <a id="w-success-try" class="action-btn" style="margin-top:0;text-align:center;text-decoration:none;display:block;" target="_blank" rel="noopener noreferrer">Probar chatbot</a>
+              <button type="button" id="w-success-copy" class="wizard-btn-secondary">Copiar enlace</button>
+              <button type="button" id="w-success-install-toggle" class="wizard-btn-secondary">Instalar en una web</button>
+              <div id="w-success-install-panel" style="display:none;">
+                <div class="snippet-box" id="w-success-snippet" style="word-break:break-all;"></div>
+                <button type="button" id="w-success-install-copy" class="copy-link" style="margin-top:8px;">Copiar código</button>
+              </div>
+              <a id="w-success-reservas" class="wizard-btn-secondary" style="text-align:center;text-decoration:none;display:block;" target="_blank" rel="noopener noreferrer">Ver panel de reservas</a>
+              <button type="button" id="w-success-back" class="wizard-btn-secondary">Volver a clientes</button>
+            </div>
           </div>
 
         </div>
@@ -3304,6 +3345,19 @@ LÍMITES ESTRICTOS:
 
     document.getElementById('add-menu-item').addEventListener('click', () => addMenuItem());
 
+    // ── Bridge for the wizard's separate IIFE (Fase 3) ───────────────────────
+    // The wizard below lives in its own IIFE by design (no shared state with
+    // this legacy panel script) — but it needs the admin token to call
+    // /api/clients and a way to refresh the CLIENTES table after creating a
+    // real client. Exposes references only, no duplicated login logic:
+    // `token` is reassigned by tryLogin/logout above, so getToken() always
+    // reads the current value.
+    window.__jbAdmin = {
+      getToken:       () => token,
+      refreshClients: () => loadClients(),
+      getClients:     () => clientsCache,
+    };
+
   })();
   </script>
 
@@ -3382,6 +3436,20 @@ LÍMITES ESTRICTOS:
       document.querySelectorAll('.wizard-step').forEach(el => {
         el.style.display = el.dataset.step === currentStep ? '' : 'none';
       });
+
+      // "Creando" / "Éxito" (Fase 3) aren't part of the 1–4 progress bar —
+      // full-focus views with their own footer (or none at all).
+      if (currentStep === 'creating' || currentStep === 'success') {
+        progressFill.style.width = '100%';
+        stepNumEl.textContent = currentStep === 'creating' ? '…' : '✓';
+        document.querySelectorAll('.wp-label').forEach(el => el.classList.remove('is-active', 'is-done'));
+        backBtn.style.display   = 'none';
+        nextBtn.style.display   = 'none';
+        reviewBtn.style.display = 'none';
+        createBtn.style.display = 'none';
+        return;
+      }
+      backBtn.style.display = '';
 
       if (currentStep === 'summary') {
         stepNumEl.textContent = '4';
@@ -3777,6 +3845,15 @@ LÍMITES ESTRICTOS:
         : '- No proceses reagendados; deriva al negocio directamente.');
       lines.push('');
 
+      // 5b. Menú visual — misma señal [MOSTRAR_MENU] que usan las plantillas
+      // fijas, solo si el catálogo está habilitado (Fase 3).
+      if (f.catalog && state.services.length) {
+        lines.push('MENÚ VISUAL');
+        lines.push('');
+        lines.push('REGLA CRÍTICA: Cuando el cliente pregunte por servicios, precios, catálogo, imágenes o fotos, DEBES incluir obligatoriamente el texto [MOSTRAR_MENU] al final de tu respuesta. Las imágenes se muestran aquí dentro del chat, nunca mandes al cliente a otra red social a verlas.');
+        lines.push('');
+      }
+
       // 6. Reglas generales — fijas
       lines.push('REGLAS GENERALES');
       lines.push('');
@@ -3955,13 +4032,182 @@ LÍMITES ESTRICTOS:
       goToStep('summary');
     });
 
+    // ── Creación real (Fase 3) ──────────────────────────────────────────────
+    // Reutiliza POST /api/clients (el mismo endpoint del formulario manual
+    // legado) — no hay un sistema paralelo. El token de admin y el refresco
+    // de la tabla vienen del puente window.__jbAdmin expuesto por el IIFE
+    // del panel legado.
+
+    function slugify(name) {
+      const s = String(name || '')
+        .toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^a-z0-9\s-]/g, '')
+        .trim()
+        .replace(/[\s-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 60);
+      return s || 'negocio';
+    }
+
+    function uniqueId(base) {
+      const existing = new Set((window.__jbAdmin?.getClients?.() || []).map(c => c.id));
+      if (!existing.has(base)) return base;
+      let i = 2;
+      while (existing.has(`${base}-${i}`) && i < 200) i++;
+      return `${base}-${i}`;
+    }
+
+    function nextSuffixedId(id) {
+      const m = id.match(/^(.*)-(\d+)$/);
+      return m ? `${m[1]}-${parseInt(m[2], 10) + 1}` : `${id}-2`;
+    }
+
+    function setCreateStepState(key, cls) {
+      const el = document.querySelector(`.create-step[data-cs="${key}"]`);
+      if (!el) return;
+      el.classList.remove('is-active', 'is-done');
+      if (cls) el.classList.add(cls);
+      el.querySelector('.cs-icon').textContent = cls === 'is-done' ? '✓' : cls === 'is-active' ? '…' : '○';
+    }
+
+    function resetCreateSteps() {
+      ['config', 'save', 'services', 'links', 'done'].forEach(k => setCreateStepState(k, ''));
+      document.getElementById('w-create-error').style.display = 'none';
+      document.getElementById('w-create-retry').style.display = 'none';
+    }
+
+    function showCreateError(msg) {
+      const box = document.getElementById('w-create-error');
+      box.textContent = msg;
+      box.style.display = '';
+      document.getElementById('w-create-retry').style.display = '';
+    }
+
+    let creating = false;
+    let pendingId = null; // { base, id, attempt } — kept across retries so we never re-slugify mid-attempt
+
+    async function runCreateFlow() {
+      if (creating) return;
+      creating = true;
+      resetCreateSteps();
+      goToStep('creating');
+
+      setCreateStepState('config', 'is-active');
+      readStep1(); readStep2(); readStep3Features(); readStep4();
+      const prompt = generateSystemPrompt(state);
+
+      if (/\[NOMBRE DEL NEGOCIO\]|\[TIPO DE NEGOCIO\]/.test(prompt) || !state.services.length || state.services.every(s => !s.nombre.trim())) {
+        creating = false;
+        showCreateError('Faltan datos obligatorios (negocio o servicios). Vuelve a revisar los pasos anteriores.');
+        return;
+      }
+      setCreateStepState('config', 'is-done');
+      setCreateStepState('save', 'is-active');
+
+      if (!pendingId) {
+        const base = slugify(state.business.name);
+        pendingId = { base, id: uniqueId(base), attempt: 1 };
+      }
+
+      const payload = {
+        id: pendingId.id,
+        businessName:   state.business.name,
+        ownerEmail:     state.business.ownerEmail,
+        whatsapp:       state.business.phone,
+        plan:           state.business.plan,
+        language:       state.business.language,
+        color:          state.design.primaryColor,
+        secondaryColor: state.design.secondaryColor,
+        style:          state.design.style,
+        address:        state.business.address,
+        hours:          state.business.hours,
+        businessType:   state.business.type,
+        prompt,
+        services:       state.services,
+        features:       state.features,
+        monthlyPrice:   state.billing.monthlyPrice,
+        billingDay:     state.billing.billingDay,
+        trialEnabled:   state.billing.trialEnabled,
+        trialDays:      state.billing.trialDays,
+      };
+
+      try {
+        const res = await fetch('/api/clients', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-token': window.__jbAdmin.getToken() },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.status === 409) {
+          // Otra sesión de admin tomó ese id justo antes — nunca se sobrescribe,
+          // se resuelve solo con el siguiente sufijo, transparente para el usuario.
+          if (pendingId.attempt >= 20) throw new Error('No se pudo generar un identificador único. Intenta de nuevo.');
+          pendingId = { base: pendingId.base, id: nextSuffixedId(pendingId.id), attempt: pendingId.attempt + 1 };
+          creating = false;
+          return runCreateFlow();
+        }
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error === 'id_exists' ? 'Ese identificador ya existe.' : (data.error || `Error ${res.status}`));
+
+        setCreateStepState('save', 'is-done');
+        setCreateStepState('services', 'is-active');
+        setCreateStepState('services', 'is-done');
+        setCreateStepState('links', 'is-active');
+        setCreateStepState('links', 'is-done');
+        setCreateStepState('done', 'is-done');
+
+        finalized = true;
+        pendingId = null;
+        window.__jbAdmin.refreshClients();
+        renderSuccessScreen(data);
+        goToStep('success');
+
+      } catch (err) {
+        showCreateError(err.message || 'Error de conexión. Verifica tu internet e intenta de nuevo.');
+      } finally {
+        creating = false;
+      }
+    }
+
+    function renderSuccessScreen(client) {
+      const url = `https://jbstudio.app/asistente/${client.id}`;
+      document.getElementById('w-success-name').textContent = client.businessName;
+      document.getElementById('w-success-try').href = url;
+      document.getElementById('w-success-snippet').textContent = client.widgetSnippet;
+      document.getElementById('w-success-reservas').href = `https://jbstudio.app/reservas/${client.id}#t=${encodeURIComponent(client.panelToken)}`;
+      document.getElementById('w-success-install-panel').style.display = 'none';
+      document.getElementById('w-success-install-toggle').textContent = 'Instalar en una web';
+
+      document.getElementById('w-success-copy').onclick = function () {
+        navigator.clipboard.writeText(url).then(() => {
+          this.textContent = 'Copiado ✓';
+          setTimeout(() => this.textContent = 'Copiar enlace', 1800);
+        });
+      };
+      document.getElementById('w-success-install-toggle').onclick = function () {
+        const panel = document.getElementById('w-success-install-panel');
+        const open = panel.style.display === 'none';
+        panel.style.display = open ? '' : 'none';
+        this.textContent = open ? 'Ocultar código' : 'Instalar en una web';
+      };
+      document.getElementById('w-success-install-copy').onclick = function () {
+        navigator.clipboard.writeText(client.widgetSnippet).then(() => {
+          this.textContent = 'Copiado ✓';
+          setTimeout(() => this.textContent = 'Copiar código', 1800);
+        });
+      };
+    }
+
+    document.getElementById('w-create-retry').addEventListener('click', () => runCreateFlow());
+    document.getElementById('w-success-back').addEventListener('click', () => closeWizard());
+
     createBtn.addEventListener('click', () => {
       const err = validateStep4();
       if (err) { showError(err); return; }
-      // Fase 1: no se crea nada real todavía. No hay llamada a /api/clients,
-      // no se guarda nada en Redis. Solo se muestra el resumen de prueba.
-      finalized = true;
-      goToStep('summary');
+      pendingId = null; // fresh id computation for a brand-new create attempt
+      runCreateFlow();
     });
 
   })();
