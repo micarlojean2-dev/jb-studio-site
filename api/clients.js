@@ -25,6 +25,53 @@ const STYLES = ['Moderno', 'Elegante', 'Amigable', 'Minimalista'];
 const PLAN_PRICES = { basic: 49, pro: 65 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Fase 4.1 — mismas listas que usa el wizard nuevo en admin.html (idiomas,
+// países de teléfono, días de la semana), repetidas aquí porque no hay
+// módulo compartido en este proyecto sin build step.
+const LANGUAGE_CODES = ['es', 'en', 'pt', 'fr'];
+const PHONE_COUNTRY_CODES = ['US', 'MX', 'CL', 'AR', 'CO', 'PE', 'BR', 'ES', 'GB', 'CA'];
+const TIME_RE = /^\d{2}:\d{2}$/;
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAY_LABELS = { monday: 'Lunes', tuesday: 'Martes', wednesday: 'Miércoles', thursday: 'Jueves', friday: 'Viernes', saturday: 'Sábado', sunday: 'Domingo' };
+
+function sanitizeLanguages(languages) {
+  if (!Array.isArray(languages)) return null;
+  const out = [];
+  languages.forEach(l => {
+    const code = String(l || '').toLowerCase();
+    if (LANGUAGE_CODES.includes(code) && !out.includes(code)) out.push(code);
+  });
+  return out.slice(0, 4);
+}
+
+function sanitizeHourRange(range) {
+  const start = String(range?.start || '');
+  const end = String(range?.end || '');
+  if (!TIME_RE.test(start) || !TIME_RE.test(end)) return null;
+  return { start, end };
+}
+
+function sanitizeBusinessHours(businessHours) {
+  if (!businessHours || typeof businessHours !== 'object') return null;
+  const out = {};
+  for (const day of DAYS) {
+    const src = businessHours[day];
+    if (!src || typeof src !== 'object') return null;
+    const ranges = Array.isArray(src.ranges) ? src.ranges.map(sanitizeHourRange).filter(Boolean).slice(0, 2) : [];
+    out[day] = { enabled: !!src.enabled, ranges };
+  }
+  return out;
+}
+
+function businessHoursToText(businessHours) {
+  return DAYS.map(day => {
+    const d = businessHours[day];
+    const label = DAY_LABELS[day];
+    if (!d.enabled || !d.ranges.length) return `${label}: Cerrado`;
+    return `${label}: ${d.ranges.map(r => `${r.start}–${r.end}`).join(', ')}`;
+  }).join('\n');
+}
+
 function sanitizeServiceImage(raw) {
   const v = String(raw || '').slice(0, 500);
   if (/^data:/i.test(v)) return ''; // never persist local base64 blobs
@@ -94,6 +141,7 @@ export default async function handler(req, res) {
       id, businessName, ownerName, ownerEmail, plan, color, language, whatsapp, prompt, menu,
       secondaryColor, style, address, hours, businessType, services, features,
       billingDay, trialEnabled, trialDays,
+      languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -111,6 +159,22 @@ export default async function handler(req, res) {
     const featuresSafe = sanitizeFeatures(features, planSafe);
     const servicesSafe = sanitizeServices(services);
 
+    // Fase 4.1 — campos nuevos del wizard rediseñado. Todos opcionales y
+    // aditivos: si el request no los manda (formulario legado), quedan en
+    // null/undefined y no se guardan campos estructurados nuevos, pero los
+    // campos legados (language/whatsapp/hours) se siguen guardando igual
+    // que antes más abajo.
+    const languagesSafe = sanitizeLanguages(languages);
+    const primaryLanguageSafe = languagesSafe && languagesSafe.length
+      ? (languagesSafe.includes(String(primaryLanguage || '').toLowerCase()) ? String(primaryLanguage).toLowerCase() : languagesSafe[0])
+      : null;
+    const businessHoursSafe = sanitizeBusinessHours(businessHours);
+    const phoneCountrySafe = PHONE_COUNTRY_CODES.includes(String(phoneCountry || '').toUpperCase())
+      ? String(phoneCountry).toUpperCase() : null;
+    const phoneCountryCodeSafe = phoneCountrySafe && /^\+\d{1,4}$/.test(String(phoneCountryCode || ''))
+      ? String(phoneCountryCode) : null;
+    const phoneNumberSafe = phoneNumber != null ? String(phoneNumber).slice(0, 30) : '';
+
     // menu[] (used by widget.js's visual carousel) is derived from services[]
     // when the wizard sends them — only populated if catalog is enabled, and
     // only from server-validated data (never trusts a client-supplied menu
@@ -127,24 +191,45 @@ export default async function handler(req, res) {
       if (existing) return res.status(409).json({ error: 'id_exists' });
 
       const { randomUUID } = await import('crypto');
+
+      // Campos legados derivados: si el wizard nuevo mandó estructura,
+      // language/whatsapp/hours se derivan de ella para que todo el código
+      // viejo (prompt legado, widget, paneles) que todavía los lee como
+      // texto plano siga funcionando sin cambios. Si no vino estructura
+      // nueva (formulario legado), se guarda lo que mandó el request como
+      // siempre.
+      const languageDerived = primaryLanguageSafe || (language === 'en' ? 'en' : 'es');
+      const whatsappDerived = phoneCountryCodeSafe && phoneNumberSafe
+        ? `${phoneCountryCodeSafe}${phoneNumberSafe}`
+        : String(whatsapp || '').slice(0, 30);
+      const hoursDerived = businessHoursSafe
+        ? businessHoursToText(businessHoursSafe)
+        : String(hours || '').slice(0, 200);
+
       const client = {
         id,
         businessName: String(businessName).slice(0, 120),
         ownerName:    String(ownerName || '').slice(0, 120),
         ownerEmail:   String(ownerEmail || '').slice(0, 120),
-        whatsapp:     String(whatsapp || '').slice(0, 30),
+        whatsapp:     whatsappDerived,
         plan:         planSafe,
-        language:     language === 'en' ? 'en' : 'es',
+        language:     languageDerived,
         color:        /^#[0-9a-fA-F]{3,6}$/.test(color || '') ? color : '#1a4a2e',
         secondaryColor: /^#[0-9a-fA-F]{3,6}$/.test(secondaryColor || '') ? secondaryColor : '#f0f7f4',
         style:        STYLES.includes(style) ? style : 'Moderno',
         address:      String(address || '').slice(0, 200),
-        hours:        String(hours || '').slice(0, 200),
+        hours:        hoursDerived,
         businessType: String(businessType || '').slice(0, 80),
         prompt:       String(prompt).slice(0, 6000),
         menu:         menuSafe,
         services:     servicesSafe,
         features:     featuresSafe,
+        // Fase 4.1 — estructura nueva, solo presente cuando el wizard la
+        // manda (queda undefined/omitida para clientes creados con el
+        // formulario legado, que no la necesitan).
+        ...(languagesSafe && languagesSafe.length ? { languages: languagesSafe, primaryLanguage: primaryLanguageSafe } : {}),
+        ...(businessHoursSafe ? { businessHours: businessHoursSafe } : {}),
+        ...(phoneCountrySafe && phoneCountryCodeSafe ? { phoneCountry: phoneCountrySafe, phoneCountryCode: phoneCountryCodeSafe, phoneNumber: phoneNumberSafe } : {}),
         monthlyPrice: PLAN_PRICES[planSafe] || null,
         billingDay:   Number.isInteger(Number(billingDay)) && Number(billingDay) >= 1 && Number(billingDay) <= 28 ? Number(billingDay) : 1,
         trialEnabled: !!trialEnabled,
