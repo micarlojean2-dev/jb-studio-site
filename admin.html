@@ -1761,6 +1761,11 @@
   @media (max-width: 430px) {
     .auto-display-grid { grid-template-columns: 1fr; }
   }
+  .auto-owner-help { font-size: 12.5px; color: #8a4b00; background: #fff4e5; border: 1px solid #f0d9b5;
+    padding: 8px 11px; border-radius: 9px; margin: 6px 0 9px; line-height: 1.4; }
+  .auto-owner-input { width: 100%; font-size: 14px; }
+  .auto-owner-error { font-size: 12px; color: var(--danger); margin-top: 6px; }
+  .auto-owner-error[hidden] { display: none !important; }
   .auto-result-label { font-size: 13px; margin-bottom: 6px; }
   /* El bloque secundario se atenúa; el primario manda visualmente. */
   .auto-result-secondary { opacity: .62; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
@@ -5063,6 +5068,15 @@ LÍMITES ESTRICTOS:
       <div id="auto-step-summary" hidden>
         <div id="auto-summary-content"></div>
 
+        <!-- Si la info pegada no traía correo, se pide aquí: sin él el dueño
+             no recibe reservas, recordatorios ni resumen. No se crea a ciegas. -->
+        <div class="auto-summary-section" id="auto-owner-section" hidden>
+          <h3>¿A qué correo quieres recibir las reservas y avisos de tu negocio?</h3>
+          <p class="auto-owner-help">No lo encontramos en la información que pegaste. Sin este correo el dueño no recibirá nada.</p>
+          <input type="email" id="auto-owner-email" class="admin-input auto-owner-input" placeholder="dueno@negocio.com" autocomplete="off">
+          <div class="auto-owner-error" id="auto-owner-error" hidden>Escribe un correo válido.</div>
+        </div>
+
         <!-- Elección obligatoria de formato: nunca se adivina desde el texto -->
         <div class="auto-summary-section" id="auto-display-section">
           <h3>¿Cómo quieres mostrar este chatbot?</h3>
@@ -5201,6 +5215,9 @@ LÍMITES ESTRICTOS:
   var posRow = document.getElementById('auto-position-row');
   var posCards = Array.prototype.slice.call(document.querySelectorAll('.auto-pos-card'));
   var widgetPreview = document.getElementById('auto-widget-preview');
+  var ownerSection = document.getElementById('auto-owner-section');
+  var ownerInput = document.getElementById('auto-owner-email');
+  var ownerError = document.getElementById('auto-owner-error');
 
   // ── State ──
   var state = 'idle';
@@ -5317,6 +5334,8 @@ LÍMITES ESTRICTOS:
     abortGenerate = false;
     displayMode = null;
     widgetPosition = 'bottom-right';
+    if (ownerInput) ownerInput.value = '';
+    if (ownerError) ownerError.hidden = true;
     syncDisplayUI();
     setState('idle');
   }
@@ -5487,13 +5506,39 @@ LÍMITES ESTRICTOS:
   });
 
   // ── Selector de formato ──
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  // El correo del dueño solo se pide si la IA no lo encontró. Es obligatorio:
+  // sin él no hay reservas por correo, ni recordatorios, ni resumen diario.
+  function ownerEmailValue() {
+    if (generatedConfig && generatedConfig.business && generatedConfig.business.ownerEmail)
+      return String(generatedConfig.business.ownerEmail).trim();
+    return ownerInput ? ownerInput.value.trim() : '';
+  }
+
+  function ownerEmailFalta() {
+    return !(generatedConfig && generatedConfig.business && generatedConfig.business.ownerEmail);
+  }
+
+  function ownerEmailOk() {
+    return EMAIL_RE.test(ownerEmailValue());
+  }
+
   function syncDisplayUI() {
     displayCards.forEach(function (c) { c.classList.toggle('selected', !!displayMode && c.dataset.mode === displayMode); });
     posRow.hidden = displayMode !== 'widget';
     posCards.forEach(function (c) { c.classList.toggle('selected', c.dataset.pos === widgetPosition); });
     widgetPreview.classList.toggle('pos-left', widgetPosition === 'bottom-left');
-    // Obligatorio: sin formato elegido no se puede crear.
-    createBtn.disabled = !displayMode;
+    ownerSection.hidden = !ownerEmailFalta();
+    // Obligatorio: formato elegido y correo del dueño válido.
+    createBtn.disabled = !displayMode || !ownerEmailOk();
+  }
+
+  if (ownerInput) {
+    ownerInput.addEventListener('input', function () {
+      ownerError.hidden = true;
+      syncDisplayUI();
+    });
   }
 
   displayCards.forEach(function (card) {
@@ -5507,6 +5552,7 @@ LÍMITES ESTRICTOS:
   createBtn.addEventListener('click', function () {
     if (!generatedConfig || creatingLocked) return;
     if (!displayMode) { syncDisplayUI(); return; }
+    if (!ownerEmailOk()) { ownerError.hidden = false; syncDisplayUI(); if (ownerInput) ownerInput.focus(); return; }
     creatingLocked = true;
     createBtn.disabled = true;
 
@@ -5518,7 +5564,7 @@ LÍMITES ESTRICTOS:
     var payload = {
       id: clientId,
       businessName: b.businessName || 'Mi negocio',
-      ownerEmail: b.ownerEmail || '',
+      ownerEmail: ownerEmailValue(),
       plan: config.planRecommendation.plan || 'basic',
       languages: b.languages || ['es'],
       primaryLanguage: b.primaryLanguage || 'es',

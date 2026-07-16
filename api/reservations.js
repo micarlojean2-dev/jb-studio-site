@@ -123,92 +123,54 @@ function normalizePersonas(v) {
   return '';
 }
 
-function ownerHtml(r, businessName) {
-  const row = (label, val) => val
-    ? `<tr><td style="padding:6px 12px;color:#555;width:130px">${label}</td><td style="padding:6px 12px;color:#111;font-weight:500">${val}</td></tr>`
-    : '';
-  return `<!DOCTYPE html><html><body style="font-family:sans-serif;background:#f5f5f5;padding:32px 16px;margin:0">
-<div style="max-width:520px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
-  <div style="background:#1a4a2e;padding:24px 28px">
-    <p style="margin:0;color:#4ade80;font-size:11px;letter-spacing:.08em;text-transform:uppercase">JB Studio · Asistente Virtual</p>
-    <h1 style="margin:6px 0 0;color:#fff;font-size:20px">Nueva solicitud de reserva</h1>
-  </div>
-  <div style="padding:24px 28px">
-    <table style="width:100%;border-collapse:collapse;border:1px solid #eee;border-radius:8px;overflow:hidden">
-      ${row('Nombre',   r.nombre)}
-      ${row('Teléfono', r.telefono)}
-      ${row('Email',    r.email)}
-      ${row('Fecha',    r.fecha)}
-      ${row('Hora',     r.hora)}
-      ${row('Servicio', r.servicio)}
-      ${r.personas ? row('Personas', r.personas) : ''}
-      ${r.nota ? row('Nota', r.nota) : ''}
-      ${row('Estado',   'Pendiente')}
-      ${row('Recibida', new Date(r.fechaSolicitud).toLocaleString('es'))}
+function ownerHtml(r, businessName, color) {
+  const inner = `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 18px">
+      Tu asistente acaba de recibir una solicitud de reserva.
+    </p>
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">
+      ${fila('Cliente',  r.nombre,   color)}
+      ${fila('Servicio', r.servicio, color)}
+      ${fila('Fecha',    r.fecha,    color)}
+      ${fila('Hora',     r.hora,     color)}
+      ${fila('Personas', r.personas, color)}
+      ${fila('Teléfono', r.telefono, color)}
+      ${fila('Email',    r.email,    color)}
+      ${fila('Nota',     r.nota,     color)}
+      ${fila('Estado',   'Pendiente', color)}
     </table>
-    <p style="margin:24px 0 0;font-size:13px;color:#888;border-top:1px solid #eee;padding-top:16px">
-      Esta solicitud fue recibida vía tu asistente virtual de <strong>JB Studio</strong> · <a href="https://jbstudio.app" style="color:#1a4a2e">jbstudio.app</a>
-    </p>
-  </div>
-</div>
-</body></html>`;
+    <p style="font-size:12.5px;color:#8a8f96;margin:18px 0 0">
+      Recibida el ${esc(new Date(r.fechaSolicitud).toLocaleString('es'))}.
+    </p>`;
+  return shell(inner, 'Nueva reserva recibida 📅', color, businessName);
 }
 
-function clientHtml(r, businessName, lang) {
+function clientHtml(r, businessName, lang, color) {
   const es = lang !== 'en';
-  if (es) {
-    return `<!DOCTYPE html><html><body style="font-family:sans-serif;background:#f5f5f5;padding:32px 16px;margin:0">
-<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
-  <div style="background:#1a4a2e;padding:24px 28px">
-    <p style="margin:0;color:#4ade80;font-size:11px;letter-spacing:.08em;text-transform:uppercase">${businessName}</p>
-    <h1 style="margin:6px 0 0;color:#fff;font-size:20px">¡Solicitud recibida!</h1>
-  </div>
-  <div style="padding:24px 28px">
-    <p style="font-size:15px;color:#1a1a1a;line-height:1.6">
-      Hola <strong>${r.nombre}</strong>,
-    </p>
-    <p style="font-size:15px;color:#333;line-height:1.6">
-      Recibimos tu solicitud de cita para el <strong>${r.fecha}</strong> a las <strong>${r.hora}</strong>.
-      El equipo de <strong>${businessName}</strong> revisará disponibilidad y te confirmará pronto.
-    </p>
-    ${r.servicio || r.personas ? `<div style="font-size:13px;color:#555;background:#f5f5f5;padding:12px 16px;border-radius:8px;margin-top:16px">
-      ${r.servicio ? `<div>Servicio: <strong>${r.servicio}</strong></div>` : ''}
-      ${r.personas ? `<div style="margin-top:4px">Personas: <strong>${r.personas}</strong></div>` : ''}
-    </div>` : ''}
-    <p style="margin:24px 0 0;font-size:12px;color:#aaa;border-top:1px solid #eee;padding-top:16px">
-      Asistente virtual powered by <a href="https://jbstudio.app" style="color:#1a4a2e">JB Studio</a>
-    </p>
-  </div>
-</div>
-</body></html>`;
-  }
-  return `<!DOCTYPE html><html><body style="font-family:sans-serif;background:#f5f5f5;padding:32px 16px;margin:0">
-<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08)">
-  <div style="background:#1a4a2e;padding:24px 28px">
-    <p style="margin:0;color:#4ade80;font-size:11px;letter-spacing:.08em;text-transform:uppercase">${businessName}</p>
-    <h1 style="margin:6px 0 0;color:#fff;font-size:20px">Request received!</h1>
-  </div>
-  <div style="padding:24px 28px">
-    <p style="font-size:15px;color:#1a1a1a;line-height:1.6">
-      Hi <strong>${r.nombre}</strong>,
-    </p>
-    <p style="font-size:15px;color:#333;line-height:1.6">
-      We received your appointment request for <strong>${r.fecha}</strong> at <strong>${r.hora}</strong>.
-      The <strong>${businessName}</strong> team will review availability and confirm with you soon.
-    </p>
-    ${r.servicio || r.personas ? `<div style="font-size:13px;color:#555;background:#f5f5f5;padding:12px 16px;border-radius:8px;margin-top:16px">
-      ${r.servicio ? `<div>Service: <strong>${r.servicio}</strong></div>` : ''}
-      ${r.personas ? `<div style="margin-top:4px">People: <strong>${r.personas}</strong></div>` : ''}
-    </div>` : ''}
-    <p style="margin:24px 0 0;font-size:12px;color:#aaa;border-top:1px solid #eee;padding-top:16px">
-      Virtual assistant powered by <a href="https://jbstudio.app" style="color:#1a4a2e">JB Studio</a>
-    </p>
-  </div>
-</div>
-</body></html>`;
+  const inner = es
+    ? `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 4px">Hola <strong>${esc(r.nombre)}</strong> 😊</p>
+       <p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 18px">
+         Recibimos tu solicitud en <strong>${esc(businessName)}</strong>. Revisamos disponibilidad y te confirmamos muy pronto.
+       </p>
+       <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">
+         ${fila('Servicio', r.servicio, color)}
+         ${fila('Fecha',    r.fecha,    color)}
+         ${fila('Hora',     r.hora,     color)}
+         ${fila('Personas', r.personas, color)}
+       </table>
+       <p style="font-size:15px;color:#333;margin:20px 0 0">Te esperamos ✨</p>`
+    : `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 4px">Hi <strong>${esc(r.nombre)}</strong> 😊</p>
+       <p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 18px">
+         We received your request at <strong>${esc(businessName)}</strong>. We'll check availability and confirm shortly.
+       </p>
+       <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">
+         ${fila('Service',  r.servicio, color)}
+         ${fila('Date',     r.fecha,    color)}
+         ${fila('Time',     r.hora,     color)}
+         ${fila('People',   r.personas, color)}
+       </table>
+       <p style="font-size:15px;color:#333;margin:20px 0 0">See you soon ✨</p>`;
+  return shell(inner, es ? 'Solicitud recibida ✨' : 'Request received ✨', color, businessName);
 }
-
-
 
 // ── Plantillas del proceso diario ───────────────────────────────────────────
 const esc = (v) => String(v == null ? '' : v)
@@ -477,7 +439,7 @@ export default async function handler(req, res) {
             from:    FROM,
             to:      client.ownerEmail,
             subject: `Nueva solicitud de reserva — ${reservation.nombre}`,
-            html:    ownerHtml(reservation, businessName),
+            html:    ownerHtml(reservation, businessName, client.color || '#1a4a2e'),
           })
         );
       }
@@ -491,7 +453,7 @@ export default async function handler(req, res) {
             subject: es
               ? `Tu solicitud fue recibida — ${businessName}`
               : `Your request was received — ${businessName}`,
-            html: clientHtml(reservation, businessName, lang),
+            html: clientHtml(reservation, businessName, lang, client.color || '#1a4a2e'),
           })
         );
       }
