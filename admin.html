@@ -1885,6 +1885,19 @@
   .auto-mode-btn .title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
   .auto-mode-btn .desc { font-size: 11px; color: #666; }
 
+  @media (max-width: 430px) {
+    .auto-modal { max-width: 100vw; max-height: 100vh; border-radius: 0; }
+    .auto-overlay { padding: 0; }
+    .auto-summary-grid { grid-template-columns: 1fr; }
+    .auto-footer { flex-wrap: wrap; gap: 6px; }
+    .auto-footer .auto-btn { flex: 1 1 100%; text-align: center; }
+    .auto-footer .auto-spacer { display: none; }
+    .auto-header { padding: 14px 16px; }
+    .auto-header h2 { font-size: 15px; }
+    .auto-body { padding: 16px; }
+    .auto-textarea { min-height: 130px; font-size: 13px; }
+  }
+
   </style>
 </head>
 <body>
