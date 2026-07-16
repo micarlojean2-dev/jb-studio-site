@@ -1726,6 +1726,10 @@
     padding: 20px; animation: fadeIn 0.2s ease;
   }
   .auto-overlay.hidden { display: none; }
+  /* La máquina de estados oculta las vistas con la propiedad `hidden`.
+     Sin esta regla, cualquier display: flex/block de las reglas de abajo
+     gana y todas las vistas se pintan a la vez. */
+  #auto-overlay [hidden] { display: none !important; }
   .auto-modal {
     background: #fff; border-radius: 16px;
     max-width: 780px; width: 100%; max-height: 90vh;
@@ -4979,21 +4983,21 @@ LÍMITES ESTRICTOS:
     </div>
     <div class="auto-body" id="auto-body">
       <!-- Step 1: Input -->
-      <div id="auto-step-input">
+      <div id="auto-step-input" hidden>
         <div class="auto-info-text">Pega servicios, precios, horarios, ubicación, teléfono, políticas o cualquier información que tengas. No importa si está desordenada.</div>
         <label class="auto-label">Información del negocio</label>
         <textarea id="auto-info-input" class="auto-textarea" placeholder='Ej: "Barbería Mike queda en Santiago. Atiende lunes a sábado de 9 a 7. Corte normal 20 dólares, barba 12 y corte con barba 28. Quiero diseño negro y dorado. El dueño habla español e inglés. Quiero que responda preguntas, muestre precios y permita reservar. Correo owner@barberiamike.com, teléfono +56912345678."'></textarea>
         <label class="auto-label">Instrucciones adicionales (opcional)</label>
         <textarea id="auto-extra-input" class="auto-extra-input" rows="2" placeholder='Ej: "Quiero un diseño elegante negro y dorado y que tome reservas."'></textarea>
-        <div id="auto-error" class="auto-error hidden"></div>
+        <div id="auto-error" class="auto-error" hidden></div>
       </div>
       <!-- Step 2: Loading -->
-      <div id="auto-step-loading" class="hidden">
+      <div id="auto-step-loading" hidden>
         <div class="auto-loading"><div class="auto-spinner"></div> <span id="auto-loading-text">Analizando información del negocio...</span></div>
-        <div style="text-align:center;margin-top:12px;"><button type="button" class="auto-btn auto-btn-outline hidden" id="auto-cancel-generate-btn" style="font-size:12px;">Cancelar</button></div>
+        <div style="text-align:center;margin-top:12px;"><button type="button" class="auto-btn auto-btn-outline" id="auto-cancel-generate-btn" style="font-size:12px;" hidden>Cancelar</button></div>
       </div>
       <!-- Step 3: Summary -->
-      <div id="auto-step-summary" class="hidden">
+      <div id="auto-step-summary" hidden>
         <div id="auto-summary-content"></div>
         <div class="auto-prompt-section">
           <button type="button" class="auto-prompt-toggle" id="auto-prompt-toggle">Configuración avanzada ▸</button>
@@ -5003,11 +5007,11 @@ LÍMITES ESTRICTOS:
         </div>
       </div>
       <!-- Step 4: Loading creation -->
-      <div id="auto-step-creating" class="hidden">
+      <div id="auto-step-creating" hidden>
         <div class="auto-loading"><div class="auto-spinner"></div> Creando chatbot...</div>
       </div>
       <!-- Step 5: Error -->
-      <div id="auto-step-error" class="hidden" style="text-align:center;padding:40px 20px;">
+      <div id="auto-step-error" style="text-align:center;padding:40px 20px;" hidden>
         <div style="font-size:40px;margin-bottom:12px;color:#c62828;">&#10007;</div>
         <h3 id="auto-error-title" style="font-size:18px;margin-bottom:8px;">Error</h3>
         <p id="auto-error-msg" style="font-size:14px;color:#666;margin-bottom:20px;"></p>
@@ -5017,7 +5021,7 @@ LÍMITES ESTRICTOS:
         </div>
       </div>
       <!-- Step 6: Success -->
-      <div id="auto-step-success" class="hidden">
+      <div id="auto-step-success" hidden>
         <div style="text-align:center;padding:20px 0;">
           <div style="font-size:48px;margin-bottom:12px;">&#10003;</div>
           <h3 style="font-size:20px;margin-bottom:4px;">Chatbot creado</h3>
@@ -5035,16 +5039,17 @@ LÍMITES ESTRICTOS:
             <button type="button" class="auto-btn auto-btn-primary" id="auto-view-btn">Ver chatbot</button>
             <button type="button" class="auto-btn auto-btn-secondary" id="auto-checkout-btn">Generar enlace de pago</button>
             <button type="button" class="auto-btn auto-btn-secondary" id="auto-create-another-btn">Crear otro chatbot</button>
+            <button type="button" class="auto-btn auto-btn-secondary" id="auto-success-close-btn">Cerrar</button>
           </div>
         </div>
       </div>
     </div>
     <div class="auto-footer" id="auto-footer">
       <div class="auto-spacer"></div>
-      <button type="button" class="auto-btn auto-btn-secondary hidden" id="auto-back-btn">Volver</button>
-      <button type="button" class="auto-btn auto-btn-primary" id="auto-generate-btn">Generar chatbot</button>
-      <button type="button" class="auto-btn auto-btn-primary hidden" id="auto-regenerate-btn">Volver a generar</button>
-      <button type="button" class="auto-btn auto-btn-primary hidden" id="auto-create-btn">Crear chatbot</button>
+      <button type="button" class="auto-btn auto-btn-secondary" id="auto-back-btn" hidden>Volver</button>
+      <button type="button" class="auto-btn auto-btn-primary" id="auto-generate-btn" hidden>Generar chatbot</button>
+      <button type="button" class="auto-btn auto-btn-primary" id="auto-regenerate-btn" hidden>Volver a generar</button>
+      <button type="button" class="auto-btn auto-btn-primary" id="auto-create-btn" hidden>Crear chatbot</button>
     </div>
   </div>
 </div>
@@ -5053,6 +5058,7 @@ LÍMITES ESTRICTOS:
 (function () {
   // ── DOM refs ──
   var overlay = document.getElementById('auto-overlay');
+  var footerEl = document.getElementById('auto-footer');
   var titleEl = document.getElementById('auto-title');
   var errorEl = document.getElementById('auto-error');
   var closeBtn = document.getElementById('auto-close-btn');
@@ -5103,69 +5109,77 @@ LÍMITES ESTRICTOS:
     return d.innerHTML;
   }
 
-  function hideAllSteps() {
-    for (var i = 0; i < allSteps.length; i++) allSteps[i].classList.add('hidden');
-  }
+  var stateViews = {
+    idle: stepInput,
+    generating: stepLoading,
+    review: stepSummary,
+    creating: stepCreating,
+    error: stepError,
+    success: stepSuccess
+  };
+
+  // Botones del footer visibles por estado. 'creating' no lista ninguno:
+  // el footer completo se oculta.
+  var stateFooterBtns = {
+    idle: [generateBtn],
+    generating: [],
+    review: [backBtn, regenerateBtn, createBtn],
+    creating: [],
+    error: [],
+    success: []
+  };
+
+  var allFooterBtns = [generateBtn, regenerateBtn, createBtn, backBtn];
 
   function setState(newState, opts) {
     opts = opts || {};
     state = newState;
-    hideAllSteps();
-    hideError();
-    errorEl.classList.add('hidden');
 
-    // Default: all footer buttons hidden
-    generateBtn.classList.add('hidden');
-    regenerateBtn.classList.add('hidden');
-    createBtn.classList.add('hidden');
-    backBtn.classList.add('hidden');
-    cancelGenBtn.classList.add('hidden');
-    errorBackBtn.classList.add('hidden');
-    errorRetryBtn.classList.add('hidden');
+    for (var i = 0; i < allSteps.length; i++) allSteps[i].hidden = true;
+    for (var j = 0; j < allFooterBtns.length; j++) allFooterBtns[j].hidden = true;
+    hideError();
+    cancelGenBtn.hidden = true;
     closeBtn.disabled = false;
+
+    var view = stateViews[newState];
+    if (!view) { console.error('[auto-create] estado desconocido:', newState); return; }
+    view.hidden = false;
+
+    var btns = stateFooterBtns[newState] || [];
+    for (var k = 0; k < btns.length; k++) btns[k].hidden = false;
+    footerEl.hidden = btns.length === 0;
 
     switch (newState) {
       case 'idle':
-        stepInput.classList.remove('hidden');
         titleEl.textContent = 'Crear chatbot automáticamente';
-        generateBtn.classList.remove('hidden');
         break;
 
       case 'generating':
-        stepLoading.classList.remove('hidden');
         loadingText.textContent = opts.text || 'Analizando información del negocio...';
         titleEl.textContent = 'Analizando...';
-        cancelGenBtn.classList.remove('hidden');
+        cancelGenBtn.hidden = false;
         closeBtn.disabled = true;
         break;
 
       case 'review':
-        stepSummary.classList.remove('hidden');
         titleEl.textContent = 'Resumen';
-        regenerateBtn.classList.remove('hidden');
-        createBtn.classList.remove('hidden');
         creatingLocked = false;
         break;
 
       case 'creating':
-        stepCreating.classList.remove('hidden');
         titleEl.textContent = 'Creando...';
         creatingLocked = true;
         closeBtn.disabled = true;
         break;
 
       case 'error':
-        stepError.classList.remove('hidden');
         errorTitle.textContent = opts.title || 'Error';
         errorMsg.textContent = opts.message || 'Ocurrió un error inesperado.';
         titleEl.textContent = 'Error';
-        errorBackBtn.classList.remove('hidden');
-        errorRetryBtn.classList.remove('hidden');
         creatingLocked = false;
         break;
 
       case 'success':
-        stepSuccess.classList.remove('hidden');
         titleEl.textContent = 'Chatbot creado';
         break;
     }
@@ -5173,11 +5187,12 @@ LÍMITES ESTRICTOS:
 
   function showError(msg) {
     errorEl.textContent = msg;
-    errorEl.classList.remove('hidden');
+    errorEl.hidden = false;
   }
 
   function hideError() {
-    errorEl.classList.add('hidden');
+    errorEl.textContent = '';
+    errorEl.hidden = true;
   }
 
   function resetState() {
@@ -5345,8 +5360,8 @@ LÍMITES ESTRICTOS:
 
     summaryContent.innerHTML = html;
 
-    if (config.systemPrompt) { promptTextarea.value = config.systemPrompt; promptToggle.classList.remove('hidden'); }
-    else { promptToggle.classList.add('hidden'); }
+    if (config.systemPrompt) { promptTextarea.value = config.systemPrompt; promptToggle.hidden = false; }
+    else { promptToggle.hidden = true; }
     promptContent.classList.remove('open');
   }
 
@@ -5399,11 +5414,13 @@ LÍMITES ESTRICTOS:
       });
     }
 
+    function nonEmpty(v) { return typeof v === 'string' && v.trim() !== ''; }
+
     doCreate(clientId)
       .then(function (r) {
         if (r.status === 409) {
           clientId = generateId(b.businessName || 'chatbot');
-          return doCreate(clientId);
+          return doCreate(clientId).then(function (r2) { return r2.json(); });
         }
         return r.json();
       })
@@ -5415,11 +5432,17 @@ LÍMITES ESTRICTOS:
         }
 
         var baseUrl = window.location.origin || 'https://jbstudio.app';
-        var assistantUrl = baseUrl + '/asistente/' + encodeURIComponent(client.id);
-        var snippet = client.widgetSnippet || '<script src="' + baseUrl + '/widget.js?id=' + client.id + '"><' + '/script>';
+        var assistantUrl = nonEmpty(client.assistantUrl)
+          ? client.assistantUrl
+          : (nonEmpty(client.id) ? baseUrl + '/asistente/' + encodeURIComponent(client.id) : '');
+        var snippet = client.widgetSnippet;
 
-        if (!client.id || !assistantUrl || !snippet) {
-          setState('error', { title: 'Error de validación', message: 'El chatbot se creó pero faltan datos. Revisa la lista de clientes.' });
+        // Solo entramos a success con los tres campos presentes y no vacíos.
+        if (!nonEmpty(client.id) || !nonEmpty(assistantUrl) || !nonEmpty(snippet)) {
+          setState('error', {
+            title: 'Error de validación',
+            message: 'El servidor creó el cliente, pero no devolvió todos los datos necesarios.'
+          });
           createBtn.disabled = false;
           return;
         }
@@ -5502,6 +5525,8 @@ LÍMITES ESTRICTOS:
   createAnotherBtn.addEventListener('click', function () {
     resetState();
   });
+
+  document.getElementById('auto-success-close-btn').addEventListener('click', closeModal);
 
   backBtn.addEventListener('click', function () {
     resetState();
