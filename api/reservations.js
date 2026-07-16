@@ -230,8 +230,14 @@ function faltaConfig(client) {
 
 // Solo importa si el negocio realmente toma reservas. Un Básico no las tiene,
 // así que no tiene sentido bloquearlo por no configurarlas.
+//
+// El criterio debe ser el MISMO que featureOn() en el chat (!features ||
+// features[k] !== false). Con el criterio estricto (=== true) los clientes
+// legacy, que no tienen features, quedaban fuera del bloqueo mientras el
+// chat sí les ofrecía reservar: justo el agujero que esto viene a cerrar.
 function necesitaSetup(client) {
-  const reservas = client && client.features ? client.features.reservations === true : false;
+  if (!client) return false;
+  const reservas = !client.features || client.features.reservations !== false;
   if (!reservas) return false;
   return faltaConfig(client).length > 0;
 }
