@@ -8,66 +8,118 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
+    /* El fondo es telón, no lienzo: la conversación vive en la tarjeta.
+       Antes la página entera era el chat y por eso parecía una plantilla. */
     body {
       min-height: 100dvh;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-      background: #f2f2f2;
-      color: #1a1a1a;
-      display: flex;
-      flex-direction: column;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      color: #16181d;
+      letter-spacing: -0.01em;
+      background:
+        radial-gradient(1100px 620px at 78% 12%, var(--a-glow, rgba(26,74,46,.16)), transparent 60%),
+        radial-gradient(900px 560px at 12% 88%, rgba(0,0,0,.05), transparent 62%),
+        #eef0f3;
     }
+
+    /* ── Tarjeta flotante ───────────────────────────────────────────────── */
+    #a-app {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      width: 400px;
+      height: 620px;
+      max-height: calc(100dvh - 48px);
+      background: #fff;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow:
+        0 28px 80px rgba(0,0,0,.20),
+        0 10px 28px rgba(0,0,0,.10),
+        0 0 0 1px rgba(0,0,0,.05);
+      animation: a-rise .42s cubic-bezier(.22,1,.36,1);
+    }
+    @keyframes a-rise { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
 
     /* ── Header ─────────────────────────────────────────────────────────── */
     #a-head {
       flex-shrink: 0;
-      padding: 16px 18px;
+      padding: 18px;
       display: flex;
       align-items: center;
       gap: 12px;
       color: #fff;
     }
     #a-av {
-      width: 40px; height: 40px; border-radius: 50%;
-      background: rgba(255,255,255,.22);
+      width: 42px; height: 42px; border-radius: 13px;
+      background: rgba(255,255,255,.18);
       display: flex; align-items: center; justify-content: center;
-      font-size: 17px; flex-shrink: 0;
+      font-size: 16px; font-weight: 700; flex-shrink: 0;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
+      overflow: hidden;
     }
-    #a-name { font-size: 16px; font-weight: 700; line-height: 1.2; }
-    #a-status { font-size: 12.5px; color: rgba(255,255,255,.8); margin-top: 2px; display: flex; align-items: center; gap: 5px; }
-    .a-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; display: inline-block; }
+    #a-name { font-size: 16px; font-weight: 650; line-height: 1.25; }
+    #a-status { font-size: 12px; color: rgba(255,255,255,.75); margin-top: 3px; display: flex; align-items: center; gap: 5px; font-weight: 500; }
+    .a-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; display: inline-block; box-shadow: 0 0 0 3px rgba(74,222,128,.22); }
 
     /* ── Message list ───────────────────────────────────────────────────── */
     #a-msgs {
       flex: 1;
       overflow-y: auto;
-      padding: 16px 14px 10px;
+      padding: 18px 16px 12px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
+      background: #fafafa;
       -webkit-overflow-scrolling: touch;
     }
+    #a-msgs::-webkit-scrollbar { width: 5px; }
+    #a-msgs::-webkit-scrollbar-thumb { background: rgba(0,0,0,.13); border-radius: 3px; }
     .a-r { display: flex; align-items: flex-end; gap: 8px; }
     .a-r.a-u { justify-content: flex-end; }
     .a-b {
       max-width: 82%;
       padding: 11px 14px;
-      border-radius: 16px;
-      font-size: 15px;
-      line-height: 1.5;
+      border-radius: 18px;
+      font-size: 14.5px;
+      line-height: 1.55;
       word-break: break-word;
       white-space: pre-wrap;
+      animation: a-in .26s cubic-bezier(.22,1,.36,1);
     }
-    .a-r.a-bot .a-b { background: #fff; color: #1a1a1a; border-radius: 16px 16px 16px 3px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-    .a-r.a-u .a-b { color: #fff; border-radius: 16px 16px 3px 16px; }
+    @keyframes a-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .a-r.a-bot .a-b {
+      background: #fff; color: #16181d; border-radius: 18px 18px 18px 5px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.05);
+    }
+    .a-r.a-u .a-b { color: #fff; border-radius: 18px 18px 5px 18px; box-shadow: 0 2px 10px rgba(0,0,0,.10); }
     .a-ba { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; color: #fff; }
-    .a-ty { background: #fff; color: #aaa; padding: 11px 14px; border-radius: 16px 16px 16px 3px; font-size: 20px; letter-spacing: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+
+    /* Tres puntos que rebotan de verdad, en vez de "···" fijo */
+    .a-ty {
+      background: #fff; border-radius: 18px 18px 18px 5px; padding: 14px;
+      display: flex; align-items: center; gap: 4px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.05);
+    }
+    .a-ty i { width: 7px; height: 7px; border-radius: 50%; background: #c4c8ce; display: block; animation: a-bounce 1.3s ease-in-out infinite; }
+    .a-ty i:nth-child(2) { animation-delay: .16s; }
+    .a-ty i:nth-child(3) { animation-delay: .32s; }
+    @keyframes a-bounce { 0%,60%,100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-5px); opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) {
+      .a-b, #a-app { animation: none; }
+      .a-ty i { animation: none; }
+    }
 
     /* ── Menu carousel ──────────────────────────────────────────────────── */
     .a-cards-wrap { width: 100%; overflow-x: auto; padding: 2px 0 4px; -webkit-overflow-scrolling: touch; }
     .a-cards { display: flex; gap: 10px; padding: 0 2px 8px; }
-    .a-card { flex: 0 0 150px; background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 1px 8px rgba(0,0,0,.1); }
-    .a-card-img { width: 100%; height: 96px; object-fit: cover; display: block; background: #eee; }
-    .a-card-ph { width: 100%; height: 96px; background: #eee; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+    .a-card {
+      flex: 0 0 152px; background: #fff; border-radius: 16px; overflow: hidden;
+      box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.06);
+      transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s;
+    }
+    .a-card:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(0,0,0,.06), 0 12px 28px rgba(0,0,0,.10); }
+    .a-card-img { width: 100%; height: 92px; object-fit: cover; display: block; background: #f2f2f4; }
+    .a-card-ph { width: 100%; height: 92px; display: flex; align-items: center; justify-content: center; font-size: 26px; }
     .a-card-body { padding: 9px 10px 11px; }
     .a-card-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
     .a-card-price { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
@@ -76,26 +128,29 @@
     /* ── Footer / input ─────────────────────────────────────────────────── */
     #a-foot {
       flex-shrink: 0;
-      padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+      padding: 12px 14px calc(14px + env(safe-area-inset-bottom));
       background: #fff;
-      border-top: 1px solid rgba(0,0,0,.08);
+      border-top: 1px solid rgba(0,0,0,.06);
       display: flex;
       gap: 10px;
       align-items: center;
     }
     #a-inp {
       flex: 1;
-      border: 1px solid rgba(0,0,0,.16);
+      border: 1.5px solid transparent;
       border-radius: 24px;
       padding: 12px 16px;
-      font-size: 16px; /* avoid iOS auto-zoom */
+      font-size: 16px; /* evita el zoom automático de iOS */
       min-height: 44px;
       outline: none;
-      background: #f5f5f5;
-      color: #1a1a1a;
+      background: #f2f3f5;
+      color: #16181d;
       font-family: inherit;
+      letter-spacing: -0.01em;
+      transition: border-color .18s, background .18s, box-shadow .18s;
     }
-    #a-inp:focus { border-color: rgba(0,0,0,.3); background: #fff; }
+    #a-inp:focus { border-color: rgba(0,0,0,.10); background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+    #a-inp::placeholder { color: #a8acb3; }
     #a-inp:disabled { opacity: .5; }
     #a-snd {
       width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
@@ -105,6 +160,12 @@
     #a-snd svg { width: 18px; height: 18px; }
 
     /* ── Loading / error states ────────────────────────────────────────── */
+    /* El body ya no es flex (ahora es el telón), así que estos estados se
+       centran por su cuenta en vez de colgar arriba a la izquierda. */
+    #a-loading, #a-notfound {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
     #a-state {
       flex: 1;
       display: flex;
@@ -134,6 +195,19 @@
     line-height: 1.3;
   }
   #a-preview-banner[hidden] { display: none; }
+
+    /* En un móvil una tarjeta pequeña se lee mal: ocupa casi todo, pero
+       conservando el aire y las esquinas para que siga siendo una tarjeta. */
+    @media (max-width: 600px) {
+      #a-app {
+        right: 10px; left: 10px; bottom: 10px; top: 10px;
+        width: auto; height: auto;
+        max-height: none; border-radius: 20px;
+      }
+    }
+    @media (max-height: 720px) and (min-width: 601px) {
+      #a-app { height: calc(100dvh - 48px); }
+    }
 </style>
 </head>
 <body>
@@ -271,14 +345,32 @@
   var inp    = document.getElementById('a-inp');
   var snd    = document.getElementById('a-snd');
   var nameEl = document.getElementById('a-name');
+  var avEl   = document.getElementById('a-av');
   var headEl = document.getElementById('a-head');
   var statusText = document.getElementById('a-status-text');
 
+  // Halo del fondo con el color del negocio, translúcido. Si el color no es
+  // un hex válido caemos al verde de marca en vez de romper el degradado.
+  function hexToRgba(hex, a) {
+    var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex || '').trim());
+    if (!m) return 'rgba(26,74,46,' + a + ')';
+    return 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + a + ')';
+  }
+
+  // Inicial del negocio como logo. Mejor una letra propia que un ✦ genérico.
+  function initials(name) {
+    var w = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!w.length) return '✦';
+    return (w.length === 1 ? w[0].slice(0, 1) : w[0][0] + w[1][0]).toUpperCase();
+  }
+
   function paint() {
     var c = cfg.color;
-    document.body.style.background = '#f2f2f2';
+    // El fondo lo define el CSS; aquí solo se tiñe el halo.
+    document.documentElement.style.setProperty('--a-glow', hexToRgba(c, 0.18));
     headEl.style.background = c;
     snd.style.background    = c;
+    avEl.textContent        = initials(cfg.businessName);
     nameEl.textContent      = cfg.businessName || 'Asistente';
     document.title          = (cfg.businessName || 'Asistente') + ' — Chat';
     inp.placeholder = cfg.language === 'en' ? 'Type a message…' : 'Escribe un mensaje…';
@@ -319,7 +411,7 @@
     av.textContent = '✦';
     var b = document.createElement('div');
     b.className = 'a-ty';
-    b.textContent = '···';
+    b.innerHTML = '<i></i><i></i><i></i>';
     row.appendChild(av);
     row.appendChild(b);
     msgsEl.appendChild(row);
