@@ -567,6 +567,175 @@
   }
 
   // ── Submit completed booking to /api/reservations ────────────────────────
+// Extrae datos de reserva de un mensaje libre. Solo captura lo inequívoco:
+// ante la duda no rellena, para que el flujo pregunte. Un campo inventado se
+// convierte en una cita a la hora equivocada.
+var FECHA_RE = new RegExp(
+  '(pasado\\s+ma(ñ|n)ana|ma(ñ|n)ana|hoy|' +
+  '(este|el|pr(ó|o)ximo)\\s+(lunes|martes|mi(é|e)rcoles|jueves|viernes|s(á|a)bado|domingo)|' +
+  '(lunes|martes|mi(é|e)rcoles|jueves|viernes|s(á|a)bado|domingo)|' +
+  '\\d{1,2}\\s+de\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)|' +
+  '\\d{1,2}[\\/\\-]\\d{1,2}(?:[\\/\\-]\\d{2,4})?|' +
+  '\\d{4}-\\d{2}-\\d{2})', 'i');
+
+// "3pm", "15:00", "3:30 pm", "a las 4". No inventamos AM/PM: si no lo dicen,
+// se guarda la hora tal cual y el resumen la enseña antes de confirmar.
+var HORA_RE = /(?:a\s+las\s+)?\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b/i;
+var HORA_CTX = /(a\s+las|hrs?|horas?|:\d{2}|\ba\.?m\.?\b|\bp\.?m\.?\b)/i;
+
+var PERSONAS_RE = /(?:para|somos|seríamos|serian|ser[ií]amos)\s+(\d{1,3}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b|\b(\d{1,3}|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+personas?\b/i;
+var NUM_PAL = { un:1, uno:1, una:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6, siete:7, ocho:8, nueve:9, diez:10 };
+
+var EMAIL_RE2 = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
+var TEL_RE = /(\+?\d[\d\s().-]{6,}\d)/;
+
+function extractBooking(text, menu) {
+  var t = String(text || '');
+  var out = {};
+
+  // Servicio: solo nombres reales del catálogo. Nunca se inventa uno.
+  if (Array.isArray(menu)) {
+    var low = t.toLowerCase();
+    var exacto = null, porPalabra = null;
+    menu.forEach(function (m) {
+      if (!m || !m.nombre) return;
+      var n = String(m.nombre).toLowerCase();
+      // El nombre completo en el texto gana siempre: "corte + barba" debe
+      // ganar a "corte caballero", que solo coincide por la primera palabra.
+      if (low.indexOf(n) !== -1) {
+        if (!exacto || n.length > exacto.toLowerCase().length) exacto = m.nombre;
+        return;
+      }
+      var head = n.split(/\s+/)[0].replace(/[^a-záéíóúñ]/gi, '');
+      if (head.length >= 4 && new RegExp('\\b' + head, 'i').test(low)) {
+        if (!porPalabra) porPalabra = m.nombre;
+      }
+    });
+    var elegido = exacto || porPalabra;
+    if (elegido) out.servicio = elegido;
+  }
+
+  var f = t.match(FECHA_RE);
+  if (f) out.fecha = f[0].trim();
+
+  if (HORA_CTX.test(t)) {
+    var h = t.match(HORA_RE);
+    if (h) {
+      var hh = parseInt(h[1], 10);
+      if (hh >= 0 && hh <= 23) {
+        var mm = h[2] ? ':' + h[2] : ':00';
+        var suf = h[3] ? ' ' + h[3].toUpperCase().replace(/\./g, '') : '';
+        out.hora = hh + mm + suf;
+      }
+    }
+  }
+
+  var p = t.match(PERSONAS_RE);
+  if (p) {
+    var raw = (p[1] || p[2] || '').toLowerCase();
+    var n = /^\d+$/.test(raw) ? parseInt(raw, 10) : NUM_PAL[raw];
+    if (n >= 1 && n <= 200) out.personas = String(n);
+  }
+
+  var e = t.match(EMAIL_RE2);
+  if (e) out.email = e[0];
+
+  // Buscar el teléfono fuera del email: si no, los dígitos de "x1@y.com"
+  // se colaban como número, o el email hacía perder el teléfono entero.
+  var sinEmail = out.email ? t.replace(out.email, ' ') : t;
+  var tel = sinEmail.match(TEL_RE);
+  if (tel && tel[0].replace(/\D/g, '').length >= 7) out.telefono = tel[0].trim();
+
+  return out;
+}
+
+  // Siguiente campo sin rellenar. El flujo deja de ser una cola fija: si el
+  // cliente ya dijo servicio y fecha, esos pasos no se preguntan.
+  // "Hola quiero corte mañana a las 4" no dice "reservar" ni "cita", así que
+  // BOOKING_TRIGGERS no lo pillaba. Si hay intención + un servicio real + día
+  // u hora, es una reserva. Se exige la palabra de intención a propósito:
+  // "¿cuánto cuesta el corte mañana?" es una pregunta de precio, no una cita.
+  var INTENT_RE = /\b(quiero|quisiera|necesito|me\s+gustar[ií]a|puedo|ap[uú]ntame|ag[eé]ndame|d[ae]me)\b/i;
+
+  function pareceReserva(t, extraido) {
+    if (BOOKING_TRIGGERS.test(t)) return true;
+    if (!INTENT_RE.test(t)) return false;
+    return !!(extraido.servicio && (extraido.fecha || extraido.hora));
+  }
+
+  // El paso pregunta un campo concreto, pero la persona puede responder otra
+  // cosa ("Somos 3 personas" cuando se pedía el email). Sin esto, esa frase se
+  // guardaba como email y el cliente nunca recibía su confirmación.
+  function valorValido(field, t) {
+    if (field === 'email')    return EMAIL_RE2.test(t) || /^(no|ninguno|skip|omitir)$/i.test(t.trim());
+    if (field === 'telefono') return t.replace(/\D/g, '').length >= 7;
+    if (field === 'personas') return /\d|\b(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/i.test(t);
+    return true;
+  }
+
+  // Primer campo sin rellenar, o -1 si ya está todo. `nota` no necesita trato
+  // especial: ya es el último paso de la lista.
+  function nextMissingIndex() {
+    for (var i = 0; i < BOOKING_STEPS.length; i++) {
+      if (!bookingData[BOOKING_STEPS[i].field]) return i;
+    }
+    return -1;
+  }
+
+  function resumenDeLoCapturado(data, lang) {
+    var L = RESUMEN_LABEL[lang];
+    return ['servicio', 'fecha', 'hora', 'personas']
+      .filter(function (k) { return data[k]; })
+      .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + L[k] + ': ' + data[k]; })
+      .join('\n');
+  }
+
+  // Correcciones a media reserva: "me equivoqué, somos 3", "quiero cambiar la
+  // hora". Se actualiza lo que se pueda extraer y se repregunta solo eso.
+  var CORRECCION_RE = /(me\s+equivoqu[eé]|cambiar|corregir|est[aá]\s+mal|mejor|en realidad|prefiero)/i;
+  var CAMPO_MENCIONADO = [
+    [/hora|horario/i, 'hora'], [/fecha|d[ií]a/i, 'fecha'], [/personas?|somos/i, 'personas'],
+    [/servicio/i, 'servicio'], [/correo|email/i, 'email'], [/tel[eé]fono|n[uú]mero/i, 'telefono'],
+    [/nombre/i, 'nombre']
+  ];
+
+  function intentarCorreccion(t, lang) {
+    if (!CORRECCION_RE.test(t)) return false;
+    var extraido = extractBooking(t, cfg.menu);
+    var campos = Object.keys(extraido);
+    if (campos.length) {
+      campos.forEach(function (k) { bookingData[k] = extraido[k]; });
+      addMsg('bot', (lang === 'en' ? 'Got it 😊 updated:\n\n' : 'Hecho 😊 lo actualicé:\n\n') +
+        campos.map(function (k) { return RESUMEN_ICONOS[k] + ' ' + RESUMEN_LABEL[lang][k] + ': ' + extraido[k]; }).join('\n'));
+      seguirDesdeLoQueFalta(lang);
+      return true;
+    }
+    // Dice qué quiere cambiar pero no el valor: se borra y se repregunta.
+    for (var i = 0; i < CAMPO_MENCIONADO.length; i++) {
+      if (CAMPO_MENCIONADO[i][0].test(t)) {
+        var campo = CAMPO_MENCIONADO[i][1];
+        var actual = bookingData[campo];
+        delete bookingData[campo];
+        var idx = 0;
+        for (var j = 0; j < BOOKING_STEPS.length; j++) if (BOOKING_STEPS[j].field === campo) idx = j;
+        addMsg('bot', (actual
+          ? (lang === 'en' ? 'Sure 😊 right now I have ' : 'Claro 😊 ahora mismo tengo ') +
+            RESUMEN_LABEL[lang][campo].toLowerCase() + ': ' + actual + '.\n\n'
+          : (lang === 'en' ? 'Sure 😊\n\n' : 'Claro 😊\n\n')) + BOOKING_STEPS[idx].ask[lang]);
+        bookingStep = idx + 1;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function seguirDesdeLoQueFalta(lang) {
+    var i = nextMissingIndex();
+    if (i === -1) { showBookingSummary(); return; }
+    bookingStep = i + 1;
+    addMsg('bot', askConProgreso(i, lang));
+  }
+
   function askConProgreso(i, lang) {
     var etiqueta = (lang === 'en' ? 'Step ' : 'Paso ') + (i + 1) + '/' + BOOKING_STEPS.length;
     return etiqueta + '\n' + BOOKING_STEPS[i].ask[lang];
@@ -700,14 +869,27 @@
         return;
       }
       var step = BOOKING_STEPS[bookingStep - 1];
-      bookingData[step.field] = t;
       addMsg('user', t);
-      bookingStep++;
-      if (bookingStep <= BOOKING_STEPS.length) {
+      if (intentarCorreccion(t, lang)) return;
+      var yaVisto = extractBooking(t, cfg.menu);
+      if (!valorValido(step.field, t)) {
+        // No sirve para este campo. Si aun así traía datos útiles se guardan,
+        // y se repregunta solo este, sin regañar.
+        var aplicados = Object.keys(yaVisto).filter(function (k) { return !bookingData[k]; });
+        aplicados.forEach(function (k) { bookingData[k] = yaVisto[k]; });
+        if (aplicados.length) {
+          addMsg('bot', (lang === 'en' ? 'Got it 😊 noted:\n\n' : 'Anotado 😊:\n\n') +
+            aplicados.map(function (k) { return RESUMEN_ICONOS[k] + ' ' + RESUMEN_LABEL[lang][k] + ': ' + bookingData[k]; }).join('\n'));
+        }
         addMsg('bot', askConProgreso(bookingStep - 1, lang));
-      } else {
-        showBookingSummary();
+        return;
       }
+      bookingData[step.field] = t;
+      var extraDicho = yaVisto;
+      Object.keys(extraDicho).forEach(function (k) {
+        if (k !== step.field && !bookingData[k]) bookingData[k] = extraDicho[k];
+      });
+      seguirDesdeLoQueFalta(lang);
       return;
     }
 
@@ -723,15 +905,28 @@
     }
 
     // ── Booking intent detected: start flow ──────────────────────────────
-    if (featureOn('reservations') && BOOKING_TRIGGERS.test(t)) {
+    var preExtraido = featureOn('reservations') ? extractBooking(t, cfg.menu) : {};
+    if (featureOn('reservations') && pareceReserva(t, preExtraido)) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
       save();
-      bookingStep = 1;
-      var intro = lang === 'en'
-        ? '📅 Sure! I\'ll help you request an appointment. Write "cancel" at any time to stop.\n\n'
-        : '📅 ¡Con gusto! Te ayudo a solicitar una cita. Escribe "cancelar" en cualquier momento para salir.\n\n';
-      addMsg('bot', intro + askConProgreso(0, lang));
+      bookingData = {};
+
+      var yaDicho = preExtraido;
+      Object.keys(yaDicho).forEach(function (k) { bookingData[k] = yaDicho[k]; });
+
+      var capturado = resumenDeLoCapturado(bookingData, lang);
+      var intro = capturado
+        ? (lang === 'en' ? 'Perfect 😊 so far I have:\n\n' : 'Perfecto 😊 entonces tengo:\n\n') + capturado +
+          (lang === 'en' ? '\n\nJust a few details and your appointment is ready ✨\n\n'
+                         : '\n\nSolo necesito algunos datos para dejar tu cita lista ✨\n\n')
+        : (lang === 'en' ? '📅 Sure! I\'ll help you request an appointment. Write "cancel" at any time to stop.\n\n'
+                         : '📅 ¡Con gusto! Te ayudo a solicitar una cita. Escribe "cancelar" en cualquier momento para salir.\n\n');
+
+      var i0 = nextMissingIndex();
+      if (i0 === -1) { addMsg('bot', intro.trim()); showBookingSummary(); return; }
+      bookingStep = i0 + 1;
+      addMsg('bot', intro + askConProgreso(i0, lang));
       return;
     }
 
