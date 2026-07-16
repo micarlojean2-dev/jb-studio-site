@@ -199,6 +199,115 @@ function clientHtml(r, businessName, lang, color) {
   return shell(inner, es ? 'Solicitud recibida ✨' : 'Request received ✨', color, businessName);
 }
 
+// Validación de reservas. Vive en el servidor a propósito: la del navegador
+// es cortesía (para responder bonito), pero cualquiera puede saltársela con
+// un curl. Esta es la que decide.
+const DIAS_ORDEN = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+function minutosDe(hhmm) {
+  const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = +m[1], min = +m[2];
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+function fmt(min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  const suf = h >= 12 ? 'PM' : 'AM';
+  let h12 = h % 12; if (h12 === 0) h12 = 12;
+  return h12 + ':' + String(m).padStart(2, '0') + ' ' + suf;
+}
+
+// "60 minutos", "1 hora", "45 min", "1h 30". Si no se entiende -> 0 (no se
+// aplica la regla en vez de inventar una duración).
+function duracionMin(txt) {
+  const t = String(txt || '').toLowerCase();
+  if (!t) return 0;
+  const hm = t.match(/(\d+)\s*h(?:ora)?s?\s*(\d+)?/);
+  if (hm) return (+hm[1]) * 60 + (hm[2] ? +hm[2] : 0);
+  const m = t.match(/(\d+)\s*m/);
+  if (m) return +m[1];
+  const solo = t.match(/^(\d+)$/);
+  return solo ? +solo[1] : 0;
+}
+
+function rangosDelDia(businessHours, fechaISO) {
+  if (!businessHours || !fechaISO) return null;          // sin datos: no se valida
+  const dow = new Date(fechaISO + 'T12:00:00Z').getUTCDay();
+  const dia = businessHours[DIAS_ORDEN[dow]];
+  if (!dia) return null;
+  if (dia.unknown) return null;                          // horario no especificado
+  if (dia.enabled === false) return [];                  // cerrado ese día
+  const out = [];
+  (dia.ranges || []).forEach(r => {
+    const a = minutosDe(r.start), b = minutosDe(r.end);
+    if (a !== null && b !== null && b > a) out.push([a, b]);
+  });
+  return out.length ? out : [];
+}
+
+function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs) {
+  const bh = client.businessHours;
+  const rangos = rangosDelDia(bh, fechaISO);
+  if (rangos === null) return { ok: true };              // sin horario fiable: no bloqueamos
+
+  if (!rangos.length) {
+    return { ok: false, motivo: 'dia_cerrado', mensaje: 'Ese día el negocio está cerrado.' };
+  }
+
+  const pedido = minutosDe(horaISO);
+  if (pedido === null) return { ok: true };              // hora no normalizable: no bloqueamos
+
+  // Duración: si el servicio no cabe antes del cierre, no vale.
+  const item = (client.menu || []).find(m => m.nombre && servicio &&
+    String(servicio).toLowerCase().indexOf(String(m.nombre).toLowerCase()) !== -1);
+  const dur = duracionMin(item && item.duracion);
+
+  let dentro = null;
+  for (const [a, b] of rangos) {
+    if (pedido >= a && pedido <= b) { dentro = [a, b]; break; }
+  }
+  if (!dentro) {
+    const primero = rangos[0];
+    return {
+      ok: false,
+      motivo: 'fuera_de_horario',
+      mensaje: 'En ese horario ya estamos cerrados.',
+      alternativa: pedido < primero[0] ? fmt(primero[0]) : null,
+    };
+  }
+  if (dur > 0 && pedido + dur > dentro[1]) {
+    return {
+      ok: false,
+      motivo: 'no_cabe_antes_del_cierre',
+      mensaje: 'Este servicio necesita más tiempo del que queda disponible ese día.',
+      alternativa: dentro[1] - dur >= dentro[0] ? fmt(dentro[1] - dur) : null,
+    };
+  }
+
+  // Anticipación mínima, medida en la zona del negocio.
+  const notice = Number.isFinite(client.minNoticeHours) ? client.minNoticeHours : 0;
+  if (notice > 0) {
+    const tz = client.timezone || 'UTC';
+    const ahora = ahoraMs ? new Date(ahoraMs) : new Date();
+    const hoyISO = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ahora);
+    if (fechaISO === hoyISO) {
+      const hhmm = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(ahora);
+      const ahoraMin = minutosDe(hhmm);
+      if (ahoraMin !== null && pedido - ahoraMin < notice * 60) {
+        return {
+          ok: false,
+          motivo: 'poca_anticipacion',
+          mensaje: 'Necesitamos al menos ' + notice + (notice === 1 ? ' hora' : ' horas') + ' de anticipación para preparar tu cita.',
+          alternativa: ahoraMin + notice * 60 <= dentro[1] ? fmt(ahoraMin + notice * 60) : null,
+        };
+      }
+    }
+  }
+  return { ok: true };
+}
+
 // ── Plantillas del proceso diario ───────────────────────────────────────────
 const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -452,6 +561,21 @@ export default async function handler(req, res) {
       estado:         'pendiente',
       fechaSolicitud: new Date(ts).toISOString(),
     };
+
+    // Validación autoritativa: el navegador ya avisa, pero esta es la que
+    // decide. Una cita fuera de horario no se acepta ni por curl.
+    const v = validarReserva(client, reservation.fechaISO, reservation.horaISO, reservation.servicio);
+    if (!v.ok) {
+      // Se guarda igualmente como rechazada, con el motivo: al dueño le
+      // interesa ver la demanda que se le escapa, no perderla en silencio.
+      reservation.estado = 'rechazada';
+      reservation.motivoRechazo = v.motivo;
+      await redis.set(key, reservation);
+      console.log(`[api/reservations] Rechazada ${key}: ${v.motivo}`);
+      return res.status(200).json({
+        ok: false, motivo: v.motivo, mensaje: v.mensaje, alternativa: v.alternativa || null,
+      });
+    }
 
     // ── Save to KV (primary operation) ──────────────────────────────────
     await redis.set(key, reservation);

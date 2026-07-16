@@ -893,6 +893,22 @@ function extractBooking(text, menu) {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         hideTyping();
+        // El servidor rechazó la cita (cerrado, poca anticipación, no cabe…).
+        // Se lo decimos con naturalidad y, si hay hueco, se ofrece.
+        if (d && d.ok === false && d.motivo) {
+          var msg = (lang === 'en' ? 'Sorry 😊 ' : 'Uy 😊 ') + (d.mensaje || '');
+          if (d.alternativa) {
+            msg += (lang === 'en' ? ' The first slot I can offer is ' : ' El horario más cercano que te puedo ofrecer es ') + d.alternativa + '.';
+            msg += (lang === 'en' ? ' Want me to book that one?' : ' ¿Te lo agendo?');
+          } else {
+            msg += (lang === 'en' ? ' Tell me another day or time and I\'ll check 😊' : ' Dime otro día u hora y lo miro 😊');
+          }
+          addMsg('bot', msg);
+          delete bookingData.hora;
+          bookingStep = 0;
+          busy = false; inp.disabled = false; snd.disabled = false;
+          return;
+        }
         if (d.ok) {
           addMsg('bot', lang === 'en'
             ? '✅ Your request has been received! The business will review availability and confirm with you soon.'

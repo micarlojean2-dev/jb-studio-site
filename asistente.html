@@ -965,6 +965,23 @@ function extractBooking(text, menu) {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         hideTyping();
+        // El servidor rechazó la cita (cerrado, poca anticipación, no cabe…).
+        // Se lo decimos con naturalidad y, si hay hueco, se ofrece.
+        if (d && d.ok === false && d.motivo) {
+          var msg = (lang === 'en' ? 'Sorry 😊 ' : 'Uy 😊 ') + (d.mensaje || '');
+          if (d.alternativa) {
+            msg += (lang === 'en' ? ' The first slot I can offer is ' : ' El horario más cercano que te puedo ofrecer es ') + d.alternativa + '.';
+            msg += (lang === 'en' ? ' Want me to book that one?' : ' ¿Te lo agendo?');
+          } else {
+            msg += (lang === 'en' ? ' Tell me another day or time and I\'ll check 😊' : ' Dime otro día u hora y lo miro 😊');
+          }
+          addMsg('bot', msg);
+          // Se conserva todo menos la hora: es lo único que hay que rehacer.
+          delete bookingData.hora;
+          bookingStep = 0;
+          busy = false; inp.disabled = false; snd.disabled = false;
+          return;
+        }
         addMsg('bot', d.ok
           ? (lang === 'en' ? '✅ Your request has been received! The business will review availability and confirm with you soon.' : '✅ Tu solicitud fue recibida. El negocio revisará disponibilidad y te confirmará pronto.')
           : (lang === 'en' ? 'There was an error saving your request. Please try again.' : 'Hubo un error al guardar tu solicitud. Por favor intenta de nuevo.'));

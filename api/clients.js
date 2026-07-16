@@ -129,6 +129,7 @@ function sanitizeMenu(menu) {
     nombre:      String(item?.nombre      || '').slice(0, 80),
     precio:      String(item?.precio      || '').slice(0, 30),
     descripcion: String(item?.descripcion || '').slice(0, 200),
+    duracion:    String(item?.duracion    || '').slice(0, 30),
     imagen:      sanitizeServiceImage(item?.imagen),
   })).filter(item => item.nombre);
 }
@@ -249,7 +250,9 @@ export default async function handler(req, res) {
     // when services[] is present). The legacy manual form keeps posting
     // menu[] directly; it's still sanitized the same way.
     const menuSafe = Array.isArray(services)
-      ? (featuresSafe.catalog ? servicesSafe.map(s => ({ nombre: s.nombre, precio: s.precio, descripcion: s.descripcion, imagen: s.imagen })) : [])
+      // duracion viaja al menu: el chat la necesita para no aceptar un servicio
+      // de 60 min a 15 minutos del cierre.
+      ? (featuresSafe.catalog ? servicesSafe.map(s => ({ nombre: s.nombre, precio: s.precio, descripcion: s.descripcion, imagen: s.imagen, duracion: s.duracion })) : [])
       : sanitizeMenu(menu);
 
     try {
