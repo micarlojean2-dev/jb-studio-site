@@ -13,3 +13,9 @@ node_modules/
 .env.production.local
 .vercel
 .env*
+
+# Backups: el historial de git ya es el backup. Además, los .html/.js de la
+# raíz se sirven como estáticos, así que un backup versionado queda público.
+*.backup-*
+*.bak
+*.bak-*

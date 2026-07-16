@@ -90,9 +90,18 @@ function sanitizeBusinessHours(businessHours) {
   const out = {};
   for (const day of DAYS) {
     const src = businessHours[day];
-    if (!src || typeof src !== 'object') return null;
+    // Un día que falta no es un día cerrado: es un día que no sabemos. Antes
+    // se descartaba todo el horario (return null); ahora se marca unknown.
+    if (!src || typeof src !== 'object') {
+      out[day] = { enabled: false, unknown: true, ranges: [] };
+      continue;
+    }
     const ranges = Array.isArray(src.ranges) ? src.ranges.map(sanitizeHourRange).filter(Boolean).slice(0, 2) : [];
-    out[day] = { enabled: !!src.enabled, ranges };
+    // `unknown` se conserva. Se perdía aquí: la IA marca unknown:true cuando
+    // el dueño no dijo el horario de ese día, y al guardar quedaba como
+    // enabled:false — es decir, "cerrado". El validador de reservas rechaza
+    // entonces citas en un día en el que el negocio quizá sí abre.
+    out[day] = { enabled: !!src.enabled, unknown: src.unknown === true, ranges };
   }
   return out;
 }
