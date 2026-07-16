@@ -199,6 +199,43 @@ function clientHtml(r, businessName, lang, color) {
   return shell(inner, es ? 'Solicitud recibida ✨' : 'Request received ✨', color, businessName);
 }
 
+// Qué le falta a un negocio para poder tomar reservas con criterio.
+// Se calcula, no se guarda: un flag almacenado se queda obsoleto en cuanto
+// alguien edita el cliente, y entonces miente. Esto siempre dice la verdad.
+function faltaConfig(client) {
+  const f = [];
+  if (!client || typeof client !== 'object') return ['datos del negocio'];
+
+  if (!client.timezone) f.push('zona horaria');
+
+  const bh = client.businessHours;
+  let diasAbiertos = 0;
+  if (bh && typeof bh === 'object') {
+    Object.keys(bh).forEach(d => {
+      const dia = bh[d];
+      if (dia && dia.enabled !== false && !dia.unknown && Array.isArray(dia.ranges) && dia.ranges.length) diasAbiertos++;
+    });
+  }
+  if (!bh) f.push('horario del negocio');
+  else if (!diasAbiertos) f.push('días abiertos con horario');
+
+  if (!Number.isFinite(client.minNoticeHours)) f.push('anticipación mínima');
+
+  const menu = Array.isArray(client.menu) ? client.menu : [];
+  if (!menu.length) f.push('servicios');
+  else if (menu.some(m => !m.duracion)) f.push('duración de los servicios');
+
+  return f;
+}
+
+// Solo importa si el negocio realmente toma reservas. Un Básico no las tiene,
+// así que no tiene sentido bloquearlo por no configurarlas.
+function necesitaSetup(client) {
+  const reservas = client && client.features ? client.features.reservations === true : false;
+  if (!reservas) return false;
+  return faltaConfig(client).length > 0;
+}
+
 // Validación de reservas. Vive en el servidor a propósito: la del navegador
 // es cortesía (para responder bonito), pero cualquiera puede saltársela con
 // un curl. Esta es la que decide.
@@ -561,6 +598,16 @@ export default async function handler(req, res) {
       estado:         'pendiente',
       fechaSolicitud: new Date(ts).toISOString(),
     };
+
+    // Sin configuración no se puede decidir si una cita es válida. Aceptarla
+    // sería peor: el dueño acabaría con citas a horas imposibles.
+    if (necesitaSetup(client)) {
+      return res.status(200).json({
+        ok: false,
+        motivo: 'needs_setup',
+        mensaje: 'Estamos configurando el sistema de reservas de este negocio.',
+      });
+    }
 
     // Validación autoritativa: el navegador ya avisa, pero esta es la que
     // decide. Una cita fuera de horario no se acepta ni por curl.

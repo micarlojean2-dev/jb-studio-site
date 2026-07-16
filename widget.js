@@ -51,6 +51,9 @@
   // behavior off. Keep this regex/gating pattern in sync with asistente.html
   // (no shared module in this vanilla codebase to dedupe against).
   function featureOn(key) {
+    // Un negocio sin configurar no puede tomar reservas: el servidor las
+    // rechazaría igualmente. Mejor no ofrecerlas que prometer y fallar.
+    if ((key === 'reservations' || key === 'cancellation') && cfg.needsSetup === true) return false;
     return !cfg.features || cfg.features[key] !== false;
   }
   var msgs    = [];

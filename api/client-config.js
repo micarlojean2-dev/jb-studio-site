@@ -10,6 +10,43 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
+// Qué le falta a un negocio para poder tomar reservas con criterio.
+// Se calcula, no se guarda: un flag almacenado se queda obsoleto en cuanto
+// alguien edita el cliente, y entonces miente. Esto siempre dice la verdad.
+function faltaConfig(client) {
+  const f = [];
+  if (!client || typeof client !== 'object') return ['datos del negocio'];
+
+  if (!client.timezone) f.push('zona horaria');
+
+  const bh = client.businessHours;
+  let diasAbiertos = 0;
+  if (bh && typeof bh === 'object') {
+    Object.keys(bh).forEach(d => {
+      const dia = bh[d];
+      if (dia && dia.enabled !== false && !dia.unknown && Array.isArray(dia.ranges) && dia.ranges.length) diasAbiertos++;
+    });
+  }
+  if (!bh) f.push('horario del negocio');
+  else if (!diasAbiertos) f.push('días abiertos con horario');
+
+  if (!Number.isFinite(client.minNoticeHours)) f.push('anticipación mínima');
+
+  const menu = Array.isArray(client.menu) ? client.menu : [];
+  if (!menu.length) f.push('servicios');
+  else if (menu.some(m => !m.duracion)) f.push('duración de los servicios');
+
+  return f;
+}
+
+// Solo importa si el negocio realmente toma reservas. Un Básico no las tiene,
+// así que no tiene sentido bloquearlo por no configurarlas.
+function necesitaSetup(client) {
+  const reservas = client && client.features ? client.features.reservations === true : false;
+  if (!reservas) return false;
+  return faltaConfig(client).length > 0;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -39,6 +76,8 @@ export default async function handler(req, res) {
       // negocio). El chat lo usa para resolver "a las 4" sin preguntar.
       businessHours:  client.businessHours && typeof client.businessHours === 'object' ? client.businessHours : null,
       timezone:       client.timezone || 'UTC',
+      // El chat lo usa para no ofrecer reservas que el servidor rechazaría.
+      needsSetup:     necesitaSetup(client),
       minNoticeHours: Number.isFinite(client.minNoticeHours) ? client.minNoticeHours : 0,
     };
     // Only present for clients created with the automatic wizard — omit the

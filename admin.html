@@ -1761,6 +1761,11 @@
   @media (max-width: 430px) {
     .auto-display-grid { grid-template-columns: 1fr; }
   }
+  #auto-falta-section { border: 1.5px solid #f0b5b5; background: #fff5f5; border-radius: 12px; padding: 14px 16px; }
+  #auto-falta-section h3 { color: #a01b1b; }
+  .auto-falta-list { margin: 8px 0 0; padding-left: 4px; list-style: none; }
+  .auto-falta-list li { font-size: 13.5px; color: #a01b1b; padding: 3px 0; }
+  .auto-falta-help { font-size: 12.5px; color: #7a3b3b; margin-top: 8px; }
   .auto-owner-help { font-size: 12.5px; color: #8a4b00; background: #fff4e5; border: 1px solid #f0d9b5;
     padding: 8px 11px; border-radius: 9px; margin: 6px 0 9px; line-height: 1.4; }
   .auto-owner-input { width: 100%; font-size: 14px; }
@@ -5077,6 +5082,14 @@ LÍMITES ESTRICTOS:
           <div class="auto-owner-error" id="auto-owner-error" hidden>Escribe un correo válido.</div>
         </div>
 
+        <!-- Lo que impide activar. Se enumera en vez de deshabilitar el botón
+             sin explicar: un botón muerto y mudo es peor que un "no". -->
+        <div class="auto-summary-section" id="auto-falta-section" hidden>
+          <h3>No puedes activar tu asistente todavía</h3>
+          <ul class="auto-falta-list" id="auto-falta-list"></ul>
+          <p class="auto-falta-help">Completa estos datos para continuar.</p>
+        </div>
+
         <!-- Zona horaria: obligatoria. Sin ella el asistente usa el UTC del
              servidor y le dice a un negocio de México que son las 11:35
              cuando allí son las 5:35 de la madrugada. Se propone según el
@@ -5577,6 +5590,48 @@ LÍMITES ESTRICTOS:
     return EMAIL_RE.test(ownerEmailValue());
   }
 
+  // Lo que falta para poder activar. Se comprueba sobre lo que se va a enviar,
+  // no sobre lo que devolvió la IA: el admin puede haberlo corregido a mano.
+  function loQueFalta() {
+    var f = [];
+    if (!generatedConfig) return f;
+    var reservas = generatedConfig.features && generatedConfig.features.reservations === true;
+    if (!ownerEmailOk() && planNecesitaCorreo()) f.push('Correo del dueño');
+    if (!tzSelect || !tzSelect.value) f.push('Zona horaria');
+    if (!reservas) return f;                     // sin reservas, lo demás no aplica
+
+    var bh = generatedConfig.businessHours;
+    var abiertos = 0;
+    if (bh) Object.keys(bh).forEach(function (d) {
+      var dia = bh[d];
+      if (dia && dia.enabled !== false && !dia.unknown && dia.ranges && dia.ranges.length) abiertos++;
+    });
+    if (!bh) f.push('Horario del negocio');
+    else if (!abiertos) f.push('Días abiertos con horario');
+
+    if (!minNoticeSelect || minNoticeSelect.value === '') f.push('Anticipación mínima');
+
+    var svc = generatedConfig.services || [];
+    if (!svc.length) f.push('Servicios');
+    else if (svc.some(function (x) { return !x.duracion; })) f.push('Duración de servicios');
+    return f;
+  }
+
+  function renderFalta() {
+    var f = loQueFalta();
+    var sec = document.getElementById('auto-falta-section');
+    var list = document.getElementById('auto-falta-list');
+    if (!sec || !list) return f;
+    sec.hidden = f.length === 0;
+    list.innerHTML = '';
+    f.forEach(function (t) {
+      var li = document.createElement('li');
+      li.textContent = '❌ ' + t;
+      list.appendChild(li);
+    });
+    return f;
+  }
+
   function syncDisplayUI() {
     displayCards.forEach(function (c) { c.classList.toggle('selected', !!displayMode && c.dataset.mode === displayMode); });
     posRow.hidden = displayMode !== 'widget';
@@ -5594,11 +5649,14 @@ LÍMITES ESTRICTOS:
         : 'No pudimos deducirla del texto. Elígela: el asistente la usa para saber si está abierto y agendar a la hora correcta.';
     }
     // Obligatorio: formato elegido y correo del dueño válido.
-    createBtn.disabled = !displayMode || !ownerEmailOk();
+    createBtn.disabled = !displayMode || renderFalta().length > 0;
   }
 
   if (tzSelect) {
-    tzSelect.addEventListener('change', function () { tzSelect.dataset.tocado = '1'; });
+    tzSelect.addEventListener('change', function () { tzSelect.dataset.tocado = '1'; syncDisplayUI(); });
+  }
+  if (minNoticeSelect) {
+    minNoticeSelect.addEventListener('change', syncDisplayUI);
   }
 
   if (ownerInput) {
