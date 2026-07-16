@@ -1718,8 +1718,173 @@
       .svc-actions-row button, .wizard-view-toggle { width: 100%; }
       .wizard-view-toggle .wvt-btn { flex: 1; }
     }
-  </style>
-</head>
+  /* ── Auto-creation modal (Fase 5) ────────────────────────────────── */
+  .auto-overlay {
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,0.55); display: flex;
+    align-items: center; justify-content: center;
+    padding: 20px; animation: fadeIn 0.2s ease;
+  }
+  .auto-overlay.hidden { display: none; }
+  .auto-modal {
+    background: #fff; border-radius: 16px;
+    max-width: 780px; width: 100%; max-height: 90vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.25);
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+  .auto-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+  }
+  .auto-header h2 { font-size: 18px; font-weight: 700; margin:0; }
+  .auto-close-btn {
+    background: none; border: none; font-size: 22px; cursor: pointer;
+    color: #666; padding: 4px 8px; border-radius: 6px;
+  }
+  .auto-close-btn:hover { background: #f0f0f0; }
+  .auto-body {
+    flex: 1; overflow-y: auto; padding: 24px;
+  }
+  .auto-info-text {
+    font-size: 13px; color: #666; line-height: 1.5;
+    margin-bottom: 16px; padding: 12px 16px;
+    background: #f8f9fa; border-radius: 10px;
+  }
+  .auto-textarea {
+    width: 100%; min-height: 180px; padding: 14px 16px;
+    border: 1px solid var(--border); border-radius: 10px;
+    font-family: inherit; font-size: 14px; line-height: 1.6;
+    resize: vertical; outline: none;
+  }
+  .auto-textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(26,74,46,0.1); }
+  .auto-extra-input {
+    width: 100%; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: 10px;
+    font-family: inherit; font-size: 14px; outline: none;
+  }
+  .auto-extra-input:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(26,74,46,0.1); }
+  .auto-label { font-size: 13px; font-weight: 600; margin-bottom: 6px; margin-top: 16px; display: block; }
+  .auto-label:first-of-type { margin-top: 0; }
+  .auto-footer {
+    display: flex; align-items: center; gap: 10px;
+    padding: 16px 24px; border-top: 1px solid var(--border);
+  }
+  .auto-footer .auto-spacer { flex: 1; }
+  .auto-btn {
+    padding: 10px 22px; border-radius: 8px; border: none;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: opacity 0.15s;
+  }
+  .auto-btn:hover { opacity: 0.9; }
+  .auto-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .auto-btn-primary { background: var(--green); color: #fff; }
+  .auto-btn-secondary { background: #e8e8e8; color: #333; }
+  .auto-btn-danger { background: #c62828; color: #fff; }
+  .auto-btn-outline { background: transparent; border: 1px solid var(--border); color: #333; }
+  .auto-loading {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; padding: 40px 20px; color: #666;
+  }
+  .auto-spinner {
+    width: 20px; height: 20px; border: 2px solid var(--border);
+    border-top-color: var(--green); border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .auto-error {
+    padding: 12px 16px; background: #fff0f0; color: #c62828;
+    border-radius: 8px; font-size: 13px; margin-bottom: 12px;
+  }
+  /* Summary cards */
+  .auto-summary-section { margin-bottom: 20px; }
+  .auto-summary-section h3 {
+    font-size: 14px; font-weight: 700; color: var(--green);
+    margin-bottom: 8px; padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .auto-summary-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px;
+  }
+  .auto-summary-grid .item { display: flex; gap: 6px; font-size: 13px; }
+  .auto-summary-grid .item .label { color: #666; min-width: 100px; }
+  .auto-summary-grid .item .value { color: #1a1a1a; font-weight: 500; }
+  .auto-hours-summary { font-size: 13px; line-height: 1.6; }
+  .auto-hours-summary .day { display: inline-block; margin-right: 12px; }
+  .auto-service-card {
+    display: inline-block; background: #f8f9fa;
+    padding: 8px 14px; border-radius: 8px; margin: 0 6px 6px 0;
+    font-size: 13px;
+  }
+  .auto-service-card .price { color: var(--green); font-weight: 600; }
+  .auto-feature-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .auto-feature-tag {
+    padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 500;
+  }
+  .auto-feature-tag.on { background: #e8f5e9; color: #2e7d32; }
+  .auto-feature-tag.off { background: #f5f5f5; color: #999; }
+  .auto-missing-list { font-size: 13px; color: #c62828; }
+  .auto-plan-box {
+    display: inline-block; padding: 6px 16px; border-radius: 8px;
+    font-size: 14px; font-weight: 700;
+  }
+  .auto-plan-box.basic { background: #e3f2fd; color: #1565c0; }
+  .auto-plan-box.pro { background: #fce4ec; color: #c62828; }
+  /* Prompt section */
+  .auto-prompt-section { margin-top: 16px; }
+  .auto-prompt-toggle {
+    background: none; border: none; color: var(--green);
+    font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 0;
+  }
+  .auto-prompt-toggle:hover { text-decoration: underline; }
+  .auto-prompt-content {
+    display: none; margin-top: 8px;
+  }
+  .auto-prompt-content.open { display: block; }
+  .auto-prompt-textarea {
+    width: 100%; min-height: 200px; padding: 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.5;
+    resize: vertical; outline: none;
+  }
+  .auto-prompt-textarea:focus { border-color: var(--green); }
+  /* Editable inline fields */
+  .auto-editable {
+    cursor: pointer; padding: 2px 6px; border-radius: 4px;
+    border: 1px dashed transparent; transition: border-color 0.15s;
+  }
+  .auto-editable:hover { border-color: #ccc; }
+  .auto-edit-input {
+    font-size: 13px; padding: 2px 6px; border: 1px solid var(--green);
+    border-radius: 4px; font-family: inherit; outline: none; width: auto;
+  }
+  .auto-hour-edit { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
+  .auto-hour-edit input[type="time"] {
+    font-size: 12px; padding: 2px 4px; border: 1px solid #ccc;
+    border-radius: 4px; width: 70px;
+  }
+  /* Loading overlay inside modal */
+  .auto-loading-overlay {
+    position: absolute; inset: 0; background: rgba(255,255,255,0.85);
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 16px; z-index: 10;
+  }
+  .auto-loading-overlay.hidden { display: none; }
+  /* Mode selector */
+  .auto-mode-select {
+    display: flex; gap: 8px; margin-bottom: 20px;
+  }
+  .auto-mode-btn {
+    flex: 1; padding: 12px; border: 1px solid var(--border);
+    border-radius: 10px; background: #fff; cursor: pointer;
+    text-align: center; transition: all 0.15s;
+  }
+  .auto-mode-btn:hover { border-color: var(--green); }
+  .auto-mode-btn.selected { border-color: var(--green); background: var(--green-light); }
+  .auto-mode-btn .title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .auto-mode-btn .desc { font-size: 11px; color: #666; }
+
 <body>
 
   <!-- ── Login ── -->
@@ -1753,6 +1918,7 @@
       <div class="section-title">Clientes</div>
       <div style="margin-bottom:24px;">
         <button id="open-wizard-btn" class="action-btn wizard-open-btn" type="button">+ Crear chatbot</button>
+        <button id="open-auto-btn" class="action-btn" type="button" style="margin-left:8px;background:#1565c0;">+ Crear auto</button>
       </div>
 
       <!-- Modo técnico: formulario manual oculto por defecto (no se borra, ver JB_TECH_MODE). -->
@@ -4788,5 +4954,477 @@ LÍMITES ESTRICTOS:
     });
   })();
   </script>
+
+<!-- ── Auto-creation modal (Fase 5) ── -->
+<div id="auto-overlay" class="auto-overlay hidden">
+  <div class="auto-modal" id="auto-modal">
+    <div class="auto-header">
+      <h2 id="auto-title">Crear chatbot automáticamente</h2>
+      <button type="button" class="auto-close-btn" id="auto-close-btn">&times;</button>
+    </div>
+    <div class="auto-body" id="auto-body">
+      <!-- Step 1: Input -->
+      <div id="auto-step-input">
+        <div class="auto-info-text">Pega servicios, precios, horarios, ubicación, teléfono, políticas o cualquier información que tengas. No importa si está desordenada.</div>
+        <label class="auto-label">Información del negocio</label>
+        <textarea id="auto-info-input" class="auto-textarea" placeholder='Ej: "Barbería Mike queda en Santiago. Atiende lunes a sábado de 9 a 7. Corte normal 20 dólares, barba 12 y corte con barba 28. Quiero diseño negro y dorado. El dueño habla español e inglés. Quiero que responda preguntas, muestre precios y permita reservar. Correo owner@barberiamike.com, teléfono +56912345678."'></textarea>
+        <label class="auto-label">Instrucciones adicionales (opcional)</label>
+        <textarea id="auto-extra-input" class="auto-extra-input" rows="2" placeholder='Ej: "Quiero un diseño elegante negro y dorado y que tome reservas."'></textarea>
+        <div id="auto-error" class="auto-error hidden"></div>
+      </div>
+      <!-- Step 2: Loading -->
+      <div id="auto-step-loading" class="hidden">
+        <div class="auto-loading"><div class="auto-spinner"></div> Analizando información del negocio...</div>
+      </div>
+      <!-- Step 3: Summary -->
+      <div id="auto-step-summary" class="hidden">
+        <div id="auto-summary-content"></div>
+        <div class="auto-prompt-section">
+          <button type="button" class="auto-prompt-toggle" id="auto-prompt-toggle">Configuración avanzada ▸</button>
+          <div class="auto-prompt-content" id="auto-prompt-content">
+            <textarea id="auto-prompt-textarea" class="auto-prompt-textarea" readonly></textarea>
+          </div>
+        </div>
+      </div>
+      <!-- Step 4: Loading creation -->
+      <div id="auto-step-creating" class="hidden">
+        <div class="auto-loading"><div class="auto-spinner"></div> Creando chatbot...</div>
+      </div>
+      <!-- Step 5: Success -->
+      <div id="auto-step-success" class="hidden">
+        <div style="text-align:center;padding:20px 0;">
+          <div style="font-size:48px;margin-bottom:12px;">&#10003;</div>
+          <h3 style="font-size:20px;margin-bottom:4px;">Chatbot creado</h3>
+          <p style="font-size:14px;color:#666;margin-bottom:20px;" id="auto-success-name"></p>
+          <div style="background:#f8f9fa;border-radius:12px;padding:16px;text-align:left;">
+            <div style="font-size:13px;margin-bottom:8px;"><strong>URL del asistente:</strong></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+              <input type="text" id="auto-success-url" class="admin-input" readonly style="flex:1;font-size:12px;" onclick="this.select()">
+              <button type="button" class="auto-btn auto-btn-secondary" id="auto-copy-url-btn" style="padding:8px 16px;font-size:12px;">Copiar</button>
+            </div>
+            <div style="font-size:13px;margin-bottom:4px;"><strong>Snippet:</strong></div>
+            <input type="text" id="auto-success-snippet" class="admin-input" readonly style="width:100%;font-size:12px;font-family:var(--mono);" onclick="this.select()">
+          </div>
+          <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;">
+            <button type="button" class="auto-btn auto-btn-primary" id="auto-view-btn">Ver chatbot</button>
+            <button type="button" class="auto-btn auto-btn-secondary" id="auto-create-another-btn">Crear otro chatbot</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="auto-footer" id="auto-footer">
+      <div class="auto-spacer"></div>
+      <button type="button" class="auto-btn auto-btn-secondary hidden" id="auto-back-btn">Volver</button>
+      <button type="button" class="auto-btn auto-btn-primary" id="auto-generate-btn">Generar chatbot</button>
+      <button type="button" class="auto-btn auto-btn-primary hidden" id="auto-regenerate-btn">Volver a generar</button>
+      <button type="button" class="auto-btn auto-btn-primary hidden" id="auto-create-btn">Crear chatbot</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('auto-overlay');
+  var modal = document.getElementById('auto-modal');
+  var closeBtn = document.getElementById('auto-close-btn');
+  var openBtn = document.getElementById('open-auto-btn');
+  var titleEl = document.getElementById('auto-title');
+  var bodyEl = document.getElementById('auto-body');
+  var errorEl = document.getElementById('auto-error');
+  var stepInput = document.getElementById('auto-step-input');
+  var stepLoading = document.getElementById('auto-step-loading');
+  var stepSummary = document.getElementById('auto-step-summary');
+  var stepCreating = document.getElementById('auto-step-creating');
+  var stepSuccess = document.getElementById('auto-step-success');
+  var infoInput = document.getElementById('auto-info-input');
+  var extraInput = document.getElementById('auto-extra-input');
+  var generateBtn = document.getElementById('auto-generate-btn');
+  var regenerateBtn = document.getElementById('auto-regenerate-btn');
+  var createBtn = document.getElementById('auto-create-btn');
+  var backBtn = document.getElementById('auto-back-btn');
+  var summaryContent = document.getElementById('auto-summary-content');
+  var promptToggle = document.getElementById('auto-prompt-toggle');
+  var promptContent = document.getElementById('auto-prompt-content');
+  var promptTextarea = document.getElementById('auto-prompt-textarea');
+  var successName = document.getElementById('auto-success-name');
+  var successUrl = document.getElementById('auto-success-url');
+  var successSnippet = document.getElementById('auto-success-snippet');
+  var copyUrlBtn = document.getElementById('auto-copy-url-btn');
+  var viewBtn = document.getElementById('auto-view-btn');
+  var createAnotherBtn = document.getElementById('auto-create-another-btn');
+
+  var generatedConfig = null;
+  var createdClient = null;
+
+  function esc(text) {
+    var d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+  }
+
+  function showError(msg) {
+    errorEl.textContent = msg;
+    errorEl.classList.remove('hidden');
+  }
+
+  function hideError() {
+    errorEl.classList.add('hidden');
+  }
+
+  function showStep(stepId) {
+    stepInput.classList.add('hidden');
+    stepLoading.classList.add('hidden');
+    stepSummary.classList.add('hidden');
+    stepCreating.classList.add('hidden');
+    stepSuccess.classList.add('hidden');
+
+    var el = document.getElementById(stepId);
+    if (el) el.classList.remove('hidden');
+
+    generateBtn.classList.add('hidden');
+    regenerateBtn.classList.add('hidden');
+    createBtn.classList.add('hidden');
+    backBtn.classList.add('hidden');
+    var isSummary = stepId === 'auto-step-summary';
+    var isInput = stepId === 'auto-step-input';
+    var isCreating = stepId === 'auto-step-creating';
+    var isSuccess = stepId === 'auto-step-success';
+
+    if (isInput) {
+      generateBtn.classList.remove('hidden');
+      titleEl.textContent = 'Crear chatbot automáticamente';
+    } else if (isSummary) {
+      regenerateBtn.classList.remove('hidden');
+      createBtn.classList.remove('hidden');
+      titleEl.textContent = 'Resumen';
+    } else if (isSuccess) {
+      titleEl.textContent = 'Listo';
+    } else if (isCreating) {
+      titleEl.textContent = 'Creando...';
+    }
+  }
+
+  function showLoading(text) {
+    stepLoading.querySelector('.auto-loading').innerHTML = '<div class="auto-spinner"></div> ' + esc(text);
+    showStep('auto-step-loading');
+  }
+
+  function openModal() {
+    overlay.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    hideError();
+    showStep('auto-step-input');
+    infoInput.focus();
+  }
+
+  function closeModal() {
+    overlay.classList.add('hidden');
+    document.body.style.overflow = '';
+    generatedConfig = null;
+    createdClient = null;
+  }
+
+  openBtn.addEventListener('click', openModal);
+  closeBtn.addEventListener('click', closeModal);
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) closeModal();
+  });
+
+  function daysBetween(d1, d2) {
+    var diff = 0;
+    var current = new Date(d1);
+    var end = new Date(d2);
+    while (current <= end) { diff++; current.setDate(current.getDate() + 1); }
+    return diff;
+  }
+
+  function generateId(name) {
+    var base = name.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'chatbot';
+    var id = base;
+    var suffix = 2;
+    var clients = [];
+    try {
+      clients = window.__jbAdmin && window.__jbAdmin.getClients ? window.__jbAdmin.getClients() : [];
+    } catch(e) {}
+    var existingIds = (clients || []).map(function(c) { return c.id; });
+    while (existingIds.indexOf(id) !== -1) {
+      id = base + '-' + suffix;
+      suffix++;
+      if (suffix > 100) { id = base + '-' + Date.now().toString(36); break; }
+    }
+    return id;
+  }
+
+  // ── Generate ──
+  function handleGenerate() {
+    var info = infoInput.value.trim();
+    if (!info) { showError('Pega la información del negocio primero.'); return; }
+    if (info.length > 8000) { showError('La información es demasiado larga (máximo 8000 caracteres).'); return; }
+
+    hideError();
+    showLoading('Analizando información del negocio...');
+
+    var extra = extraInput.value.trim();
+
+    var body = { businessInfo: info };
+    if (extra) body.additionalInstructions = extra;
+
+    fetch('/api/generate-client-config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': window.__jbAdmin ? window.__jbAdmin.getToken() : ''
+      },
+      body: JSON.stringify(body),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) { showStep('auto-step-input'); showError(data.error); return; }
+        generatedConfig = data;
+        renderSummary(data);
+        showStep('auto-step-summary');
+      })
+      .catch(function (err) {
+        showStep('auto-step-input');
+        showError('Error de conexión. Verifica tu internet e intenta de nuevo.');
+        console.error('[auto-create]', err);
+      });
+  }
+
+  generateBtn.addEventListener('click', handleGenerate);
+  regenerateBtn.addEventListener('click', handleGenerate);
+
+  // ── Render Summary ──
+  function renderSummary(config) {
+    var b = config.business;
+    var d = config.design;
+    var h = config.businessHours;
+    var services = config.services;
+    var f = config.features;
+    var plan = config.planRecommendation;
+    var missing = config.missingInformation;
+
+    var dayLabels = { monday:'Lunes', tuesday:'Martes', wednesday:'Miércoles', thursday:'Jueves', friday:'Viernes', saturday:'Sábado', sunday:'Domingo' };
+    var days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+
+    var html = '';
+
+    // Business
+    html += '<div class="auto-summary-section"><h3>Negocio</h3><div class="auto-summary-grid">';
+    html += '<div class="item"><span class="label">Nombre:</span><span class="value">' + esc(b.businessName || '—') + '</span></div>';
+    html += '<div class="item"><span class="label">Tipo:</span><span class="value">' + esc(b.businessType || '—') + '</span></div>';
+    html += '<div class="item"><span class="label">Dirección:</span><span class="value">' + esc(b.address || '—') + '</span></div>';
+    html += '<div class="item"><span class="label">Contacto:</span><span class="value">' + esc(b.phoneCountryCode || '') + esc(b.phoneNumber || '—') + '</span></div>';
+    html += '<div class="item"><span class="label">Email:</span><span class="value">' + esc(b.ownerEmail || '—') + '</span></div>';
+    html += '<div class="item"><span class="label">Idiomas:</span><span class="value">' + esc((b.languages || []).join(', ') || '—') + '</span></div>';
+    html += '</div></div>';
+
+    // Design
+    html += '<div class="auto-summary-section"><h3>Diseño</h3><div class="auto-summary-grid">';
+    html += '<div class="item"><span class="label">Color primario:</span><span class="value"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:' + esc(d.primaryColor) + ';vertical-align:middle;margin-right:4px;border:1px solid #ddd;"></span>' + esc(d.primaryColor) + '</span></div>';
+    html += '<div class="item"><span class="label">Color secundario:</span><span class="value"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:' + esc(d.secondaryColor) + ';vertical-align:middle;margin-right:4px;border:1px solid #ddd;"></span>' + esc(d.secondaryColor) + '</span></div>';
+    html += '<div class="item"><span class="label">Estilo:</span><span class="value">' + esc(d.style) + '</span></div>';
+    html += '</div></div>';
+
+    // Hours
+    html += '<div class="auto-summary-section"><h3>Horarios</h3><div class="auto-hours-summary">';
+    for (var i = 0; i < days.length; i++) {
+      var day = days[i];
+      var hd = h[day];
+      var label = dayLabels[day];
+      if (hd && hd.enabled && hd.ranges && hd.ranges.length) {
+        html += '<div class="day"><strong>' + label + ':</strong> ' + hd.ranges.map(function(r) { return r.start + '–' + r.end; }).join(', ') + '</div>';
+      } else {
+        html += '<div class="day" style="color:#999;"><strong>' + label + ':</strong> Cerrado</div>';
+      }
+    }
+    html += '</div></div>';
+
+    // Services
+    html += '<div class="auto-summary-section"><h3>Servicios</h3>';
+    if (services && services.length) {
+      for (var i = 0; i < services.length; i++) {
+        var s = services[i];
+        html += '<span class="auto-service-card">' + esc(s.nombre) + (s.precio ? ' <span class="price">' + esc(s.precio) + '</span>' : '') + (s.duracion ? ' <span style="color:#666;">(' + esc(s.duracion) + ')</span>' : '') + '</span>';
+      }
+    } else {
+      html += '<span style="font-size:13px;color:#999;">No se detectaron servicios</span>';
+    }
+    html += '</div>';
+
+    // Features
+    var featureLabels = {
+      faq: 'Responder preguntas', prices: 'Mostrar precios', catalog: 'Mostrar catálogo',
+      reservations: 'Tomar reservas', leads: 'Guardar interesados',
+      emailNotifications: 'Avisar por correo', cancellation: 'Cancelar reservas',
+      rescheduling: 'Reagendar reservas'
+    };
+    html += '<div class="auto-summary-section"><h3>Funciones</h3><div class="auto-feature-list">';
+    for (var key in featureLabels) {
+      if (f && f[key] !== undefined) {
+        html += '<span class="auto-feature-tag ' + (f[key] ? 'on' : 'off') + '">' + (f[key] ? '✓ ' : '✗ ') + esc(featureLabels[key]) + '</span>';
+      }
+    }
+    html += '</div></div>';
+
+    // Plan recommendation
+    html += '<div class="auto-summary-section"><h3>Plan recomendado</h3>';
+    html += '<span class="auto-plan-box ' + plan.plan + '">' + (plan.plan === 'pro' ? 'Pro — $65/mes' : 'Básico — $49/mes') + '</span>';
+    if (plan.reason) html += '<span style="font-size:13px;color:#666;margin-left:10px;">' + esc(plan.reason) + '</span>';
+    html += '</div>';
+
+    // Missing info
+    if (missing && missing.length) {
+      html += '<div class="auto-summary-section"><h3 style="color:#c62828;">Datos faltantes</h3>';
+      html += '<div class="auto-missing-list"><ul>';
+      for (var i = 0; i < missing.length; i++) {
+        html += '<li>' + esc(missing[i]) + '</li>';
+      }
+      html += '</ul></div></div>';
+    }
+
+    summaryContent.innerHTML = html;
+
+    // Prompt
+    if (config.systemPrompt) {
+      promptTextarea.value = config.systemPrompt;
+      promptToggle.classList.remove('hidden');
+    } else {
+      promptToggle.classList.add('hidden');
+    }
+    promptContent.classList.remove('open');
+  }
+
+  promptToggle.addEventListener('click', function () {
+    promptContent.classList.toggle('open');
+    promptToggle.textContent = promptContent.classList.contains('open') ? 'Configuración avanzada ▾' : 'Configuración avanzada ▸';
+  });
+
+  // ── Create ──
+  createBtn.addEventListener('click', function () {
+    if (!generatedConfig) return;
+    showStep('auto-step-creating');
+
+    var config = generatedConfig;
+    var b = config.business;
+    var clientId = generateId(b.businessName || 'chatbot');
+
+    var payload = {
+      id: clientId,
+      businessName: b.businessName || 'Mi negocio',
+      ownerEmail: b.ownerEmail || '',
+      plan: config.planRecommendation.plan || 'basic',
+      languages: b.languages || ['es'],
+      primaryLanguage: b.primaryLanguage || 'es',
+      color: config.design.primaryColor || '#1a4a2e',
+      secondaryColor: config.design.secondaryColor || '#f0f7f4',
+      style: config.design.style || 'Moderno',
+      address: b.address || '',
+      businessHours: config.businessHours,
+      phoneCountry: b.phoneCountry || '',
+      phoneCountryCode: b.phoneCountryCode || '',
+      phoneNumber: b.phoneNumber || '',
+      businessType: b.businessType || '',
+      prompt: config.systemPrompt || '',
+      services: config.services || [],
+      features: config.features,
+    };
+
+    fetch('/api/clients', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': window.__jbAdmin ? window.__jbAdmin.getToken() : ''
+      },
+      body: JSON.stringify(payload),
+    })
+      .then(function (r) {
+        if (r.status === 409) {
+          clientId = generateId(b.businessName || 'chatbot');
+          payload.id = clientId;
+          return fetch('/api/clients', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-admin-token': window.__jbAdmin ? window.__jbAdmin.getToken() : ''
+            },
+            body: JSON.stringify(payload),
+          });
+        }
+        return r;
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (client) {
+        if (client.error) {
+          showStep('auto-step-summary');
+          showError('Error al crear: ' + client.error);
+          return;
+        }
+        createdClient = client;
+        showSuccess(client);
+      })
+      .catch(function (err) {
+        showStep('auto-step-summary');
+        showError('Error de conexión al crear el chatbot.');
+        console.error('[auto-create] create error:', err);
+      });
+  });
+
+  function showSuccess(client) {
+    showStep('auto-step-success');
+    successName.textContent = client.businessName + ' — ' + (client.plan === 'pro' ? 'Pro' : 'Básico');
+
+    var baseUrl = window.location.origin || 'https://jbstudio.app';
+    successUrl.value = baseUrl + '/asistente/' + client.id;
+    successSnippet.value = client.widgetSnippet || '<script src="' + baseUrl + '/widget.js?id=' + client.id + '"></script>';
+
+    if (window.__jbAdmin && window.__jbAdmin.refreshClients) {
+      window.__jbAdmin.refreshClients();
+    }
+  }
+
+  copyUrlBtn.addEventListener('click', function () {
+    successUrl.select();
+    try { document.execCommand('copy'); } catch(e) {}
+    var orig = copyUrlBtn.textContent;
+    copyUrlBtn.textContent = '✓ Copiado';
+    copyUrlBtn.style.borderColor = 'var(--green)';
+    setTimeout(function () { copyUrlBtn.textContent = orig; copyUrlBtn.style.borderColor = ''; }, 2000);
+  });
+
+  viewBtn.addEventListener('click', function () {
+    if (createdClient) {
+      window.open('/asistente/' + createdClient.id, '_blank');
+    }
+  });
+
+  createAnotherBtn.addEventListener('click', function () {
+    infoInput.value = '';
+    extraInput.value = '';
+    generatedConfig = null;
+    createdClient = null;
+    showStep('auto-step-input');
+    titleEl.textContent = 'Crear chatbot automáticamente';
+  });
+
+  // Keyboard shortcut: Enter to generate
+  infoInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.ctrlKey && !generateBtn.disabled) {
+      e.preventDefault();
+      handleGenerate();
+    }
+  });
+
+  backBtn.addEventListener('click', function () {
+    generatedConfig = null;
+    createdClient = null;
+    showStep('auto-step-input');
+    titleEl.textContent = 'Crear chatbot automáticamente';
+  });
+})();
+</script>
 </body>
 </html>

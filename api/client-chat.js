@@ -26,6 +26,18 @@ function maybeCleanup() {
   for (const [ip, d] of ipStore) if (d.ts < cutoff) ipStore.delete(ip);
 }
 
+// ── Provider config ────────────────────────────────────────────────────────
+function getProvider() {
+  return (process.env.CLIENT_CHAT_PROVIDER || 'deepseek').toLowerCase();
+}
+
+function getModel() {
+  if (getProvider() === 'deepseek') {
+    return process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+  }
+  return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+}
+
 // ── Build system prompt with injected context ──────────────────────────────
 function buildSystemPrompt(basePrompt) {
   const now  = new Date();
@@ -43,9 +55,87 @@ IMPORTANTE: No uses formato Markdown en tus respuestas. No uses asteriscos, no u
   return header + (basePrompt || '');
 }
 
+// ── DeepSeek call (OpenAI-compatible) ──────────────────────────────────────
+async function callDeepSeek(messages, systemPrompt, maxTokens) {
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) throw new Error('DEEPSEEK_API_KEY not configured');
+
+  const model = getModel();
+  const body = {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      ...messages.slice(-20),
+    ],
+    max_tokens: maxTokens || 300,
+    temperature: 0.7,
+  };
+
+  const upstream = await fetch(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!upstream.ok) {
+    const errBody = await upstream.text().catch(() => '');
+    console.error(`[api/client-chat] DeepSeek ${upstream.status}: ${errBody}`);
+    throw new Error(`DeepSeek API error: ${upstream.status}`);
+  }
+
+  return await upstream.json();
+}
+
+// ── Anthropic call ─────────────────────────────────────────────────────────
+async function callAnthropic(messages, systemPrompt, maxTokens) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  const model = getModel();
+  const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens || 300,
+      system: systemPrompt,
+      messages: messages.slice(-20),
+    }),
+  });
+
+  if (!upstream.ok) {
+    console.error(`[api/client-chat] Anthropic ${upstream.status}`);
+    throw new Error('Anthropic API error');
+  }
+
+  return await upstream.json();
+}
+
+// ── Usage tracking ─────────────────────────────────────────────────────────
+async function trackUsage(clientId, inputTokens, outputTokens, estimatedCost) {
+  try {
+    const now = new Date();
+    const key = `usage:${clientId}:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const current = await redis.get(key) || { messageCount: 0, inputTokens: 0, outputTokens: 0, estimatedCost: 0 };
+    current.messageCount += 1;
+    current.inputTokens += inputTokens || 0;
+    current.outputTokens += outputTokens || 0;
+    current.estimatedCost += estimatedCost || 0;
+    await redis.set(key, current, { ex: 90 * 24 * 60 * 60 });
+  } catch (err) {
+    console.error('[api/client-chat] usage tracking error:', err.message);
+  }
+}
+
 // ── Handler ────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
-  // Open CORS — clients embed widget on their own domains
   res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -86,48 +176,46 @@ export default async function handler(req, res) {
       });
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Service unavailable' });
+    const provider = getProvider();
+    const systemPrompt = buildSystemPrompt(client.prompt);
+    const text = await callProvider(provider, messages, systemPrompt, client, clientId);
 
-    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      'claude-haiku-4-5-20251001',
-        max_tokens: 300,
-        system:     buildSystemPrompt(client.prompt),
-        messages:   messages.slice(-20),
-      }),
-    });
-
-    if (!upstream.ok) {
-      console.error(`[api/client-chat] Anthropic ${upstream.status} for ${clientId}`);
-      return res.status(502).json({ error: 'Assistant temporarily unavailable' });
-    }
-
-    const data = await upstream.json();
-    let text = data.content?.[0]?.text || '';
-
-    // Auto-inject [MOSTRAR_MENU] if keywords detected and marker not already present.
-    // Gated on features.catalog — legacy clients without a features object
-    // keep the old always-on behavior ("!== false" defaults to enabled).
-    const catalogEnabled = !client.features || client.features.catalog !== false;
-    if (catalogEnabled && text && !text.includes('[MOSTRAR_MENU]')) {
-      const MENU_KEYWORDS = /cat[áa]logo|im[áa]genes?|fotos?|servicios?|precios?|tratamientos?|productos?/i;
-      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
-      if (MENU_KEYWORDS.test(lastUserMsg) || MENU_KEYWORDS.test(text)) {
-        text = text + '\n[MOSTRAR_MENU]';
-      }
-    }
-
-    return res.status(200).json({ text });
+    return res.status(200).json({ text, provider });
 
   } catch (err) {
     console.error('[api/client-chat]', err.message);
     return res.status(500).json({ error: 'Service error' });
   }
+}
+
+async function callProvider(provider, messages, systemPrompt, client, clientId) {
+  const data = provider === 'deepseek'
+    ? await callDeepSeek(messages, systemPrompt, 300)
+    : await callAnthropic(messages, systemPrompt, 300);
+
+  let text = '';
+  if (provider === 'deepseek') {
+    text = data.choices?.[0]?.message?.content || '';
+  } else {
+    text = data.content?.[0]?.text || '';
+  }
+
+  const inputTokens = data.usage?.input_tokens || data.usage?.prompt_tokens || 0;
+  const outputTokens = data.usage?.output_tokens || data.usage?.completion_tokens || 0;
+  const costPer1kInput = provider === 'deepseek' ? 0.00014 : 0.00080;
+  const costPer1kOutput = provider === 'deepseek' ? 0.00028 : 0.00400;
+  const estimatedCost = (inputTokens / 1000) * costPer1kInput + (outputTokens / 1000) * costPer1kOutput;
+
+  trackUsage(clientId, inputTokens, outputTokens, estimatedCost);
+
+  const catalogEnabled = !client.features || client.features.catalog !== false;
+  if (catalogEnabled && text && !text.includes('[MOSTRAR_MENU]')) {
+    const MENU_KEYWORDS = /cat[áa]logo|im[áa]genes?|fotos?|servicios?|precios?|tratamientos?|productos?/i;
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+    if (MENU_KEYWORDS.test(lastUserMsg) || MENU_KEYWORDS.test(text)) {
+      text = text + '\n[MOSTRAR_MENU]';
+    }
+  }
+
+  return text;
 }
