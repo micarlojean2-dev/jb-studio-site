@@ -38,6 +38,46 @@ function getModel() {
   return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 }
 
+// Qué le falta a un negocio para poder tomar reservas con criterio.
+// Se calcula, no se guarda: un flag almacenado se queda obsoleto en cuanto
+// alguien edita el cliente, y entonces miente. Esto siempre dice la verdad.
+function faltaConfig(client) {
+  const f = [];
+  if (!client || typeof client !== 'object') return ['datos del negocio'];
+
+  if (!client.timezone) f.push('zona horaria');
+
+  const bh = client.businessHours;
+  let diasAbiertos = 0;
+  if (bh && typeof bh === 'object') {
+    Object.keys(bh).forEach(d => {
+      const dia = bh[d];
+      if (dia && dia.enabled !== false && !dia.unknown && Array.isArray(dia.ranges) && dia.ranges.length) diasAbiertos++;
+    });
+  }
+  if (!bh) f.push('horario del negocio');
+  else if (!diasAbiertos) f.push('días abiertos con horario');
+
+  if (!Number.isFinite(client.minNoticeHours)) f.push('anticipación mínima');
+
+  const menu = Array.isArray(client.menu) ? client.menu : [];
+  if (!menu.length) f.push('servicios');
+  else if (menu.some(m => !m.duracion)) f.push('duración de los servicios');
+
+  return f;
+}
+
+// Solo importa si el negocio realmente toma reservas. Un Básico no las tiene,
+// así que no tiene sentido bloquearlo por no configurarlas.
+// Mismo criterio permisivo que featureOn() en el chat: los clientes legacy
+// no tienen features y sí ofrecen reservas.
+function necesitaSetup(client) {
+  if (!client) return false;
+  const reservas = !client.features || client.features.reservations !== false;
+  if (!reservas) return false;
+  return faltaConfig(client).length > 0;
+}
+
 // ── Build system prompt with injected context ──────────────────────────────
 // La hora del negocio, no la del servidor. Un local en México operaba con el
 // UTC de Vercel: el asistente creía que eran las 11:35 cuando allí eran las
@@ -237,7 +277,16 @@ export default async function handler(req, res) {
     }
 
     const provider = getProvider();
-    const systemPrompt = buildSystemPrompt(client.prompt, client);
+    // El prompt del cliente dice que sabe tomar reservas. Si al negocio le
+    // falta configuración, el servidor las rechaza — y sin este aviso el
+    // modelo arranca igualmente el flujo y le pide los datos a alguien para
+    // nada. Se le dice aquí, no reescribiendo el prompt guardado.
+    let systemPrompt = buildSystemPrompt(client.prompt, client);
+    if (necesitaSetup(client)) {
+      systemPrompt += `
+
+IMPORTANTE AHORA MISMO: el sistema de reservas de este negocio está en configuración y no puede tomar citas todavía. Si alguien quiere reservar, dile con naturalidad que estás terminando de configurar las reservas y que de momento puedes ayudarle con servicios, precios, horarios y dudas. No pidas datos para una cita ni digas que la has agendado.`;
+    }
     const text = await callProvider(provider, messages, systemPrompt, client, clientId);
 
     return res.status(200).json({ text, provider, model: getModel(), preview: previewOk });
