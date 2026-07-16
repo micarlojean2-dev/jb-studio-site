@@ -168,6 +168,16 @@ function sanitizeServices(services) {
 
 // Mismo criterio que api/clients.js: el plan es un techo. La IA puede pedir
 // reservations:true para un basic; aquí se corta, no en el cliente.
+// Los enlaces que pega el dueño no se abren ni se analizan: no tenemos forma
+// de leerlos y el modelo se inventaría el contenido de una web que nunca vio.
+// Se quitan del texto antes de que el modelo los lea.
+const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+
+function quitarUrls(txt) {
+  const encontradas = String(txt || '').match(URL_RE) || [];
+  return { limpio: String(txt || '').replace(URL_RE, ' ').replace(/[ \t]{2,}/g, ' ').trim(), encontradas };
+}
+
 function sanitizeFeatures(features, plan) {
   const allowed = (plan === 'pro' || plan === 'premium')
     ? { faq: true, prices: true, catalog: true, reservations: true, leads: true, emailNotifications: true, cancellation: true, rescheduling: true }
@@ -354,18 +364,34 @@ export default async function handler(req, res) {
   if (!businessInfo || typeof businessInfo !== 'string')
     return res.status(400).json({ error: 'businessInfo is required and must be a string' });
 
+  // Un enlace no es información: hay que pedirla escrita.
+  const { limpio: infoSinUrls, encontradas: urlsPegadas } = quitarUrls(businessInfo);
+  if (urlsPegadas.length && infoSinUrls.replace(/\s/g, '').length < 40) {
+    return res.status(400).json({
+      error: 'No puedo abrir enlaces ni leer páginas web. Escribe aquí la información del negocio: servicios, precios, horarios y ubicación.',
+    });
+  }
+
   if (businessInfo.length > 8000)
     return res.status(400).json({ error: 'businessInfo too long (max 8000 chars)' });
 
   if (additionalInstructions && additionalInstructions.length > 1000)
     return res.status(400).json({ error: 'additionalInstructions too long (max 1000 chars)' });
 
-  const sanitizedInfo = sanitizeHtml(businessInfo);
-  const sanitizedExtra = sanitizeHtml(String(additionalInstructions || ''));
+  // Se usa el texto YA sin enlaces: si el modelo los ve, se inventa lo que
+  // supuestamente contienen.
+  const sanitizedInfo = sanitizeHtml(infoSinUrls);
+  const sanitizedExtra = sanitizeHtml(quitarUrls(String(additionalInstructions || '')).limpio);
 
-  const userMessage = sanitizedExtra
+  // Si había enlaces se avisa al modelo, para que lo pida en missingInformation
+  // en vez de rellenarlo por su cuenta.
+  const avisoUrls = urlsPegadas.length
+    ? `\n\nNOTA: el usuario pegó ${urlsPegadas.length} enlace(s). No se pueden abrir y se han eliminado. No inventes su contenido: si falta información, pídela en missingInformation.`
+    : '';
+
+  const userMessage = (sanitizedExtra
     ? `Información del negocio:\n\n${sanitizedInfo}\n\nInstrucciones adicionales:\n\n${sanitizedExtra}`
-    : `Información del negocio:\n\n${sanitizedInfo}`;
+    : `Información del negocio:\n\n${sanitizedInfo}`) + avisoUrls;
 
   try {
     const text = await callAnthropic(

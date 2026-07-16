@@ -451,7 +451,7 @@
       wrap.appendChild(b);
     });
     msgsEl.appendChild(wrap);
-    msgsEl.scrollTop = msgsEl.scrollHeight;
+    irAlFondo();
   }
 
   function paint() {
@@ -488,7 +488,7 @@
     }
     row.appendChild(bub);
     msgsEl.appendChild(row);
-    msgsEl.scrollTop = msgsEl.scrollHeight;
+    irAlFondo(role === 'user');   // tu propio mensaje siempre te lleva abajo
   }
 
   function showTyping() {
@@ -505,7 +505,7 @@
     row.appendChild(av);
     row.appendChild(b);
     msgsEl.appendChild(row);
-    msgsEl.scrollTop = msgsEl.scrollHeight;
+    irAlFondo();
   }
   function hideTyping() {
     var el = document.getElementById('a-ty');
@@ -613,7 +613,7 @@
 
     wrap.appendChild(row);
     msgsEl.appendChild(wrap);
-    msgsEl.scrollTop = msgsEl.scrollHeight;
+    irAlFondo();
   }
 
   function buildIco(nombre) {
@@ -704,12 +704,41 @@ function resolverHora(n, minutos, sufijo, businessHours) {
   // un marcador nuevo tampoco se escapará.
   var MARCADOR_RE = /\[[A-Z_]{3,}\]/g;
 
+  // El prompt pide texto plano, pero el modelo se escapa y manda **negritas**
+  // o ### títulos de vez en cuando. Aquí se limpian: en una burbuja de chat
+  // los asteriscos se ven como un error, no como énfasis.
+  function limpiarMarkdown(t) {
+    return t
+      .replace(/```[a-z]*\n?/gi, '')          // vallas de código
+      .replace(/\*\*(.+?)\*\*/g, '$1')       // **negrita**
+      .replace(/__(.+?)__/g, '$1')            // __negrita__
+      .replace(/(^|[\s(])\*(?!\s)([^*\n]+?)\*(?=[\s).,;:!?]|$)/g, '$1$2')  // *cursiva*, sin tocar 2*3
+      .replace(/(^|[\s(])_(?!\s)([^_\n]+?)_(?=[\s).,;:!?]|$)/g, '$1$2')      // _cursiva_
+      .replace(/`([^`\n]+)`/g, '$1')          // `código`
+      .replace(/^#{1,6}\s+/gm, '')            // ### títulos
+      .replace(/^\s*[-*+]\s+/gm, '• ')        // viñetas markdown -> punto
+      .replace(/^\s*>\s?/gm, '');             // citas
+  }
+
   function limpiarMarcadores(txt) {
-    return String(txt || '')
+    return limpiarMarkdown(String(txt || ''))
       .replace(MARCADOR_RE, '')
       .replace(/[ \t]{2,}/g, ' ')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
+  }
+
+  // Solo bajamos solos si ya estabas abajo. Si subiste a releer algo, un
+  // mensaje nuevo ya no te arrastra: era imposible leer el historial mientras
+  // el bot escribía.
+  function estaAlFondo() {
+    if (!msgsEl) return true;
+    return msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 80;
+  }
+
+  function irAlFondo(forzar) {
+    if (!msgsEl) return;
+    if (forzar || estaAlFondo()) msgsEl.scrollTop = msgsEl.scrollHeight;
   }
 
 function extractBooking(text, menu) {
@@ -953,7 +982,7 @@ function extractBooking(text, menu) {
       wrap.appendChild(b);
     });
     msgsEl.appendChild(wrap);
-    msgsEl.scrollTop = msgsEl.scrollHeight;
+    irAlFondo();
   }
 
   function submitBooking() {
