@@ -651,6 +651,45 @@ var NUM_PAL = { un:1, uno:1, una:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6, si
 var EMAIL_RE2 = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
 var TEL_RE = /(\+?\d[\d\s().-]{6,}\d)/;
 
+// "las 4" puede ser las 04:00 o las 16:00. Se decide con el horario real del
+// negocio: si solo una de las dos cae dentro, esa es. Si ambas o ninguna
+// encajan, se pregunta en vez de adivinar.
+function horasAbiertas(businessHours) {
+  var set = {};
+  if (!businessHours) return null;
+  var vacio = true;
+  Object.keys(businessHours).forEach(function (d) {
+    var day = businessHours[d];
+    if (!day || day.enabled === false || day.unknown) return;
+    (day.ranges || []).forEach(function (r) {
+      var a = parseInt(String(r.start || '').split(':')[0], 10);
+      var b = parseInt(String(r.end || '').split(':')[0], 10);
+      if (isNaN(a) || isNaN(b)) return;
+      for (var h = a; h <= b; h++) { set[h] = true; vacio = false; }
+    });
+  });
+  return vacio ? null : set;
+}
+
+// Devuelve { hora } resuelta, { ambigua: n } si hay que preguntar, o null.
+function resolverHora(n, minutos, sufijo, businessHours) {
+  var mm = minutos ? ':' + minutos : ':00';
+  if (sufijo) {                                   // ya lo dijo la persona
+    var s = sufijo.toUpperCase().replace(/\./g, '');
+    return { hora: n + mm + ' ' + s };
+  }
+  if (n >= 13 && n <= 23) return { hora: n + mm };  // formato 24h, sin duda
+  if (n === 0) return { hora: '12' + mm + ' AM' };
+  if (n === 12) return { hora: '12' + mm + ' PM' };
+
+  var abiertas = horasAbiertas(businessHours);
+  if (!abiertas) return { ambigua: n, mm: mm };     // sin horario: preguntar
+  var am = !!abiertas[n], pm = !!abiertas[n + 12];
+  if (pm && !am) return { hora: n + mm + ' PM' };
+  if (am && !pm) return { hora: n + mm + ' AM' };
+  return { ambigua: n, mm: mm };                    // ambas o ninguna: preguntar
+}
+
 function extractBooking(text, menu) {
   var t = String(text || '');
   var out = {};
@@ -685,9 +724,9 @@ function extractBooking(text, menu) {
     if (h) {
       var hh = parseInt(h[1], 10);
       if (hh >= 0 && hh <= 23) {
-        var mm = h[2] ? ':' + h[2] : ':00';
-        var suf = h[3] ? ' ' + h[3].toUpperCase().replace(/\./g, '') : '';
-        out.hora = hh + mm + suf;
+        var r = resolverHora(hh, h[2], h[3], cfg.businessHours);
+        if (r && r.hora) out.hora = r.hora;
+        else if (r && r.ambigua) out.__horaAmbigua = { n: r.ambigua, mm: r.mm };
       }
     }
   }
@@ -697,6 +736,14 @@ function extractBooking(text, menu) {
     var raw = (p[1] || p[2] || '').toLowerCase();
     var n = /^\d+$/.test(raw) ? parseInt(raw, 10) : NUM_PAL[raw];
     if (n >= 1 && n <= 200) out.personas = String(n);
+  }
+
+  // El nombre solo se toma si la persona lo marca ("soy Ana", "me llamo…").
+  // Sin marcador, en texto libre se confunde con cualquier palabra.
+  var nm = t.match(/\b(?:soy|me\s+llamo|mi\s+nombre\s+es)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}(?:\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,})?)/);
+  if (nm) {
+    var cand = nm[1].trim();
+    if (!/^(que|quien|el|la|un|una|para|de|del)$/i.test(cand.split(/\s+/)[0])) out.nombre = cand;
   }
 
   var e = t.match(EMAIL_RE2);
@@ -737,6 +784,32 @@ function extractBooking(text, menu) {
 
   // Primer campo sin rellenar, o -1 si ya está todo. `nota` no necesita trato
   // especial: ya es el último paso de la lista.
+  // Cuando la hora podría ser AM o PM y el horario no lo aclara, se pregunta
+  // en vez de decidir por el cliente. Una cita a las 4 AM no la quiere nadie.
+  var horaPendiente = null;
+
+  function preguntarHoraAmbigua(amb, lang) {
+    horaPendiente = amb;
+    addMsg('bot', lang === 'en'
+      ? 'Quick one 😊 do you mean ' + amb.n + ' in the afternoon or ' + amb.n + ' in the morning?'
+      : 'Una cosita 😊 ¿te refieres a las ' + amb.n + ' de la tarde o a las ' + amb.n + ' de la mañana?');
+  }
+
+  function resolverHoraPendiente(t, lang) {
+    if (!horaPendiente) return false;
+    var esPM = /tarde|noche|pm|p\.m|afternoon|evening/i.test(t);
+    var esAM = /ma(ñ|n)ana|madrugada|am|a\.m|morning/i.test(t);
+    if (!esPM && !esAM) {
+      addMsg('bot', lang === 'en' ? 'Sorry, morning or afternoon? 😊' : 'Perdona, ¿de la mañana o de la tarde? 😊');
+      return true;
+    }
+    bookingData.hora = horaPendiente.n + horaPendiente.mm + (esPM ? ' PM' : ' AM');
+    var amb = horaPendiente; horaPendiente = null;
+    addMsg('bot', (lang === 'en' ? 'Got it 😊 ' : 'Perfecto 😊 ') + '⏰ ' + bookingData.hora);
+    seguirDesdeLoQueFalta(lang);
+    return true;
+  }
+
   function nextMissingIndex() {
     for (var i = 0; i < BOOKING_STEPS.length; i++) {
       if (!bookingData[BOOKING_STEPS[i].field]) return i;
@@ -825,13 +898,16 @@ function extractBooking(text, menu) {
       .filter(function (k) { return bookingData[k]; })
       .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + L[k] + ': ' + bookingData[k]; });
 
-    addMsg('bot', (lang === 'en' ? 'Perfect 😊 let\'s review:\n\n' : 'Perfecto 😊 revisemos:\n\n') +
-      lineas.join('\n') + (lang === 'en' ? '\n\nShall we confirm your appointment?' : '\n\n¿Confirmamos tu cita?'));
+    var quien = bookingData.nombre ? ' ' + String(bookingData.nombre).split(/\s+/)[0] : '';
+    addMsg('bot', (lang === 'en'
+        ? 'Perfect' + quien + ' 😊 let\'s check everything before confirming:\n\n'
+        : 'Perfecto' + quien + ' 😊 revisemos que todo esté correcto antes de confirmar:\n\n') +
+      lineas.join('\n') + (lang === 'en' ? '\n\nAll good? 😄' : '\n\n¿Todo correcto? 😄'));
 
     var wrap = document.createElement('div');
     wrap.className = 'a-quick';
-    [{ label: lang === 'en' ? '✅ Confirm' : '✅ Confirmar', ok: true },
-     { label: lang === 'en' ? '✏️ Change details' : '✏️ Cambiar datos', ok: false }
+    [{ label: lang === 'en' ? '✅ Yes, confirm it' : '✅ Sí, confirmar cita', ok: true },
+     { label: lang === 'en' ? '✏️ I want to change something' : '✏️ Quiero cambiar algo', ok: false }
     ].forEach(function (a, i) {
       var b = document.createElement('button');
       b.type = 'button';
@@ -940,6 +1016,7 @@ function extractBooking(text, menu) {
       }
       var step = BOOKING_STEPS[bookingStep - 1];
       addMsg('user', t);
+      if (resolverHoraPendiente(t, lang)) return;
       if (intentarCorreccion(t, lang)) return;     // "me equivoqué, somos 3"
       var yaVisto = extractBooking(t, cfg.menu);
       if (!valorValido(step.field, t)) {
@@ -986,14 +1063,17 @@ function extractBooking(text, menu) {
       var yaDicho = preExtraido;
       Object.keys(yaDicho).forEach(function (k) { bookingData[k] = yaDicho[k]; });
 
+      var ambigua = yaDicho.__horaAmbigua;
+      delete bookingData.__horaAmbigua;
+
       var capturado = resumenDeLoCapturado(bookingData, lang);
       var intro = capturado
-        ? (lang === 'en' ? 'Perfect 😊 so far I have:\n\n' : 'Perfecto 😊 entonces tengo:\n\n') + capturado +
-          (lang === 'en' ? '\n\nJust a few details and your appointment is ready ✨\n\n'
-                         : '\n\nSolo necesito algunos datos para dejar tu cita lista ✨\n\n')
+        ? (lang === 'en' ? '¡Perfect! 😄 Let me help you book your appointment.\n\nI\'ve got:\n' : '¡Perfecto! 😄 Te ayudo a reservar tu cita.\n\nTengo anotado:\n') + capturado +
+          (lang === 'en' ? '\n\nAlmost done 😊\n' : '\n\nYa casi terminamos 😊\n')
         : (lang === 'en' ? '📅 Sure! I\'ll help you request an appointment. Write "cancel" at any time to stop.\n\n'
                          : '📅 ¡Con gusto! Te ayudo a solicitar una cita. Escribe "cancelar" en cualquier momento para salir.\n\n');
 
+      if (ambigua) { addMsg('bot', intro.trim()); preguntarHoraAmbigua(ambigua, lang); return; }
       var i = nextMissingIndex();
       if (i === -1) { addMsg('bot', intro.trim()); showBookingSummary(); return; }
       bookingStep = i + 1;

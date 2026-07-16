@@ -35,6 +35,9 @@ export default async function handler(req, res) {
       // fullscreen / bottom-right behavior.
       displayMode:    client.displayMode    === 'widget'      ? 'widget'      : 'fullscreen',
       widgetPosition: client.widgetPosition === 'bottom-left' ? 'bottom-left' : 'bottom-right',
+      // El horario de apertura es información pública (está en la web del
+      // negocio). El chat lo usa para resolver "a las 4" sin preguntar.
+      businessHours:  client.businessHours && typeof client.businessHours === 'object' ? client.businessHours : null,
     };
     // Only present for clients created with the automatic wizard — omit the
     // key entirely for legacy clients so widget.js's "!== false" checks keep
