@@ -38,6 +38,8 @@ export default async function handler(req, res) {
       // El horario de apertura es información pública (está en la web del
       // negocio). El chat lo usa para resolver "a las 4" sin preguntar.
       businessHours:  client.businessHours && typeof client.businessHours === 'object' ? client.businessHours : null,
+      timezone:       client.timezone || 'UTC',
+      minNoticeHours: Number.isFinite(client.minNoticeHours) ? client.minNoticeHours : 0,
     };
     // Only present for clients created with the automatic wizard — omit the
     // key entirely for legacy clients so widget.js's "!== false" checks keep

@@ -39,18 +39,31 @@ function getModel() {
 }
 
 // ── Build system prompt with injected context ──────────────────────────────
-function buildSystemPrompt(basePrompt) {
+// La hora del negocio, no la del servidor. Un local en México operaba con el
+// UTC de Vercel: el asistente creía que eran las 11:35 cuando allí eran las
+// 5:35 de la madrugada, e invitaba a pasar por un sitio cerrado.
+function tzOf(client) {
+  const v = String((client && client.timezone) || '').trim();
+  if (!v) return 'UTC';
+  try { new Intl.DateTimeFormat('en-CA', { timeZone: v }); return v; } catch (e) { return 'UTC'; }
+}
+
+function buildSystemPrompt(basePrompt, client) {
+  const tz   = tzOf(client);
   const now  = new Date();
   const days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-  const day  = days[now.getUTCDay()];
-  const date = now.toLocaleDateString('es-ES', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' });
-  const time = now.toLocaleTimeString('es-ES', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' });
+  // El día de la semana también hay que sacarlo en la zona del negocio: cerca
+  // de medianoche, UTC va un día por delante o por detrás.
+  const localISO = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  const day  = days[new Date(localISO + 'T12:00:00Z').getUTCDay()];
+  const date = now.toLocaleDateString('es-ES', { timeZone: tz, day: 'numeric', month: 'long', year: 'numeric' });
+  const time = now.toLocaleTimeString('es-ES', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
 
   // La personalidad vive aquí, no en el prompt de cada cliente, para que la
   // hereden también los chatbots creados antes de este cambio. El prompt del
   // cliente (datos, precios, reglas del negocio) se concatena debajo y manda
   // sobre los hechos; esto solo fija el tono.
-  const header = `Hoy es ${day}, ${date} y son las ${time} (horario UTC del servidor).
+  const header = `Hoy es ${day}, ${date} y son las ${time} (hora local del negocio, ${tz}). Usa siempre esta hora: es la del negocio, no la de quien te escribe.
 
 FORMATO: No uses Markdown. Nada de asteriscos, negritas ni guiones para listas. Escribe en texto plano, como una conversación real. Separa las ideas en párrafos cortos con saltos de línea; no sueltes un muro de texto.
 
@@ -224,7 +237,7 @@ export default async function handler(req, res) {
     }
 
     const provider = getProvider();
-    const systemPrompt = buildSystemPrompt(client.prompt);
+    const systemPrompt = buildSystemPrompt(client.prompt, client);
     const text = await callProvider(provider, messages, systemPrompt, client, clientId);
 
     return res.status(200).json({ text, provider, model: getModel(), preview: previewOk });

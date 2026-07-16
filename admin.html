@@ -5077,6 +5077,26 @@ LÍMITES ESTRICTOS:
           <div class="auto-owner-error" id="auto-owner-error" hidden>Escribe un correo válido.</div>
         </div>
 
+        <!-- Zona horaria: obligatoria. Sin ella el asistente usa el UTC del
+             servidor y le dice a un negocio de México que son las 11:35
+             cuando allí son las 5:35 de la madrugada. Se propone según el
+             país detectado, pero se confirma a mano: adivinarla en silencio
+             es exactamente el fallo que estamos arreglando. -->
+        <div class="auto-summary-section" id="auto-tz-section">
+          <h3>¿En qué zona horaria opera el negocio?</h3>
+          <p class="auto-owner-help" id="auto-tz-help">El asistente la usa para saber si está abierto y para agendar a la hora correcta.</p>
+          <select id="auto-tz" class="admin-input auto-owner-input"></select>
+          <label class="auto-label" style="margin-top:12px;display:block;">Anticipación mínima para reservar</label>
+          <select id="auto-min-notice" class="admin-input auto-owner-input">
+            <option value="0">Sin mínimo</option>
+            <option value="1">1 hora antes</option>
+            <option value="2" selected>2 horas antes</option>
+            <option value="4">4 horas antes</option>
+            <option value="24">1 día antes</option>
+            <option value="48">2 días antes</option>
+          </select>
+        </div>
+
         <!-- Elección obligatoria de formato: nunca se adivina desde el texto -->
         <div class="auto-summary-section" id="auto-display-section">
           <h3>¿Cómo quieres mostrar este chatbot?</h3>
@@ -5218,6 +5238,30 @@ LÍMITES ESTRICTOS:
   var ownerSection = document.getElementById('auto-owner-section');
   var ownerInput = document.getElementById('auto-owner-email');
   var ownerError = document.getElementById('auto-owner-error');
+  var tzSelect = document.getElementById('auto-tz');
+  var minNoticeSelect = document.getElementById('auto-min-notice');
+
+  // Zonas de los países que la IA sabe detectar (ver generate-client-config).
+  var TZ_POR_PAIS = {
+    CL: 'America/Santiago', MX: 'America/Mexico_City', US: 'America/New_York',
+    AR: 'America/Argentina/Buenos_Aires', CO: 'America/Bogota', PE: 'America/Lima',
+    BR: 'America/Sao_Paulo', ES: 'Europe/Madrid', GB: 'Europe/London', CA: 'America/Toronto'
+  };
+  var TZ_OPCIONES = [
+    ['America/Mexico_City', 'México (Ciudad de México)'], ['America/Santiago', 'Chile (Santiago)'],
+    ['America/Bogota', 'Colombia (Bogotá)'], ['America/Lima', 'Perú (Lima)'],
+    ['America/Argentina/Buenos_Aires', 'Argentina (Buenos Aires)'], ['America/Sao_Paulo', 'Brasil (São Paulo)'],
+    ['Europe/Madrid', 'España (Madrid)'], ['Europe/London', 'Reino Unido (Londres)'],
+    ['America/New_York', 'EE. UU. (Nueva York)'], ['America/Los_Angeles', 'EE. UU. (Los Ángeles)'],
+    ['America/Toronto', 'Canadá (Toronto)'], ['UTC', 'UTC']
+  ];
+  if (tzSelect) {
+    TZ_OPCIONES.forEach(function (o) {
+      var op = document.createElement('option');
+      op.value = o[0]; op.textContent = o[1];
+      tzSelect.appendChild(op);
+    });
+  }
 
   // ── State ──
   var state = 'idle';
@@ -5539,8 +5583,22 @@ LÍMITES ESTRICTOS:
     posCards.forEach(function (c) { c.classList.toggle('selected', c.dataset.pos === widgetPosition); });
     widgetPreview.classList.toggle('pos-left', widgetPosition === 'bottom-left');
     ownerSection.hidden = !ownerEmailFalta();
+    // Propuesta según el país que detectó la IA; el admin la confirma o cambia.
+    if (tzSelect && !tzSelect.dataset.tocado) {
+      var pais = generatedConfig && generatedConfig.business && generatedConfig.business.phoneCountry;
+      var sugerida = TZ_POR_PAIS[String(pais || '').toUpperCase()];
+      if (sugerida) tzSelect.value = sugerida;
+      var help = document.getElementById('auto-tz-help');
+      if (help) help.textContent = sugerida
+        ? 'Detectamos ' + pais + '. Confírmala o cámbiala: el asistente la usa para saber si está abierto y agendar a la hora correcta.'
+        : 'No pudimos deducirla del texto. Elígela: el asistente la usa para saber si está abierto y agendar a la hora correcta.';
+    }
     // Obligatorio: formato elegido y correo del dueño válido.
     createBtn.disabled = !displayMode || !ownerEmailOk();
+  }
+
+  if (tzSelect) {
+    tzSelect.addEventListener('change', function () { tzSelect.dataset.tocado = '1'; });
   }
 
   if (ownerInput) {
@@ -5591,6 +5649,8 @@ LÍMITES ESTRICTOS:
       features: config.features,
       displayMode: displayMode,
       widgetPosition: widgetPosition,
+      timezone: tzSelect ? tzSelect.value : 'UTC',
+      minNoticeHours: minNoticeSelect ? parseInt(minNoticeSelect.value, 10) : 0,
     };
 
     function doCreate(idToUse) {

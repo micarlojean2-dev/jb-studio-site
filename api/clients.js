@@ -19,6 +19,27 @@ const PLAN_FEATURES = {
 };
 const FEATURE_KEYS = ['faq', 'prices', 'catalog', 'reservations', 'leads', 'emailNotifications', 'cancellation', 'rescheduling'];
 
+// Zona horaria del negocio. Sin esto el asistente usa el UTC del servidor y
+// le dice a una barbería de México que son las 11:35 cuando son las 5:35 de
+// la madrugada. Se valida contra Intl: un valor inventado rompería toda
+// conversión posterior.
+function normalizeTimezone(tz) {
+  const v = String(tz || '').trim();
+  if (!v) return 'UTC';
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: v });
+    return v;
+  } catch (e) {
+    return 'UTC';
+  }
+}
+
+// Anticipación mínima para reservar, en horas.
+function normalizeMinNotice(h) {
+  const n = parseInt(h, 10);
+  return Number.isFinite(n) && n >= 0 && n <= 720 ? n : 0;
+}
+
 // Admin preview tokens: short-lived so a leaked URL stops working quickly.
 const PREVIEW_TTL_SECONDS = 15 * 60;
 
@@ -188,7 +209,7 @@ export default async function handler(req, res) {
       secondaryColor, style, address, hours, businessType, services, features,
       billingDay, trialEnabled, trialDays,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
-      displayMode, widgetPosition,
+      displayMode, widgetPosition, timezone, minNoticeHours,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -304,6 +325,8 @@ export default async function handler(req, res) {
         panelToken:   randomUUID(),
         displayMode:    mode,
         widgetPosition: position,
+        timezone:       normalizeTimezone(timezone),
+        minNoticeHours: normalizeMinNotice(minNoticeHours),
         widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}" data-position="${position}"></script>`,
         assistantUrl:  `https://jbstudio.app/asistente/${id}`,
       };

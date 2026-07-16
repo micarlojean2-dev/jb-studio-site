@@ -37,6 +37,18 @@ function rollYear(d, base, y, mon, day) {
   return d.getUTCDate() === day ? mk(d) : '';
 }
 
+// "hoy" y "mañana" dependen de dónde está el negocio: a las 23:00 en México
+// el servidor (UTC) ya va por el día siguiente y la cita se guardaba con un
+// día de más.
+function nowEnZona(tz) {
+  try {
+    const iso = new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    return new Date(iso + 'T12:00:00Z');   // mediodía: inmune a horarios de verano
+  } catch (e) {
+    return new Date();
+  }
+}
+
 function parseFechaISO(raw, now) {
   const txt = String(raw || '').toLowerCase().trim();
   if (!txt) return '';
@@ -106,6 +118,21 @@ function parseFechaISO(raw, now) {
 
 // El chat entrega texto libre ("2", "dos", "para 4 personas"). Guardamos un
 // entero cuando se puede deducir; si no, lo dejamos vacío en vez de inventar.
+// Hora normalizada a 24h para poder comparar y ordenar. Se guarda junto a la
+// que escribió la persona, que es la que se le enseña.
+function normalizeHora(v) {
+  const t = String(v || '').trim();
+  const m = t.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?/i);
+  if (!m) return '';
+  let h = parseInt(m[1], 10);
+  const min = m[2] || '00';
+  const suf = (m[3] || '').toLowerCase().replace(/\./g, '');
+  if (suf === 'pm' && h < 12) h += 12;
+  if (suf === 'am' && h === 12) h = 0;
+  if (h < 0 || h > 23) return '';
+  return String(h).padStart(2, '0') + ':' + min;
+}
+
 function normalizePersonas(v) {
   if (v === undefined || v === null || v === '') return '';
   const raw = String(v).trim();
@@ -259,10 +286,10 @@ function reminderOwnerHtml(r, negocio, color) {
 // "24 horas antes" es en realidad "el día antes": suficiente para que no se
 // pierda una cita, y honesto sobre lo que hace.
 
-function isoOffset(days) {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+function isoEnZona(tz, days) {
+  const base = nowEnZona(tz);
+  base.setUTCDate(base.getUTCDate() + days);
+  return base.toISOString().slice(0, 10);
 }
 
 function activa(r) {
@@ -273,9 +300,6 @@ async function runDailyJob() {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return { ok: false, reason: 'RESEND_API_KEY not configured' };
   const resend = new Resend(apiKey);
-
-  const hoy    = isoOffset(0);
-  const manana = isoOffset(1);
 
   const keys = await redis.keys('reservations:*');
   if (!keys.length) return { ok: true, resumenes: 0, recordatorios: 0, reservas: 0 };
@@ -293,10 +317,18 @@ async function runDailyJob() {
   });
 
   let resumenes = 0, recordatorios = 0;
+  const dias = {};
 
   for (const cid of Object.keys(porCliente)) {
     const client = await redis.get(`client:${cid}`);
     if (!client || !client.active) continue;              // impagos fuera
+
+    // "Hoy" y "mañana" son los del negocio, no los del servidor: si el cron
+    // corre a las 13:00 UTC, en Tokio ya es de noche y en México aún es de
+    // madrugada. Con UTC, medio mundo recibía el resumen del día equivocado.
+    const hoy    = isoEnZona(client.timezone, 0);
+    const manana = isoEnZona(client.timezone, 1);
+    dias[cid] = { hoy, manana, tz: client.timezone || 'UTC' };
     const notifica = !client.features || client.features.emailNotifications !== false;
     const nombreNegocio = client.businessName || 'tu negocio';
     const color = client.color || '#1a4a2e';
@@ -353,7 +385,7 @@ async function runDailyJob() {
     }
   }
 
-  return { ok: true, hoy, manana, resumenes, recordatorios, reservas: rows.length };
+  return { ok: true, resumenes, recordatorios, reservas: rows.length, porNegocio: dias };
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -410,7 +442,9 @@ export default async function handler(req, res) {
       fecha:          String(fecha).slice(0, 60),
       // Copia normalizada para poder consultar por día (recordatorios,
       // resumen, filtros). '' cuando el texto no permite deducirla sin riesgo.
-      fechaISO:       parseFechaISO(fecha),
+      fechaISO:       parseFechaISO(fecha, nowEnZona(client.timezone)),
+      horaISO:        normalizeHora(hora),
+      timezone:       client.timezone || 'UTC',
       hora:           String(hora).slice(0, 30),
       servicio:       String(servicio || '').slice(0, 200),
       personas:       normalizePersonas(personas),
