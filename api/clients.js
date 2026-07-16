@@ -18,6 +18,19 @@ const PLAN_FEATURES = {
   premium: { faq: true, prices: true, catalog: true, reservations: true,  leads: true,  emailNotifications: true,  cancellation: true,  rescheduling: true  },
 };
 const FEATURE_KEYS = ['faq', 'prices', 'catalog', 'reservations', 'leads', 'emailNotifications', 'cancellation', 'rescheduling'];
+
+// Admin preview tokens: short-lived so a leaked URL stops working quickly.
+const PREVIEW_TTL_SECONDS = 15 * 60;
+
+// Clients created before the display-mode picker have neither field.
+const DISPLAY_MODES = ['fullscreen', 'widget'];
+const WIDGET_POSITIONS = ['bottom-right', 'bottom-left'];
+function normalizeDisplayMode(v) {
+  return DISPLAY_MODES.includes(v) ? v : 'fullscreen';
+}
+function normalizeWidgetPosition(v) {
+  return WIDGET_POSITIONS.includes(v) ? v : 'bottom-right';
+}
 const STYLES = ['Moderno', 'Elegante', 'Amigable', 'Minimalista'];
 // Fase 4: únicamente estos dos planes tienen suscripción real en Stripe. El
 // monto guardado siempre se deriva del plan — nunca de lo que mande el
@@ -117,6 +130,34 @@ export default async function handler(req, res) {
 
   if (!auth(req)) return res.status(401).json({ error: 'Unauthorized' });
 
+  // ── POST ?action=preview-token: mint a short-lived admin preview token ──
+  // Lets the admin talk to a chatbot that has not been paid for yet, without
+  // activating it publicly. The token is random, server-side, expires in 15
+  // minutes and only unlocks the one client it was minted for. It is NOT the
+  // ADMIN_TOKEN and grants nothing else.
+  if (req.method === 'POST' && req.query?.action === 'preview-token') {
+    const { id } = req.body || {};
+    if (!id || !/^[a-z0-9-]+$/.test(id))
+      return res.status(400).json({ error: 'Valid id is required' });
+    try {
+      const client = await redis.get(`client:${id}`);
+      if (!client) return res.status(404).json({ error: 'Client not found' });
+
+      const { randomBytes } = await import('crypto');
+      const token = randomBytes(32).toString('hex');
+      await redis.set(`preview:${token}`, { clientId: id }, { ex: PREVIEW_TTL_SECONDS });
+
+      return res.status(200).json({
+        previewToken: token,
+        expiresInSeconds: PREVIEW_TTL_SECONDS,
+        previewUrl: `https://jbstudio.app/asistente/${encodeURIComponent(id)}?preview=${token}`,
+      });
+    } catch (err) {
+      console.error('[api/clients] preview-token:', err.message);
+      return res.status(500).json({ error: 'Database error' });
+    }
+  }
+
   // ── GET: list all clients ───────────────────────────────────────────────
   if (req.method === 'GET') {
     try {
@@ -142,6 +183,7 @@ export default async function handler(req, res) {
       secondaryColor, style, address, hours, businessType, services, features,
       billingDay, trialEnabled, trialDays,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
+      displayMode, widgetPosition,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -189,6 +231,9 @@ export default async function handler(req, res) {
       // fresh/suffixed id instead.
       const existing = await redis.get(`client:${id}`);
       if (existing) return res.status(409).json({ error: 'id_exists' });
+
+      const mode     = normalizeDisplayMode(displayMode);
+      const position = normalizeWidgetPosition(widgetPosition);
 
       const { randomUUID } = await import('crypto');
 
@@ -252,7 +297,10 @@ export default async function handler(req, res) {
         cancelledAt:           null,
         createdAt:    new Date().toISOString().slice(0, 10),
         panelToken:   randomUUID(),
-        widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}"></script>`,
+        displayMode:    mode,
+        widgetPosition: position,
+        widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}" data-position="${position}"></script>`,
+        assistantUrl:  `https://jbstudio.app/asistente/${id}`,
       };
 
       await redis.set(`client:${id}`, client);

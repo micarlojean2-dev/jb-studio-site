@@ -1730,6 +1730,41 @@
      Sin esta regla, cualquier display: flex/block de las reglas de abajo
      gana y todas las vistas se pintan a la vez. */
   #auto-overlay [hidden] { display: none !important; }
+
+  /* Selector de formato (página completa vs cuadro en esquina) */
+  .auto-display-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .auto-display-card, .auto-pos-card {
+    display: flex; flex-direction: column; gap: 4px; text-align: left;
+    padding: 14px; border: 2px solid var(--border); border-radius: 12px;
+    background: #fff; cursor: pointer; font-family: inherit; transition: border-color .15s, background .15s;
+  }
+  .auto-pos-card { flex-direction: row; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; }
+  .auto-display-card:hover, .auto-pos-card:hover { border-color: var(--green); }
+  .auto-display-card.selected, .auto-pos-card.selected { border-color: var(--green); background: #f0f7f4; }
+  .auto-display-icon { font-size: 22px; line-height: 1; }
+  .auto-display-title { font-size: 14px; font-weight: 700; }
+  .auto-display-desc { font-size: 12px; color: #666; line-height: 1.35; }
+  #auto-position-row { margin-top: 14px; }
+  #auto-position-row[hidden] { display: none !important; }
+  .auto-widget-preview {
+    position: relative; height: 90px; margin-top: 10px;
+    border: 1px dashed var(--border); border-radius: 10px; background: #fafafa;
+  }
+  .auto-widget-dot {
+    position: absolute; bottom: 10px; right: 10px;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--green); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+    transition: left .15s, right .15s;
+  }
+  .auto-widget-preview.pos-left .auto-widget-dot { left: 10px; right: auto; }
+  @media (max-width: 430px) {
+    .auto-display-grid { grid-template-columns: 1fr; }
+  }
+  .auto-result-label { font-size: 13px; margin-bottom: 6px; }
+  /* El bloque secundario se atenúa; el primario manda visualmente. */
+  .auto-result-secondary { opacity: .62; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .auto-result-secondary .auto-result-label { font-weight: 400; }
   .auto-modal {
     background: #fff; border-radius: 16px;
     max-width: 780px; width: 100%; max-height: 90vh;
@@ -4999,6 +5034,34 @@ LÍMITES ESTRICTOS:
       <!-- Step 3: Summary -->
       <div id="auto-step-summary" hidden>
         <div id="auto-summary-content"></div>
+
+        <!-- Elección obligatoria de formato: nunca se adivina desde el texto -->
+        <div class="auto-summary-section" id="auto-display-section">
+          <h3>¿Cómo quieres mostrar este chatbot?</h3>
+          <div class="auto-display-grid">
+            <button type="button" class="auto-display-card" id="auto-display-fullscreen" data-mode="fullscreen">
+              <span class="auto-display-icon">&#9647;</span>
+              <span class="auto-display-title">Página completa</span>
+              <span class="auto-display-desc">El asistente ocupa toda la pantalla y tiene su propia URL.</span>
+            </button>
+            <button type="button" class="auto-display-card" id="auto-display-widget" data-mode="widget">
+              <span class="auto-display-icon">&#9673;</span>
+              <span class="auto-display-title">Cuadro en una esquina</span>
+              <span class="auto-display-desc">Un botón flotante abre un cuadro pequeño dentro de la página del negocio.</span>
+            </button>
+          </div>
+          <div id="auto-position-row" hidden>
+            <label class="auto-label">Posición del botón flotante</label>
+            <div class="auto-display-grid">
+              <button type="button" class="auto-pos-card" data-pos="bottom-right">Abajo a la derecha</button>
+              <button type="button" class="auto-pos-card" data-pos="bottom-left">Abajo a la izquierda</button>
+            </div>
+            <div class="auto-widget-preview" id="auto-widget-preview">
+              <span class="auto-widget-dot" id="auto-widget-dot">&#9679;</span>
+            </div>
+          </div>
+        </div>
+
         <div class="auto-prompt-section">
           <button type="button" class="auto-prompt-toggle" id="auto-prompt-toggle">Configuración avanzada ▸</button>
           <div class="auto-prompt-content" id="auto-prompt-content">
@@ -5027,13 +5090,23 @@ LÍMITES ESTRICTOS:
           <h3 style="font-size:20px;margin-bottom:4px;">Chatbot creado</h3>
           <p style="font-size:14px;color:#666;margin-bottom:20px;" id="auto-success-name"></p>
           <div style="background:#f8f9fa;border-radius:12px;padding:16px;text-align:left;">
-            <div style="font-size:13px;margin-bottom:8px;"><strong>URL del asistente:</strong></div>
-            <div style="display:flex;gap:8px;margin-bottom:12px;">
-              <input type="text" id="auto-success-url" class="admin-input" readonly style="flex:1;font-size:12px;" onclick="this.select()">
-              <button type="button" class="auto-btn auto-btn-secondary" id="auto-copy-url-btn" style="padding:8px 16px;font-size:12px;">Copiar</button>
+            <div id="auto-success-url-block">
+              <div class="auto-result-label"><strong>URL del asistente:</strong></div>
+              <div style="display:flex;gap:8px;margin-bottom:12px;">
+                <input type="text" id="auto-success-url" class="admin-input" readonly style="flex:1;font-size:12px;" onclick="this.select()">
+                <button type="button" class="auto-btn auto-btn-secondary" id="auto-copy-url-btn" style="padding:8px 16px;font-size:12px;">Copiar</button>
+              </div>
             </div>
-            <div style="font-size:13px;margin-bottom:4px;"><strong>Snippet:</strong></div>
-            <input type="text" id="auto-success-snippet" class="admin-input" readonly style="width:100%;font-size:12px;font-family:var(--mono);" onclick="this.select()">
+            <div id="auto-success-snippet-block">
+              <div class="auto-result-label"><strong>Fragmento para insertar:</strong></div>
+              <div style="display:flex;gap:8px;">
+                <input type="text" id="auto-success-snippet" class="admin-input" readonly style="flex:1;font-size:12px;font-family:var(--mono);" onclick="this.select()">
+                <button type="button" class="auto-btn auto-btn-secondary" id="auto-copy-snippet-btn" style="padding:8px 16px;font-size:12px;">Copiar</button>
+              </div>
+              <div class="auto-widget-preview" id="auto-success-widget-preview" hidden>
+                <span class="auto-widget-dot">&#9679;</span>
+              </div>
+            </div>
           </div>
           <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;">
             <button type="button" class="auto-btn auto-btn-primary" id="auto-view-btn">Ver chatbot</button>
@@ -5089,9 +5162,17 @@ LÍMITES ESTRICTOS:
   var successUrl = document.getElementById('auto-success-url');
   var successSnippet = document.getElementById('auto-success-snippet');
   var copyUrlBtn = document.getElementById('auto-copy-url-btn');
+  var copySnippetBtn = document.getElementById('auto-copy-snippet-btn');
+  var urlBlock = document.getElementById('auto-success-url-block');
+  var snippetBlock = document.getElementById('auto-success-snippet-block');
+  var successWidgetPreview = document.getElementById('auto-success-widget-preview');
   var viewBtn = document.getElementById('auto-view-btn');
   var checkoutBtn = document.getElementById('auto-checkout-btn');
   var createAnotherBtn = document.getElementById('auto-create-another-btn');
+  var displayCards = [document.getElementById('auto-display-fullscreen'), document.getElementById('auto-display-widget')];
+  var posRow = document.getElementById('auto-position-row');
+  var posCards = Array.prototype.slice.call(document.querySelectorAll('.auto-pos-card'));
+  var widgetPreview = document.getElementById('auto-widget-preview');
 
   // ── State ──
   var state = 'idle';
@@ -5099,6 +5180,9 @@ LÍMITES ESTRICTOS:
   var createdClient = null;
   var creatingLocked = false;
   var abortGenerate = false;
+  // El formato nunca se adivina: null hasta que el admin elige.
+  var displayMode = null;
+  var widgetPosition = 'bottom-right';
 
   // ── All-steps container (hides all then shows one) ──
   var allSteps = [stepInput, stepLoading, stepSummary, stepCreating, stepError, stepSuccess];
@@ -5164,6 +5248,7 @@ LÍMITES ESTRICTOS:
       case 'review':
         titleEl.textContent = 'Resumen';
         creatingLocked = false;
+        syncDisplayUI();
         break;
 
       case 'creating':
@@ -5202,6 +5287,9 @@ LÍMITES ESTRICTOS:
     createdClient = null;
     creatingLocked = false;
     abortGenerate = false;
+    displayMode = null;
+    widgetPosition = 'bottom-right';
+    syncDisplayUI();
     setState('idle');
   }
 
@@ -5370,9 +5458,27 @@ LÍMITES ESTRICTOS:
     promptToggle.textContent = promptContent.classList.contains('open') ? 'Configuración avanzada ▾' : 'Configuración avanzada ▸';
   });
 
+  // ── Selector de formato ──
+  function syncDisplayUI() {
+    displayCards.forEach(function (c) { c.classList.toggle('selected', !!displayMode && c.dataset.mode === displayMode); });
+    posRow.hidden = displayMode !== 'widget';
+    posCards.forEach(function (c) { c.classList.toggle('selected', c.dataset.pos === widgetPosition); });
+    widgetPreview.classList.toggle('pos-left', widgetPosition === 'bottom-left');
+    // Obligatorio: sin formato elegido no se puede crear.
+    createBtn.disabled = !displayMode;
+  }
+
+  displayCards.forEach(function (card) {
+    card.addEventListener('click', function () { displayMode = card.dataset.mode; syncDisplayUI(); });
+  });
+  posCards.forEach(function (card) {
+    card.addEventListener('click', function () { widgetPosition = card.dataset.pos; syncDisplayUI(); });
+  });
+
   // ── Create ──
   createBtn.addEventListener('click', function () {
     if (!generatedConfig || creatingLocked) return;
+    if (!displayMode) { syncDisplayUI(); return; }
     creatingLocked = true;
     createBtn.disabled = true;
 
@@ -5400,6 +5506,8 @@ LÍMITES ESTRICTOS:
       prompt: config.systemPrompt || '',
       services: config.services || [],
       features: config.features,
+      displayMode: displayMode,
+      widgetPosition: widgetPosition,
     };
 
     function doCreate(idToUse) {
@@ -5449,6 +5557,18 @@ LÍMITES ESTRICTOS:
 
         createdClient = client;
 
+        // Resultado principal según el formato elegido.
+        var isWidget = displayMode === 'widget';
+        urlBlock.classList.toggle('auto-result-secondary', isWidget);
+        snippetBlock.classList.toggle('auto-result-secondary', !isWidget);
+        snippetBlock.parentNode.insertBefore(
+          isWidget ? snippetBlock : urlBlock,
+          isWidget ? urlBlock : snippetBlock
+        );
+        successWidgetPreview.hidden = !isWidget;
+        successWidgetPreview.classList.toggle('pos-left', widgetPosition === 'bottom-left');
+        viewBtn.hidden = isWidget;
+
         successName.textContent = (client.businessName || b.businessName) + ' — ' + (client.plan === 'pro' ? 'Pro' : 'Básico');
         successUrl.value = assistantUrl;
         successSnippet.value = snippet;
@@ -5491,8 +5611,43 @@ LÍMITES ESTRICTOS:
     setTimeout(function () { copyUrlBtn.textContent = orig; copyUrlBtn.style.borderColor = ''; }, 2000);
   });
 
+  copySnippetBtn.addEventListener('click', function () {
+    successSnippet.select();
+    try { navigator.clipboard.writeText(successSnippet.value); } catch(e) { document.execCommand('copy'); }
+    var orig = copySnippetBtn.textContent;
+    copySnippetBtn.textContent = '✓ Copiado';
+    copySnippetBtn.style.borderColor = 'var(--green)';
+    setTimeout(function () { copySnippetBtn.textContent = orig; copySnippetBtn.style.borderColor = ''; }, 2000);
+  });
+
+  // "Ver chatbot": el cliente aún no ha pagado (active:false), así que pedimos
+  // un token de prueba temporal en vez de activarlo. El ADMIN_TOKEN viaja en
+  // la cabecera, nunca en la URL.
   viewBtn.addEventListener('click', function () {
-    if (createdClient) window.open('/asistente/' + createdClient.id, '_blank');
+    if (!createdClient) return;
+    var orig = viewBtn.textContent;
+    viewBtn.disabled = true;
+    viewBtn.textContent = 'Abriendo...';
+    fetch('/api/clients?action=preview-token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': window.__jbAdmin ? window.__jbAdmin.getToken() : ''
+      },
+      body: JSON.stringify({ id: createdClient.id }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        viewBtn.disabled = false;
+        viewBtn.textContent = orig;
+        if (!d || !d.previewToken) { showError('No se pudo abrir la vista previa.'); return; }
+        window.open('/asistente/' + encodeURIComponent(createdClient.id) + '?preview=' + d.previewToken, '_blank');
+      })
+      .catch(function () {
+        viewBtn.disabled = false;
+        viewBtn.textContent = orig;
+        showError('No se pudo abrir la vista previa.');
+      });
   });
 
   checkoutBtn.addEventListener('click', function () {

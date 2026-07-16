@@ -31,6 +31,10 @@ export default async function handler(req, res) {
       language:     client.language || 'es',
       active:       client.active !== false,
       menu:         Array.isArray(client.menu) ? client.menu : [],
+      // Legacy clients have neither field stored: they keep the original
+      // fullscreen / bottom-right behavior.
+      displayMode:    client.displayMode    === 'widget'      ? 'widget'      : 'fullscreen',
+      widgetPosition: client.widgetPosition === 'bottom-left' ? 'bottom-left' : 'bottom-right',
     };
     // Only present for clients created with the automatic wizard — omit the
     // key entirely for legacy clients so widget.js's "!== false" checks keep

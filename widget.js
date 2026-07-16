@@ -12,6 +12,27 @@
   var API  = 'https://jbstudio.app';
   var SESS = 'jbw_' + clientId;
 
+  // Posición del botón flotante. Prioridad: data-position del <script> y, si
+  // no viene, lo que tenga guardado el cliente. Los clientes antiguos no
+  // tienen ninguno de los dos y siguen abajo a la derecha, como siempre.
+  var position = me.getAttribute('data-position');
+  if (position !== 'bottom-left' && position !== 'bottom-right') position = '';
+
+  // El CSS se inyecta antes de que llegue la config, así que el lado inicial
+  // sale del data-position del snippet. Si el snippet es antiguo y no lo trae,
+  // applyPosition() lo corrige cuando la config del cliente ya está cargada.
+  var SIDE_CSS = position === 'bottom-left' ? 'left' : 'right';
+
+  function applyPosition(side) {
+    var fab = document.getElementById('jbw-fab');
+    var panel = document.getElementById('jbw-panel');
+    [fab, panel].forEach(function (el) {
+      if (!el) return;
+      if (side === 'left') { el.style.left = '24px'; el.style.right = 'auto'; }
+      else { el.style.right = '24px'; el.style.left = 'auto'; }
+    });
+  }
+
   // ── State ────────────────────────────────────────────────────────────────
   var cfg     = { businessName: 'Chat', color: '#1a4a2e', language: 'es', active: true };
 
@@ -59,14 +80,14 @@
   // ── Inject CSS ───────────────────────────────────────────────────────────
   var css = document.createElement('style');
   css.textContent = [
-    '#jbw-fab{position:fixed;bottom:24px;right:24px;width:60px;height:60px;',
+    '#jbw-fab{position:fixed;bottom:24px;' + SIDE_CSS + ':24px;width:60px;height:60px;',
     'border-radius:50%;border:none;cursor:pointer;display:flex;',
     'align-items:center;justify-content:center;padding:0;',
     'box-shadow:0 4px 24px rgba(0,0,0,0.28);z-index:2147483646;',
     'transition:transform .2s,box-shadow .2s;}',
     '#jbw-fab:hover{transform:scale(1.07);box-shadow:0 6px 32px rgba(0,0,0,.36);}',
 
-    '#jbw-panel{position:fixed;bottom:100px;right:24px;width:360px;height:500px;',
+    '#jbw-panel{position:fixed;bottom:100px;' + SIDE_CSS + ':24px;width:360px;height:500px;',
     'border-radius:18px;background:#fff;z-index:2147483645;display:flex;',
     'flex-direction:column;overflow:hidden;',
     'box-shadow:0 16px 56px rgba(0,0,0,.22),0 0 0 1px rgba(0,0,0,.06);',
@@ -116,7 +137,7 @@
     '#jbw-snd:hover:not(:disabled){transform:scale(1.08);}',
     '#jbw-snd:disabled{opacity:.4;cursor:not-allowed;}',
     '#jbw-snd svg{width:15px;height:15px;}',
-    '@media(max-width:420px){#jbw-panel{width:calc(100vw - 16px);right:8px;bottom:92px;}}',
+    '@media(max-width:420px){#jbw-panel{width:calc(100vw - 16px);left:8px;right:8px;bottom:92px;}}',
 
     '.jbw-cards-wrap{width:100%;overflow-x:auto;padding:4px 0 0;}',
     '.jbw-cards-wrap::-webkit-scrollbar{height:3px;}',
@@ -194,7 +215,15 @@
   paint();
   fetch(API + '/api/client-config?id=' + encodeURIComponent(clientId))
     .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (d) { if (d) { Object.assign(cfg, d); paint(); } })
+    .then(function (d) {
+      if (!d) return;
+      Object.assign(cfg, d);
+      paint();
+      // Snippet antiguo sin data-position: respetamos lo guardado del cliente.
+      if (!position && d.widgetPosition) {
+        applyPosition(d.widgetPosition === 'bottom-left' ? 'left' : 'right');
+      }
+    })
     .catch(function () {});
 
   // ── Render helpers ───────────────────────────────────────────────────────

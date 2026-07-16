@@ -148,7 +148,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
 
-  const { clientId, messages } = req.body || {};
+  const { clientId, messages, previewToken } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -168,7 +168,18 @@ export default async function handler(req, res) {
     const client = await redis.get(`client:${clientId}`);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
-    if (!client.active) {
+    // Paid clients answer normally. An unpaid one only answers when the
+    // caller presents a valid preview token minted for this exact client
+    // (see api/clients.js ?action=preview-token). The token lives in Redis
+    // with a TTL, so an expired one simply is not found and the client stays
+    // blocked. This never flips `active` or `paymentStatus`.
+    let previewOk = false;
+    if (!client.active && typeof previewToken === 'string' && /^[a-f0-9]{64}$/.test(previewToken)) {
+      const entry = await redis.get(`preview:${previewToken}`);
+      previewOk = !!entry && entry.clientId === clientId;
+    }
+
+    if (!client.active && !previewOk) {
       return res.status(200).json({
         error:   'inactive',
         message: client.language === 'en'
@@ -181,7 +192,7 @@ export default async function handler(req, res) {
     const systemPrompt = buildSystemPrompt(client.prompt);
     const text = await callProvider(provider, messages, systemPrompt, client, clientId);
 
-    return res.status(200).json({ text, provider });
+    return res.status(200).json({ text, provider, model: getModel(), preview: previewOk });
 
   } catch (err) {
     console.error('[api/client-chat]', err.message);
