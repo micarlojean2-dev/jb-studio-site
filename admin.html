@@ -1885,6 +1885,8 @@
   .auto-mode-btn .title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
   .auto-mode-btn .desc { font-size: 11px; color: #666; }
 
+  </style>
+</head>
 <body>
 
   <!-- ── Login ── -->
@@ -5381,7 +5383,7 @@ LÍMITES ESTRICTOS:
 
     var baseUrl = window.location.origin || 'https://jbstudio.app';
     successUrl.value = baseUrl + '/asistente/' + client.id;
-    successSnippet.value = client.widgetSnippet || '<script src="' + baseUrl + '/widget.js?id=' + client.id + '"></script>';
+    successSnippet.value = client.widgetSnippet || '<script src="' + baseUrl + '/widget.js?id=' + client.id + '"><' + '/script>';
 
     if (window.__jbAdmin && window.__jbAdmin.refreshClients) {
       window.__jbAdmin.refreshClients();
