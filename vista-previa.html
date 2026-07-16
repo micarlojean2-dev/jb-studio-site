@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Vista previa del asistente — JB Studio</title>
+<style>
+  :root { --ink: #1a1a1a; --muted: #6b6b6b; --line: #e5e5e5; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: #eef1f4;
+    color: var(--ink);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  #vp-bar {
+    background: #1a4a2e; color: #fff;
+    padding: 12px 20px; text-align: center;
+    font-size: 14px; font-weight: 600; line-height: 1.4;
+  }
+  #vp-bar span { opacity: .82; font-weight: 400; display: block; font-size: 12.5px; margin-top: 2px; }
+  /* Página de mentira: da contexto para que el widget no flote sobre el vacío. */
+  #vp-page { max-width: 960px; margin: 28px auto; padding: 0 20px 140px; }
+  .vp-hero {
+    background: #fff; border: 1px solid var(--line); border-radius: 16px;
+    padding: 36px; box-shadow: 0 2px 14px rgba(0,0,0,.05);
+  }
+  .vp-badge {
+    display: inline-block; font-size: 12px; font-weight: 600;
+    background: #f0f7f4; color: #1a4a2e; padding: 5px 11px; border-radius: 20px;
+  }
+  .vp-hero h1 { margin: 14px 0 8px; font-size: 27px; line-height: 1.2; }
+  .vp-hero p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
+  .vp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
+  .vp-card {
+    background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 18px;
+  }
+  .vp-card h3 { margin: 0 0 6px; font-size: 15px; }
+  .vp-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  /* Bloques grises: relleno visual, no contenido real. */
+  .vp-line { height: 9px; border-radius: 5px; background: #e8ebee; margin-top: 8px; }
+  .vp-line.short { width: 55%; }
+  .vp-hint {
+    margin-top: 22px; text-align: center; color: var(--muted);
+    font-size: 13.5px; line-height: 1.5;
+  }
+  @media (max-width: 700px) {
+    .vp-grid { grid-template-columns: 1fr; }
+    .vp-hero { padding: 24px; }
+    .vp-hero h1 { font-size: 22px; }
+    #vp-page { padding-bottom: 190px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="vp-bar">
+  Así verá el asistente tu cliente en su página
+  <span id="vp-sub">Esto es una demostración — la página de abajo es de ejemplo</span>
+</div>
+
+<div id="vp-page">
+  <div class="vp-hero">
+    <span class="vp-badge">Página de ejemplo</span>
+    <h1 id="vp-title">La página web de tu cliente</h1>
+    <p>Este contenido es de mentira. Lo que importa es el botón del asistente:
+       ábrelo y comprueba cómo lo verá un visitante real en su sitio.</p>
+    <div class="vp-line"></div>
+    <div class="vp-line short"></div>
+  </div>
+
+  <div class="vp-grid">
+    <div class="vp-card"><h3>Servicios</h3><p>Contenido de ejemplo.</p><div class="vp-line"></div></div>
+    <div class="vp-card"><h3>Sobre el negocio</h3><p>Contenido de ejemplo.</p><div class="vp-line"></div></div>
+    <div class="vp-card"><h3>Contacto</h3><p>Contenido de ejemplo.</p><div class="vp-line"></div></div>
+  </div>
+
+  <p class="vp-hint" id="vp-hint">Pulsa el botón para probar la conversación.</p>
+</div>
+
+<script>
+(function () {
+  var qs = new URLSearchParams(window.location.search);
+  var id = (qs.get('id') || '').trim();
+  var pos = qs.get('position') === 'bottom-left' ? 'bottom-left' : 'bottom-right';
+  var preview = qs.get('preview') || '';
+
+  if (!/^[a-z0-9-]{1,80}$/.test(id)) {
+    document.getElementById('vp-title').textContent = 'Falta el identificador del chatbot';
+    document.getElementById('vp-hint').textContent = 'Abre esta vista previa desde el panel.';
+    return;
+  }
+
+  // El token viaja en la URL de esta página; widget.js lo lee de ahí solo.
+  var src = '/widget.js?id=' + encodeURIComponent(id);
+  var s = document.createElement('script');
+  s.src = src;
+  s.setAttribute('data-position', pos);
+  document.body.appendChild(s);
+
+  if (!preview) {
+    document.getElementById('vp-hint').textContent =
+      'Sin token de prueba: el chatbot responderá que no está disponible hasta que el cliente pague.';
+  }
+})();
+</script>
+
+</body>
+</html>

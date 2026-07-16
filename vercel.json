@@ -2,10 +2,26 @@
   "outputDirectory": ".",
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/ventas",         "destination": "/ventas.html" },
-    { "source": "/demo",           "destination": "/chatbot"     },
-    { "source": "/reservas/:id",   "destination": "/reservas"    },
-    { "source": "/asistente/:id",  "destination": "/asistente"   }
+    {
+      "source": "/ventas",
+      "destination": "/ventas.html"
+    },
+    {
+      "source": "/demo",
+      "destination": "/chatbot"
+    },
+    {
+      "source": "/vista-previa",
+      "destination": "/vista-previa.html"
+    },
+    {
+      "source": "/reservas/:id",
+      "destination": "/reservas"
+    },
+    {
+      "source": "/asistente/:id",
+      "destination": "/asistente"
+    }
   ],
   "headers": [
     {

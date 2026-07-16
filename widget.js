@@ -23,6 +23,16 @@
   // applyPosition() lo corrige cuando la config del cliente ya está cargada.
   var SIDE_CSS = position === 'bottom-left' ? 'left' : 'right';
 
+  // Token de vista previa del admin, si la página anfitriona lo trae. Solo lo
+  // usa la página de demostración del panel; en el sitio real del cliente no
+  // existe y el widget se comporta igual que siempre.
+  var previewToken = (function () {
+    try {
+      var t = new URLSearchParams(window.location.search).get('preview') || '';
+      return /^[a-f0-9]{64}$/.test(t) ? t : '';
+    } catch (e) { return ''; }
+  })();
+
   function applyPosition(side) {
     var fab = document.getElementById('jbw-fab');
     var panel = document.getElementById('jbw-panel');
@@ -77,15 +87,33 @@
     try { sessionStorage.setItem(SESS, JSON.stringify(msgs.slice(-40))); } catch (e) {}
   }
 
+  // Halo del pulso: mismo color del negocio, translúcido. Si el color no es
+  // un hex reconocible, caemos a un negro suave en vez de romper el CSS.
+  function hexToRgba(hex, a) {
+    var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex || '').trim());
+    if (!m) return 'rgba(0,0,0,' + a + ')';
+    return 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + a + ')';
+  }
+
   // ── Inject CSS ───────────────────────────────────────────────────────────
   var css = document.createElement('style');
   css.textContent = [
-    '#jbw-fab{position:fixed;bottom:24px;' + SIDE_CSS + ':24px;width:60px;height:60px;',
-    'border-radius:50%;border:none;cursor:pointer;display:flex;',
-    'align-items:center;justify-content:center;padding:0;',
-    'box-shadow:0 4px 24px rgba(0,0,0,0.28);z-index:2147483646;',
+    '#jbw-fab{position:fixed;bottom:24px;' + SIDE_CSS + ':24px;min-height:64px;',
+    'border-radius:34px;border:none;cursor:pointer;display:flex;',
+    'align-items:center;justify-content:center;gap:10px;padding:0 22px 0 18px;',
+    'box-shadow:0 8px 28px rgba(0,0,0,.30),0 2px 8px rgba(0,0,0,.18);z-index:2147483646;',
+    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;',
+    'font-size:15.5px;font-weight:600;color:#fff;line-height:1;white-space:nowrap;',
     'transition:transform .2s,box-shadow .2s;}',
-    '#jbw-fab:hover{transform:scale(1.07);box-shadow:0 6px 32px rgba(0,0,0,.36);}',
+    '#jbw-fab:hover{transform:scale(1.05);box-shadow:0 12px 36px rgba(0,0,0,.38),0 3px 10px rgba(0,0,0,.22);}',
+    '#jbw-fab svg{flex-shrink:0;}',
+
+    // Pulso suave cada 4s. Se detiene con el panel abierto y respeta a quien
+    // pidio menos movimiento en el sistema.
+    '@keyframes jbw-pulse{0%,88%,100%{box-shadow:0 8px 28px rgba(0,0,0,.30),0 2px 8px rgba(0,0,0,.18),0 0 0 0 var(--jbw-pulse);}',
+    '94%{box-shadow:0 8px 28px rgba(0,0,0,.30),0 2px 8px rgba(0,0,0,.18),0 0 0 14px transparent;}}',
+    '#jbw-fab.jbw-pulsing{animation:jbw-pulse 4s ease-out infinite;}',
+    '@media(prefers-reduced-motion:reduce){#jbw-fab.jbw-pulsing{animation:none;}}',
 
     '#jbw-panel{position:fixed;bottom:100px;' + SIDE_CSS + ':24px;width:360px;height:500px;',
     'border-radius:18px;background:#fff;z-index:2147483645;display:flex;',
@@ -98,6 +126,11 @@
     '#jbw-panel.jbw-open{transform:scale(1) translateY(0);opacity:1;pointer-events:all;}',
 
     '#jbw-head{padding:14px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;}',
+    '.jbw-hi{flex:1;min-width:0;}',
+    '#jbw-close{width:32px;height:32px;border-radius:50%;border:none;cursor:pointer;',
+    'background:rgba(255,255,255,.20);color:#fff;display:flex;align-items:center;',
+    'justify-content:center;flex-shrink:0;padding:0;transition:background .15s;}',
+    '#jbw-close:hover{background:rgba(255,255,255,.34);}',
     '#jbw-av{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.22);',
     'display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}',
     '.jbw-hi h4{margin:0;font-size:14px;font-weight:600;color:#fff;line-height:1.2;}',
@@ -137,7 +170,12 @@
     '#jbw-snd:hover:not(:disabled){transform:scale(1.08);}',
     '#jbw-snd:disabled{opacity:.4;cursor:not-allowed;}',
     '#jbw-snd svg{width:15px;height:15px;}',
-    '@media(max-width:420px){#jbw-panel{width:calc(100vw - 16px);left:8px;right:8px;bottom:92px;}}',
+    '@media(max-width:600px){',
+      '#jbw-fab{min-height:72px;border-radius:38px;font-size:16.5px;padding:0 24px 0 20px;}',
+      '#jbw-panel{width:88vw;max-width:88vw;height:75vh;max-height:75vh;bottom:108px;}',
+      '#jbw-panel.jbw-left{left:24px;right:auto;}',
+      '#jbw-panel.jbw-right{right:24px;left:auto;}',
+    '}',
 
     '.jbw-cards-wrap{width:100%;overflow-x:auto;padding:4px 0 0;}',
     '.jbw-cards-wrap::-webkit-scrollbar{height:3px;}',
@@ -158,12 +196,15 @@
   // ── Inject HTML ──────────────────────────────────────────────────────────
   var fab = document.createElement('button');
   fab.id = 'jbw-fab';
-  fab.setAttribute('aria-label', 'Open chat');
+  fab.setAttribute('aria-label', 'Abrir chat');
+  fab.className = 'jbw-pulsing';
   fab.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="white" aria-hidden="true">' +
-    '<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>';
+    '<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>' +
+    '<span id="jbw-fab-label">Habla con nosotros</span>';
 
   var panel = document.createElement('div');
   panel.id = 'jbw-panel';
+  panel.className = SIDE_CSS === 'left' ? 'jbw-left' : 'jbw-right';
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Chat assistant');
   panel.innerHTML =
@@ -173,6 +214,11 @@
         '<h4 id="jbw-name">Assistant</h4>' +
         '<p><span class="jbw-dot"></span> <span id="jbw-status">Online now</span></p>' +
       '</div>' +
+      '<button id="jbw-close" aria-label="Cerrar chat">' +
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
+        ' stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/>' +
+        '<line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+      '</button>' +
     '</div>' +
     '<div id="jbw-msgs"></div>' +
     '<div id="jbw-foot">' +
@@ -199,6 +245,8 @@
   function paint() {
     var c = cfg.color;
     fab.style.background    = c;
+    // El halo del pulso usa el color del negocio, translúcido.
+    fab.style.setProperty('--jbw-pulse', hexToRgba(c, 0.45));
     headEl.style.background = c;
     snd.style.background    = c;
     nameEl.textContent      = cfg.businessName || 'Assistant';
@@ -518,7 +566,9 @@
     fetch(API + '/api/client-chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: clientId, messages: msgs }),
+      body: JSON.stringify(previewToken
+        ? { clientId: clientId, messages: msgs, previewToken: previewToken }
+        : { clientId: clientId, messages: msgs }),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -555,10 +605,18 @@
   }
 
   // ── Toggle open / close ──────────────────────────────────────────────────
-  fab.addEventListener('click', function () {
-    open = !open;
+  function setOpen(next) {
+    open = next;
     panel.classList.toggle('jbw-open', open);
     fab.setAttribute('aria-expanded', String(open));
+    // Sin pulso mientras el chat está abierto: ya no hay nada que anunciar.
+    fab.classList.toggle('jbw-pulsing', !open);
+  }
+
+  document.getElementById('jbw-close').addEventListener('click', function () { setOpen(false); });
+
+  fab.addEventListener('click', function () {
+    setOpen(!open);
 
     if (open) {
       if (!greeted) {

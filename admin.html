@@ -5567,7 +5567,7 @@ LÍMITES ESTRICTOS:
         );
         successWidgetPreview.hidden = !isWidget;
         successWidgetPreview.classList.toggle('pos-left', widgetPosition === 'bottom-left');
-        viewBtn.hidden = isWidget;
+        viewBtn.textContent = isWidget ? 'Ver vista previa' : 'Ver chatbot';
 
         successName.textContent = (client.businessName || b.businessName) + ' — ' + (client.plan === 'pro' ? 'Pro' : 'Básico');
         successUrl.value = assistantUrl;
@@ -5641,7 +5641,13 @@ LÍMITES ESTRICTOS:
         viewBtn.disabled = false;
         viewBtn.textContent = orig;
         if (!d || !d.previewToken) { showError('No se pudo abrir la vista previa.'); return; }
-        window.open('/asistente/' + encodeURIComponent(createdClient.id) + '?preview=' + d.previewToken, '_blank');
+        var cid = encodeURIComponent(createdClient.id);
+        // widget -> página de demostración con el botón flotante encima.
+        // fullscreen -> el asistente a pantalla completa.
+        var url = displayMode === 'widget'
+          ? '/vista-previa?id=' + cid + '&position=' + encodeURIComponent(widgetPosition) + '&preview=' + d.previewToken
+          : '/asistente/' + cid + '?preview=' + d.previewToken;
+        window.open(url, '_blank');
       })
       .catch(function () {
         viewBtn.disabled = false;
