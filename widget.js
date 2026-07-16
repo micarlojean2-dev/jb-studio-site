@@ -222,6 +222,16 @@
     '.jbw-card-badge{font-size:10px;font-weight:600;margin-top:5px;padding:3px 8px;',
     'border-radius:20px;background:#fff5e0;color:#8a5a00;}',
     '.jbw-card-desc{font-size:11px;color:#6b6f76;line-height:1.4;margin-top:6px;}',
+    '.jbw-quick{display:flex;flex-wrap:wrap;gap:7px;padding:2px 0 2px 34px;}',
+    '.jbw-quick-btn{font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;',
+    'background:#fff;border:1.5px solid rgba(0,0,0,.08);border-radius:20px;padding:8px 13px;',
+    'color:#16181d;min-height:36px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 3px 10px rgba(0,0,0,.04);',
+    'transition:transform .16s cubic-bezier(.22,1,.36,1),box-shadow .16s,border-color .16s;',
+    'opacity:0;animation:jbw-card-in .3s cubic-bezier(.22,1,.36,1) forwards;}',
+    '.jbw-quick-btn:hover{transform:translateY(-2px);border-color:rgba(0,0,0,.14);',
+    'box-shadow:0 2px 4px rgba(0,0,0,.05),0 8px 20px rgba(0,0,0,.08);}',
+    '.jbw-quick-btn:active{transform:translateY(0) scale(.98);}',
+    '@media(prefers-reduced-motion:reduce){.jbw-quick-btn{animation:none;opacity:1;}}',
     '@media(prefers-reduced-motion:reduce){.jbw-card{animation:none;opacity:1;}}',
 
   ].join('');
@@ -277,13 +287,50 @@
 
   // ── Apply color theme ────────────────────────────────────────────────────
   function greeting() {
-    var n = cfg.businessName || '';
+    var n = cfg.businessName || (cfg.language === 'en' ? 'this business' : 'este negocio');
+    var reserva = featureOn('reservations');
     if (cfg.language === 'en') {
-      return "Hi! 😊 Great to have you here.\n\nI'm " + (n ? n + "'s assistant" : 'the assistant') +
-             '.\n\nWould you like to see our services, or shall I help you book an appointment?';
+      return "Hi! 😊 I'm " + n + "'s assistant.\n\nI can help you with:\n\n" +
+             '✨ Discover our services\n' +
+             (reserva ? '📅 Book an appointment\n' : '') +
+             '💰 Check prices\n\n' +
+             'What do you need?';
     }
-    return '¡Hola! 😊 Qué gusto tenerte por aquí.\n\nSoy el asistente de ' + (n || 'este negocio') +
-           '.\n\n¿Quieres conocer nuestros servicios o te ayudo a reservar una cita?';
+    return '¡Hola! 😊 Soy el asistente de ' + n + '.\n\nPuedo ayudarte con:\n\n' +
+           '✨ Conocer nuestros servicios\n' +
+           (reserva ? '📅 Reservar una cita\n' : '') +
+           '💰 Consultar precios\n\n' +
+           '¿Qué necesitas?';
+  }
+
+  function renderQuickActions() {
+    var en = cfg.language === 'en';
+    var acciones = [{ label: en ? '✨ See services' : '✨ Ver servicios',
+                      msg: en ? 'I want to see the services' : 'Quiero ver los servicios' }];
+    if (featureOn('reservations')) {
+      acciones.push({ label: en ? '📅 Book' : '📅 Reservar',
+                      msg: en ? 'I want to book an appointment' : 'Quiero reservar una cita' });
+    }
+    acciones.push({ label: en ? '💰 Prices' : '💰 Precios',
+                    msg: en ? 'What are your prices?' : '¿Cuáles son los precios?' });
+
+    var wrap = document.createElement('div');
+    wrap.className = 'jbw-quick';
+    acciones.forEach(function (a, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'jbw-quick-btn';
+      b.textContent = a.label;
+      b.style.animationDelay = (i * 60) + 'ms';
+      b.addEventListener('click', function () {
+        if (inp.disabled) return;
+        wrap.remove();
+        send(a.msg);
+      });
+      wrap.appendChild(b);
+    });
+    msgsEl.appendChild(wrap);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
   }
 
   function paint() {
@@ -709,6 +756,7 @@
         addMsg('bot', g);
         msgs.push({ role: 'assistant', content: g });
         save();
+        renderQuickActions();
       }
       snd.disabled = false;
       setTimeout(function () { inp.focus(); }, 200);
