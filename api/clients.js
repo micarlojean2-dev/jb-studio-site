@@ -34,6 +34,20 @@ function normalizeTimezone(tz) {
   }
 }
 
+// Cuántas citas simultáneas admite el negocio: barberos, cabinas, mesas.
+function normalizeCapacity(v) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 1;   // por defecto, uno
+}
+
+// Días sueltos cerrados (YYYY-MM-DD). Se descarta lo que no sea una fecha.
+function normalizeHolidays(v) {
+  if (!Array.isArray(v)) return [];
+  return v.map(x => String(x || '').trim())
+          .filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x))
+          .slice(0, 60);
+}
+
 // Anticipación mínima para reservar, en horas.
 function normalizeMinNotice(h) {
   const n = parseInt(h, 10);
@@ -219,7 +233,7 @@ export default async function handler(req, res) {
       secondaryColor, style, address, hours, businessType, services, features,
       billingDay, trialEnabled, trialDays,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
-      displayMode, widgetPosition, timezone, minNoticeHours,
+      displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, holidays,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -339,6 +353,8 @@ export default async function handler(req, res) {
         widgetPosition: position,
         timezone:       normalizeTimezone(timezone),
         minNoticeHours: normalizeMinNotice(minNoticeHours),
+        capacityPerSlot: normalizeCapacity(capacityPerSlot),
+        holidays:        normalizeHolidays(holidays),
         widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}" data-position="${position}"></script>`,
         assistantUrl:  `https://jbstudio.app/asistente/${id}`,
       };
@@ -355,7 +371,7 @@ export default async function handler(req, res) {
   if (req.method === 'PUT') {
     const { id, active, prompt, businessName, ownerName, ownerEmail, plan,
             color, language, whatsapp, menu, services,
-            timezone, minNoticeHours, businessHours } = req.body || {};
+            timezone, minNoticeHours, businessHours, capacityPerSlot, holidays } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id is required' });
 
     try {
@@ -379,6 +395,8 @@ export default async function handler(req, res) {
       // queda en needsSetup y el asistente no toma citas.
       if (timezone !== undefined) client.timezone = normalizeTimezone(timezone);
       if (minNoticeHours !== undefined) client.minNoticeHours = normalizeMinNotice(minNoticeHours);
+      if (capacityPerSlot !== undefined) client.capacityPerSlot = normalizeCapacity(capacityPerSlot);
+      if (holidays !== undefined) client.holidays = normalizeHolidays(holidays);
       if (businessHours !== undefined) {
         const bh = sanitizeBusinessHours(businessHours);
         if (bh) client.businessHours = bh;

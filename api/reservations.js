@@ -290,7 +290,39 @@ function rangosDelDia(businessHours, fechaISO) {
   return out.length ? out : [];
 }
 
-function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs) {
+// Dos citas chocan si sus intervalos se pisan. Comparar solo la hora de inicio
+// no basta: un corte de 60 min a las 16:00 y otro a las 16:30 se solapan media
+// hora, y con un solo barbero eso es imposible.
+function solapan(aIni, aDur, bIni, bDur) {
+  const aFin = aIni + (aDur || 0);
+  const bFin = bIni + (bDur || 0);
+  if (aDur === 0 || bDur === 0) return aIni === bIni;   // sin duración: solo choque exacto
+  return aIni < bFin && bIni < aFin;
+}
+
+// Cuántas citas vivas se solapan con la que se pide.
+function contarSolapes(reservas, fechaISO, iniMin, durMin, menu) {
+  let n = 0;
+  for (const r of reservas) {
+    if (!activa(r) || r.fechaISO !== fechaISO) continue;
+    const ini = minutosDe(r.horaISO);
+    if (ini === null) continue;                          // sin hora normalizada: no cuenta
+    const item = (menu || []).find(m => m.nombre && r.servicio &&
+      String(r.servicio).toLowerCase().indexOf(String(m.nombre).toLowerCase()) !== -1);
+    const dur = duracionMin(item && item.duracion);
+    if (solapan(iniMin, durMin, ini, dur)) n++;
+  }
+  return n;
+}
+
+function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) {
+  // Feriados: fechas sueltas en las que el negocio no abre aunque sea un día
+  // laborable de su horario semanal.
+  const feriados = Array.isArray(client.holidays) ? client.holidays : [];
+  if (fechaISO && feriados.indexOf(fechaISO) !== -1) {
+    return { ok: false, motivo: 'feriado', mensaje: 'Ese día no abrimos.' };
+  }
+
   const bh = client.businessHours;
   const rangos = rangosDelDia(bh, fechaISO);
   if (rangos === null) return { ok: true };              // sin horario fiable: no bloqueamos
@@ -348,7 +380,37 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs) {
       }
     }
   }
+  // Capacidad: cuántas citas simultáneas admite el negocio (barberos, cabinas,
+  // mesas). Sin este control, dos clientes reservan el mismo hueco y ambos
+  // aparecen en la puerta.
+  const cap = Number.isFinite(client.capacityPerSlot) ? client.capacityPerSlot : null;
+  if (cap !== null && cap >= 1 && Array.isArray(reservas)) {
+    const ocupadas = contarSolapes(reservas, fechaISO, pedido, dur, client.menu);
+    if (ocupadas >= cap) {
+      return {
+        ok: false,
+        motivo: 'sin_disponibilidad',
+        mensaje: cap === 1
+          ? 'Ese horario ya está ocupado.'
+          : 'Ya no nos quedan huecos a esa hora.',
+        alternativa: proximoHueco(client, fechaISO, pedido, dur, dentro, reservas),
+      };
+    }
+  }
+
   return { ok: true };
+}
+
+// Primer inicio, a partir del pedido, en el que caben el servicio y la
+// capacidad. Se avanza de 15 en 15 minutos: proponer "16:07" sería absurdo.
+function proximoHueco(client, fechaISO, desde, dur, rango, reservas) {
+  const cap = Number.isFinite(client.capacityPerSlot) ? client.capacityPerSlot : 1;
+  const paso = 15;
+  const limite = rango[1] - (dur || 0);
+  for (let t = Math.ceil((desde + 1) / paso) * paso; t <= limite; t += paso) {
+    if (contarSolapes(reservas, fechaISO, t, dur, client.menu) < cap) return fmt(t);
+  }
+  return null;                                            // hoy no queda hueco
 }
 
 // ── Plantillas del proceso diario ───────────────────────────────────────────
@@ -618,7 +680,24 @@ export default async function handler(req, res) {
 
     // Validación autoritativa: el navegador ya avisa, pero esta es la que
     // decide. Una cita fuera de horario no se acepta ni por curl.
-    const v = validarReserva(client, reservation.fechaISO, reservation.horaISO, reservation.servicio);
+    // Las reservas vivas del cliente hacen falta para contar solapes. Solo se
+    // leen si hay capacidad configurada: si no, es un viaje a Redis inútil.
+    let existentes = null;
+    if (Number.isFinite(client.capacityPerSlot) && client.capacityPerSlot >= 1) {
+      try {
+        const ks = await redis.keys(`reservations:${clientId}:*`);
+        existentes = ks.length ? (ks.length === 1 ? [await redis.get(ks[0])] : await redis.mget(...ks)) : [];
+        existentes = existentes.filter(Boolean);
+      } catch (e) {
+        // Si no se pueden leer, no se inventa disponibilidad: se deja pasar y
+        // el dueño lo ve en el panel. Bloquear por un fallo de lectura sería
+        // rechazar clientes reales por un problema nuestro.
+        console.error('[api/reservations] capacidad, no se pudo leer:', e.message);
+        existentes = null;
+      }
+    }
+
+    const v = validarReserva(client, reservation.fechaISO, reservation.horaISO, reservation.servicio, undefined, existentes);
     if (!v.ok) {
       // Se guarda igualmente como rechazada, con el motivo: al dueño le
       // interesa ver la demanda que se le escapa, no perderla en silencio.
