@@ -34,6 +34,21 @@ async function markEventProcessed(eventId) {
   return result !== null; // true = primera vez que se ve este evento
 }
 
+// Confirmado en vivo contra Stripe API 2026-02-25.clover: Invoice ya no
+// trae `invoice.subscription` como campo plano (queda null) — la relación
+// vive ahora en invoice.parent.subscription_details. Se resuelven ambas
+// rutas por si el proyecto corre alguna vez con una API version distinta.
+function getInvoiceSubscriptionId(invoice) {
+  return invoice.subscription || invoice.parent?.subscription_details?.subscription || null;
+}
+
+// La metadata de la suscripción (con el clientId) también viaja directo en
+// invoice.parent.subscription_details.metadata — evita una llamada extra a
+// la API cuando está disponible; si no, cae al lookup por subscription id.
+function getInvoiceClientId(invoice) {
+  return invoice.parent?.subscription_details?.metadata?.clientId || null;
+}
+
 async function getClientIdFromSubscription(subscriptionId) {
   if (!subscriptionId) return null;
   try {
@@ -104,7 +119,7 @@ export default async function handler(req, res) {
 
         const patch = {
           stripeCustomerId:        session.customer || null,
-          stripeSubscriptionId:    session.subscription || null,
+          stripeSubscriptionId:    session.subscription || session.parent?.subscription_details?.subscription || null,
           stripeCheckoutSessionId: session.id,
         };
 
@@ -127,8 +142,9 @@ export default async function handler(req, res) {
       // ── 2. Pago de factura exitoso ───────────────────────────────────────
       case 'invoice.paid': {
         const invoice = event.data.object;
-        if (!invoice.subscription) break;
-        const clientId = await getClientIdFromSubscription(invoice.subscription);
+        const subscriptionId = getInvoiceSubscriptionId(invoice);
+        if (!subscriptionId) break;
+        const clientId = getInvoiceClientId(invoice) || await getClientIdFromSubscription(subscriptionId);
         if (!clientId) { console.warn('[stripe-webhook] invoice.paid: no clientId'); break; }
 
         const periodEnd = invoice.lines?.data?.[0]?.period?.end || null;
@@ -139,7 +155,7 @@ export default async function handler(req, res) {
           paymentStatus:         'paid',
           paymentFailed:         false,
           stripeCustomerId:      invoice.customer,
-          stripeSubscriptionId:  invoice.subscription,
+          stripeSubscriptionId:  subscriptionId,
           lastPaymentAt:         isoDate(invoice.status_transitions?.paid_at) || new Date().toISOString().slice(0, 10),
           nextPaymentAt:         paidUntil,
           paidUntil,
@@ -152,8 +168,9 @@ export default async function handler(req, res) {
       // ── 3. Pago fallido ──────────────────────────────────────────────────
       case 'invoice.payment_failed': {
         const invoice = event.data.object;
-        if (!invoice.subscription) break;
-        const clientId = await getClientIdFromSubscription(invoice.subscription);
+        const subscriptionId = getInvoiceSubscriptionId(invoice);
+        if (!subscriptionId) break;
+        const clientId = getInvoiceClientId(invoice) || await getClientIdFromSubscription(subscriptionId);
         if (!clientId) { console.warn('[stripe-webhook] payment_failed: no clientId'); break; }
 
         // No se pausa por el primer fallo: Stripe reintenta automáticamente
