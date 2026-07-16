@@ -166,14 +166,17 @@ function sanitizeServices(services) {
   })).filter(item => item.nombre);
 }
 
+// Mismo criterio que api/clients.js: el plan es un techo. La IA puede pedir
+// reservations:true para un basic; aquí se corta, no en el cliente.
 function sanitizeFeatures(features, plan) {
-  const defaults = plan === 'pro'
+  const allowed = (plan === 'pro' || plan === 'premium')
     ? { faq: true, prices: true, catalog: true, reservations: true, leads: true, emailNotifications: true, cancellation: true, rescheduling: true }
     : { faq: true, prices: true, catalog: true, reservations: false, leads: false, emailNotifications: false, cancellation: false, rescheduling: false };
-  if (!features || typeof features !== 'object') return defaults;
   const out = {};
-  for (const key of Object.keys(defaults)) {
-    out[key] = typeof features[key] === 'boolean' ? features[key] : defaults[key];
+  for (const key of Object.keys(allowed)) {
+    if (allowed[key] === false) { out[key] = false; continue; }
+    const v = features && typeof features === 'object' ? features[key] : undefined;
+    out[key] = typeof v === 'boolean' ? v : allowed[key];
   }
   return out;
 }

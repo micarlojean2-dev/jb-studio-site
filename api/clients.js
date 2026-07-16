@@ -112,12 +112,17 @@ function sanitizeMenu(menu) {
   })).filter(item => item.nombre);
 }
 
+// El plan es un TECHO, no un valor por defecto. Antes cualquier booleano que
+// llegara en la petición ganaba, así que un Básico podía quedarse con
+// reservations:true — funciones de pago regaladas. Ahora se puede APAGAR algo
+// que el plan sí incluye, pero nunca ENCENDER algo que no incluye.
 function sanitizeFeatures(features, plan) {
-  const defaults = PLAN_FEATURES[plan] || PLAN_FEATURES.basic;
+  const allowed = PLAN_FEATURES[plan] || PLAN_FEATURES.basic;
   const out = {};
   FEATURE_KEYS.forEach(k => {
+    if (allowed[k] === false) { out[k] = false; return; }   // el plan no lo incluye: fin
     const v = features && typeof features === 'object' ? features[k] : undefined;
-    out[k] = typeof v === 'boolean' ? v : defaults[k];
+    out[k] = typeof v === 'boolean' ? v : allowed[k];
   });
   return out;
 }

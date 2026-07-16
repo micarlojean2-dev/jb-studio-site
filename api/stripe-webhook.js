@@ -59,6 +59,96 @@ async function getClientIdFromSubscription(subscriptionId) {
   }
 }
 
+// ── Correo de bienvenida al activarse ───────────────────────────────────────
+const escW = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// Solo se listan las funciones que el plan realmente tiene. Prometerle
+// reservas a un Básico sería mentirle en el primer correo que recibe.
+function funcionesActivas(c) {
+  const f = c.features || {};
+  const items = [];
+  if (f.faq !== false)            items.push('Responde preguntas sobre tu negocio');
+  if (f.prices !== false)         items.push('Informa precios y servicios');
+  if (f.catalog !== false)        items.push('Muestra tu catálogo');
+  if (f.reservations === true)    items.push('Toma reservas por ti');
+  if (f.emailNotifications === true) items.push('Te avisa por correo de cada reserva');
+  if (f.reservations === true)    items.push('Recordatorios y resumen diario de tus citas');
+  if (f.leads === true)           items.push('Captura clientes interesados');
+  if (f.cancellation === true)    items.push('Gestiona cancelaciones');
+  return items;
+}
+
+async function sendWelcome(c, clientId) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) return;
+  const { Resend } = await import('resend');
+  const resend = new Resend(apiKey);
+
+  const color   = c.color || '#1a4a2e';
+  const negocio = c.businessName || 'tu negocio';
+  const url     = `https://jbstudio.app/asistente/${encodeURIComponent(clientId)}`;
+  const snippet = c.widgetSnippet || `<script src="https://jbstudio.app/widget.js?id=${clientId}"></script>`;
+  const panel   = c.panelToken
+    ? `https://jbstudio.app/reservas/${encodeURIComponent(clientId)}#t=${encodeURIComponent(c.panelToken)}`
+    : '';
+  const lista = funcionesActivas(c)
+    .map((t) => `<li style="margin-bottom:6px">${escW(t)}</li>`).join('');
+
+  const html = `<!DOCTYPE html><html><body style="font-family:-apple-system,Segoe UI,sans-serif;background:#eef0f3;padding:32px 16px;margin:0">
+<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.10)">
+  <div style="background:${escW(color)};padding:26px 28px">
+    <p style="margin:0;color:rgba(255,255,255,.72);font-size:11px;letter-spacing:.08em;text-transform:uppercase">${escW(negocio)}</p>
+    <h1 style="margin:6px 0 0;color:#fff;font-size:22px">Tu asistente ya está listo ✨</h1>
+  </div>
+  <div style="padding:24px 28px">
+    <p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 18px">
+      Desde ahora atiende a tus clientes por ti, 24/7.
+    </p>
+
+    <div style="border:1px solid #eaecef;border-radius:12px;padding:14px 16px;margin-bottom:12px">
+      <div style="font-size:12px;color:#8a8f96;margin-bottom:4px">La dirección de tu asistente</div>
+      <a href="${escW(url)}" style="font-size:14px;color:${escW(color)};font-weight:600;text-decoration:none;word-break:break-all">${escW(url)}</a>
+    </div>
+
+    <div style="border:1px solid #eaecef;border-radius:12px;padding:14px 16px;margin-bottom:12px">
+      <div style="font-size:12px;color:#8a8f96;margin-bottom:6px">Para ponerlo en tu web, pega esto antes de &lt;/body&gt;</div>
+      <code style="display:block;font-size:12px;background:#f5f6f8;padding:10px;border-radius:8px;color:#16181d;word-break:break-all">${escW(snippet)}</code>
+    </div>
+
+    ${panel ? `<div style="border:1px solid #eaecef;border-radius:12px;padding:14px 16px;margin-bottom:12px">
+      <div style="font-size:12px;color:#8a8f96;margin-bottom:4px">Tu panel de citas</div>
+      <a href="${escW(panel)}" style="font-size:14px;color:${escW(color)};font-weight:600;text-decoration:none;word-break:break-all">Ver mis reservas</a>
+    </div>` : ''}
+
+    <div style="border:1px solid #eaecef;border-radius:12px;padding:14px 16px;margin-bottom:12px">
+      <div style="font-size:12px;color:#8a8f96;margin-bottom:4px">Correo configurado</div>
+      <div style="font-size:14px;color:#16181d;font-weight:600">${escW(c.ownerEmail)}</div>
+      <div style="font-size:12px;color:#8a8f96;margin-top:4px">Aquí te llegarán los avisos de tu negocio.</div>
+    </div>
+
+    ${lista ? `<div style="border:1px solid #eaecef;border-radius:12px;padding:14px 16px">
+      <div style="font-size:12px;color:#8a8f96;margin-bottom:8px">Lo que hace por ti</div>
+      <ul style="margin:0;padding-left:18px;font-size:14px;color:#16181d;line-height:1.5">${lista}</ul>
+    </div>` : ''}
+
+    <p style="margin:22px 0 0;font-size:11.5px;color:#a8acb3;border-top:1px solid #eee;padding-top:14px">
+      <a href="https://jbstudio.app" style="color:${escW(color)};text-decoration:none">JB Studio</a>
+    </p>
+  </div>
+</div>
+</body></html>`;
+
+  await resend.emails.send({
+    from: 'reservas@jbstudio.app',
+    to: c.ownerEmail,
+    subject: 'Tu asistente ya está listo ✨',
+    html,
+  });
+  console.log(`[stripe-webhook] welcome sent to ${clientId}`);
+}
+
+
 async function updateClient(clientId, patch) {
   if (!clientId) return;
   try {
@@ -162,6 +252,18 @@ export default async function handler(req, res) {
           gracePeriodEndsAt:     null,
         });
         console.log(`[stripe-webhook] Client ${clientId} paid — active until ${paidUntil}`);
+
+        // Bienvenida solo la primera vez que se activa. Las renovaciones
+        // mensuales también disparan invoice.paid y no deben repetirla.
+        try {
+          const c = await redis.get(`client:${clientId}`);
+          if (c && c.ownerEmail && !c.bienvenidaEnviada) {
+            await sendWelcome(c, clientId);
+            await updateClient(clientId, { bienvenidaEnviada: new Date().toISOString().slice(0, 10) });
+          }
+        } catch (e) {
+          console.error('[stripe-webhook] welcome:', e.message);
+        }
         break;
       }
 

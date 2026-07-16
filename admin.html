@@ -5072,7 +5072,7 @@ LÍMITES ESTRICTOS:
              no recibe reservas, recordatorios ni resumen. No se crea a ciegas. -->
         <div class="auto-summary-section" id="auto-owner-section" hidden>
           <h3>¿A qué correo quieres recibir las reservas y avisos de tu negocio?</h3>
-          <p class="auto-owner-help">No lo encontramos en la información que pegaste. Sin este correo el dueño no recibirá nada.</p>
+          <p class="auto-owner-help">Este correo recibirá todas las reservas y avisos del negocio. No lo encontramos en la información que pegaste.</p>
           <input type="email" id="auto-owner-email" class="admin-input auto-owner-input" placeholder="dueno@negocio.com" autocomplete="off">
           <div class="auto-owner-error" id="auto-owner-error" hidden>Escribe un correo válido.</div>
         </div>
@@ -5516,11 +5516,20 @@ LÍMITES ESTRICTOS:
     return ownerInput ? ownerInput.value.trim() : '';
   }
 
+  // Solo los planes con reservas y avisos necesitan correo del dueño. Pedirlo
+  // en Básico sería pedir un dato que nunca se va a usar.
+  function planNecesitaCorreo() {
+    var plan = generatedConfig && generatedConfig.planRecommendation && generatedConfig.planRecommendation.plan;
+    return plan === 'pro' || plan === 'premium';
+  }
+
   function ownerEmailFalta() {
-    return !(generatedConfig && generatedConfig.business && generatedConfig.business.ownerEmail);
+    return planNecesitaCorreo() &&
+           !(generatedConfig && generatedConfig.business && generatedConfig.business.ownerEmail);
   }
 
   function ownerEmailOk() {
+    if (!planNecesitaCorreo()) return true;       // Básico: no se exige
     return EMAIL_RE.test(ownerEmailValue());
   }
 
