@@ -6,9 +6,14 @@
 
 import { Redis } from '@upstash/redis';
 
+// Fase 4.3: estaba usando KV_REST_API_URL/TOKEN, que no existen como
+// variables de entorno en este proyecto de Vercel (mismo bug ya corregido en
+// api/client-config.js, api/create-checkout.js y api/stripe-webhook.js) — este
+// endpoint fallaba siempre al tocar Redis. Era el último que quedaba con el
+// par viejo. Corregido para usar el mismo que el resto de la API.
 const redis = new Redis({
-  url:   process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
+  url:   process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
 function sanitize(val, maxLen) {
