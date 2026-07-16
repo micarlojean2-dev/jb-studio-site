@@ -102,6 +102,7 @@ REGLAS DE EXTRACCIÓN:
    - Tono (profesional pero amigable, en español)
    - Marcador [MOSTRAR_MENU] cuando el cliente pida ver servicios/productos
    - Si reservas están activas: incluir marcador [RESERVA_CONFIRMADA] solo cuando la reserva sea completada exitosamente
+   - En la sección de horarios del system prompt, si un día tiene unknown: true no digas "Cerrado". Escribí "Horario no especificado" o simplemente omití ese día de la lista.
 6. additionalInstructions: Si el usuario dio instrucciones adicionales de diseño o funcionalidad, inclúyelas aquí textualmente.
 7. phoneCountry y phoneCountryCode: Detecta el país por indicativos (+56=CL, +52=MX, +1=US/CA, +54=AR, +57=CO, +51=PE, +55=BR, +34=ES, +44=GB). Si el número no tiene indicativo, usa el país más probable por el texto (ej: "Santiago" → CL, "Bogotá" → CO).
 
@@ -407,6 +408,7 @@ function generateFallbackPrompt(config) {
 
   let hoursText = DAYS.map(day => {
     const d = h[day];
+    if (d && d.unknown) return `${dayLabels[day]}: No especificado`;
     if (!d || !d.enabled || !d.ranges.length) return `${dayLabels[day]}: Cerrado`;
     return `${dayLabels[day]}: ${d.ranges.map(r => `${r.start}–${r.end}`).join(', ')}`;
   }).join('\n');

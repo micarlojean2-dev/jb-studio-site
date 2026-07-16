@@ -5235,7 +5235,9 @@ LÍMITES ESTRICTOS:
       var day = days[i];
       var hd = h[day];
       var label = dayLabels[day];
-      if (hd && hd.enabled && hd.ranges && hd.ranges.length) {
+      if (hd && hd.unknown) {
+        html += '<div class="day" style="color:#c62828;"><strong>' + label + ':</strong> No especificado</div>';
+      } else if (hd && hd.enabled && hd.ranges && hd.ranges.length) {
         html += '<div class="day"><strong>' + label + ':</strong> ' + hd.ranges.map(function(r) { return r.start + '–' + r.end; }).join(', ') + '</div>';
       } else {
         html += '<div class="day" style="color:#999;"><strong>' + label + ':</strong> Cerrado</div>';
