@@ -345,7 +345,8 @@ export default async function handler(req, res) {
   // ── PUT: update client fields ───────────────────────────────────────────
   if (req.method === 'PUT') {
     const { id, active, prompt, businessName, ownerName, ownerEmail, plan,
-            color, language, whatsapp, menu } = req.body || {};
+            color, language, whatsapp, menu, services,
+            timezone, minNoticeHours, businessHours } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id is required' });
 
     try {
@@ -365,13 +366,27 @@ export default async function handler(req, res) {
       if (color     !== undefined && /^#[0-9a-fA-F]{3,6}$/.test(color)) client.color = color;
       if (language  !== undefined) client.language    = language === 'en' ? 'en' : 'es';
       if (whatsapp  !== undefined) client.whatsapp    = String(whatsapp).slice(0, 30);
+      // Datos que las reservas inteligentes necesitan. Sin ellos el negocio
+      // queda en needsSetup y el asistente no toma citas.
+      if (timezone !== undefined) client.timezone = normalizeTimezone(timezone);
+      if (minNoticeHours !== undefined) client.minNoticeHours = normalizeMinNotice(minNoticeHours);
+      if (businessHours !== undefined) {
+        const bh = sanitizeBusinessHours(businessHours);
+        if (bh) client.businessHours = bh;
+      }
+      // services es la fuente con duración; menu se deriva de ella, igual que
+      // en la creación, para que no vuelvan a divergir.
+      if (services !== undefined && Array.isArray(services)) {
+        client.services = sanitizeServices(services);
+        client.menu = client.services.map(x => ({
+          nombre: x.nombre, precio: x.precio, descripcion: x.descripcion,
+          imagen: x.imagen, duracion: x.duracion,
+        }));
+      }
       if (menu      !== undefined && Array.isArray(menu)) {
-        client.menu = menu.slice(0, 20).map(item => ({
-          nombre:      String(item.nombre      || '').slice(0, 80),
-          precio:      String(item.precio      || '').slice(0, 30),
-          descripcion: String(item.descripcion || '').slice(0, 200),
-          imagen:      String(item.imagen      || '').slice(0, 500),
-        })).filter(item => item.nombre);
+        // Reutiliza el saneador de la creación: el mapeo inline que había aquí
+        // descartaba `duracion` y saneaba la imagen peor.
+        client.menu = sanitizeMenu(menu);
       }
 
       await redis.set(`client:${id}`, client);
