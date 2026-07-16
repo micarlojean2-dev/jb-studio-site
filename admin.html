@@ -3036,11 +3036,21 @@ LÍMITES ESTRICTOS:
     // sobre un fondo en blanco. Ahora pedimos un token de prueba y abrimos la
     // vista real. La ventana se abre de forma síncrona para que el navegador
     // no la trate como popup; el destino se fija cuando llega el token.
+    // La ventana se abre de forma síncrona (si no, el navegador la bloquea
+    // como popup) pero apuntando ya a la vista real: nunca a about:blank, y
+    // sin escribir HTML a mano. Cuando llega el token, se sustituye la URL
+    // por la misma más ?preview=, que es lo que desbloquea el chat de un
+    // cliente que todavía no ha pagado.
     function openChatbotPreview(c) {
-      const w = window.open('about:blank', '_blank');
-      if (!w) return;
+      const cid = encodeURIComponent(c.id);
       const position = c.widgetPosition === 'bottom-left' ? 'bottom-left' : 'bottom-right';
-      const isWidget = c.displayMode === 'widget';
+      const base = c.displayMode === 'widget'
+        ? `/vista-previa?id=${cid}&position=${position}`
+        : `/asistente/${cid}`;
+
+      const w = window.open(base, '_blank');
+      if (!w) return;
+
       fetch('/api/clients?action=preview-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
@@ -3048,18 +3058,11 @@ LÍMITES ESTRICTOS:
       })
         .then(r => r.json())
         .then(d => {
-          if (!d || !d.previewToken) {
-            w.document.write('<p style="font:15px system-ui;padding:24px">No se pudo abrir la vista previa.</p>');
-            return;
-          }
-          const cid = encodeURIComponent(c.id);
-          w.location.replace(isWidget
-            ? `/vista-previa?id=${cid}&position=${position}&preview=${d.previewToken}`
-            : `/asistente/${cid}?preview=${d.previewToken}`);
+          if (!d || !d.previewToken) return;
+          const sep = base.indexOf('?') === -1 ? '?' : '&';
+          w.location.replace(`${base}${sep}preview=${d.previewToken}`);
         })
-        .catch(() => {
-          w.document.write('<p style="font:15px system-ui;padding:24px">No se pudo abrir la vista previa.</p>');
-        });
+        .catch(() => {});
     }
 
     let clientsCache = [];
