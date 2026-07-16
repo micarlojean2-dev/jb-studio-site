@@ -4976,7 +4976,8 @@ LÍMITES ESTRICTOS:
       </div>
       <!-- Step 2: Loading -->
       <div id="auto-step-loading" class="hidden">
-        <div class="auto-loading"><div class="auto-spinner"></div> Analizando información del negocio...</div>
+        <div class="auto-loading"><div class="auto-spinner"></div> <span id="auto-loading-text">Analizando información del negocio...</span></div>
+        <div style="text-align:center;margin-top:12px;"><button type="button" class="auto-btn auto-btn-outline hidden" id="auto-cancel-generate-btn" style="font-size:12px;">Cancelar</button></div>
       </div>
       <!-- Step 3: Summary -->
       <div id="auto-step-summary" class="hidden">
@@ -4992,7 +4993,17 @@ LÍMITES ESTRICTOS:
       <div id="auto-step-creating" class="hidden">
         <div class="auto-loading"><div class="auto-spinner"></div> Creando chatbot...</div>
       </div>
-      <!-- Step 5: Success -->
+      <!-- Step 5: Error -->
+      <div id="auto-step-error" class="hidden" style="text-align:center;padding:40px 20px;">
+        <div style="font-size:40px;margin-bottom:12px;color:#c62828;">&#10007;</div>
+        <h3 id="auto-error-title" style="font-size:18px;margin-bottom:8px;">Error</h3>
+        <p id="auto-error-msg" style="font-size:14px;color:#666;margin-bottom:20px;"></p>
+        <div style="display:flex;gap:8px;justify-content:center;">
+          <button type="button" class="auto-btn auto-btn-secondary" id="auto-error-back-btn">Volver</button>
+          <button type="button" class="auto-btn auto-btn-primary" id="auto-error-retry-btn">Reintentar</button>
+        </div>
+      </div>
+      <!-- Step 6: Success -->
       <div id="auto-step-success" class="hidden">
         <div style="text-align:center;padding:20px 0;">
           <div style="font-size:48px;margin-bottom:12px;">&#10003;</div>
@@ -5009,6 +5020,7 @@ LÍMITES ESTRICTOS:
           </div>
           <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;">
             <button type="button" class="auto-btn auto-btn-primary" id="auto-view-btn">Ver chatbot</button>
+            <button type="button" class="auto-btn auto-btn-secondary" id="auto-checkout-btn">Generar enlace de pago</button>
             <button type="button" class="auto-btn auto-btn-secondary" id="auto-create-another-btn">Crear otro chatbot</button>
           </div>
         </div>
@@ -5026,17 +5038,18 @@ LÍMITES ESTRICTOS:
 
 <script>
 (function () {
+  // ── DOM refs ──
   var overlay = document.getElementById('auto-overlay');
-  var modal = document.getElementById('auto-modal');
+  var titleEl = document.getElementById('auto-title');
+  var errorEl = document.getElementById('auto-error');
   var closeBtn = document.getElementById('auto-close-btn');
   var openBtn = document.getElementById('open-auto-btn');
-  var titleEl = document.getElementById('auto-title');
-  var bodyEl = document.getElementById('auto-body');
-  var errorEl = document.getElementById('auto-error');
   var stepInput = document.getElementById('auto-step-input');
   var stepLoading = document.getElementById('auto-step-loading');
+  var loadingText = document.getElementById('auto-loading-text');
   var stepSummary = document.getElementById('auto-step-summary');
   var stepCreating = document.getElementById('auto-step-creating');
+  var stepError = document.getElementById('auto-step-error');
   var stepSuccess = document.getElementById('auto-step-success');
   var infoInput = document.getElementById('auto-info-input');
   var extraInput = document.getElementById('auto-extra-input');
@@ -5044,6 +5057,11 @@ LÍMITES ESTRICTOS:
   var regenerateBtn = document.getElementById('auto-regenerate-btn');
   var createBtn = document.getElementById('auto-create-btn');
   var backBtn = document.getElementById('auto-back-btn');
+  var cancelGenBtn = document.getElementById('auto-cancel-generate-btn');
+  var errorBackBtn = document.getElementById('auto-error-back-btn');
+  var errorRetryBtn = document.getElementById('auto-error-retry-btn');
+  var errorTitle = document.getElementById('auto-error-title');
+  var errorMsg = document.getElementById('auto-error-msg');
   var summaryContent = document.getElementById('auto-summary-content');
   var promptToggle = document.getElementById('auto-prompt-toggle');
   var promptContent = document.getElementById('auto-prompt-content');
@@ -5053,15 +5071,91 @@ LÍMITES ESTRICTOS:
   var successSnippet = document.getElementById('auto-success-snippet');
   var copyUrlBtn = document.getElementById('auto-copy-url-btn');
   var viewBtn = document.getElementById('auto-view-btn');
+  var checkoutBtn = document.getElementById('auto-checkout-btn');
   var createAnotherBtn = document.getElementById('auto-create-another-btn');
 
+  // ── State ──
+  var state = 'idle';
   var generatedConfig = null;
   var createdClient = null;
+  var creatingLocked = false;
+  var abortGenerate = false;
 
-  function esc(text) {
+  // ── All-steps container (hides all then shows one) ──
+  var allSteps = [stepInput, stepLoading, stepSummary, stepCreating, stepError, stepSuccess];
+
+  function esc(t) {
     var d = document.createElement('div');
-    d.textContent = text;
+    d.textContent = t;
     return d.innerHTML;
+  }
+
+  function hideAllSteps() {
+    for (var i = 0; i < allSteps.length; i++) allSteps[i].classList.add('hidden');
+  }
+
+  function setState(newState, opts) {
+    opts = opts || {};
+    state = newState;
+    hideAllSteps();
+    hideError();
+    errorEl.classList.add('hidden');
+
+    // Default: all footer buttons hidden
+    generateBtn.classList.add('hidden');
+    regenerateBtn.classList.add('hidden');
+    createBtn.classList.add('hidden');
+    backBtn.classList.add('hidden');
+    cancelGenBtn.classList.add('hidden');
+    errorBackBtn.classList.add('hidden');
+    errorRetryBtn.classList.add('hidden');
+    closeBtn.disabled = false;
+
+    switch (newState) {
+      case 'idle':
+        stepInput.classList.remove('hidden');
+        titleEl.textContent = 'Crear chatbot automáticamente';
+        generateBtn.classList.remove('hidden');
+        break;
+
+      case 'generating':
+        stepLoading.classList.remove('hidden');
+        loadingText.textContent = opts.text || 'Analizando información del negocio...';
+        titleEl.textContent = 'Analizando...';
+        cancelGenBtn.classList.remove('hidden');
+        closeBtn.disabled = true;
+        break;
+
+      case 'review':
+        stepSummary.classList.remove('hidden');
+        titleEl.textContent = 'Resumen';
+        regenerateBtn.classList.remove('hidden');
+        createBtn.classList.remove('hidden');
+        creatingLocked = false;
+        break;
+
+      case 'creating':
+        stepCreating.classList.remove('hidden');
+        titleEl.textContent = 'Creando...';
+        creatingLocked = true;
+        closeBtn.disabled = true;
+        break;
+
+      case 'error':
+        stepError.classList.remove('hidden');
+        errorTitle.textContent = opts.title || 'Error';
+        errorMsg.textContent = opts.message || 'Ocurrió un error inesperado.';
+        titleEl.textContent = 'Error';
+        errorBackBtn.classList.remove('hidden');
+        errorRetryBtn.classList.remove('hidden');
+        creatingLocked = false;
+        break;
+
+      case 'success':
+        stepSuccess.classList.remove('hidden');
+        titleEl.textContent = 'Chatbot creado';
+        break;
+    }
   }
 
   function showError(msg) {
@@ -5073,84 +5167,45 @@ LÍMITES ESTRICTOS:
     errorEl.classList.add('hidden');
   }
 
-  function showStep(stepId) {
-    stepInput.classList.add('hidden');
-    stepLoading.classList.add('hidden');
-    stepSummary.classList.add('hidden');
-    stepCreating.classList.add('hidden');
-    stepSuccess.classList.add('hidden');
-
-    var el = document.getElementById(stepId);
-    if (el) el.classList.remove('hidden');
-
-    generateBtn.classList.add('hidden');
-    regenerateBtn.classList.add('hidden');
-    createBtn.classList.add('hidden');
-    backBtn.classList.add('hidden');
-    var isSummary = stepId === 'auto-step-summary';
-    var isInput = stepId === 'auto-step-input';
-    var isCreating = stepId === 'auto-step-creating';
-    var isSuccess = stepId === 'auto-step-success';
-
-    if (isInput) {
-      generateBtn.classList.remove('hidden');
-      titleEl.textContent = 'Crear chatbot automáticamente';
-    } else if (isSummary) {
-      regenerateBtn.classList.remove('hidden');
-      createBtn.classList.remove('hidden');
-      titleEl.textContent = 'Resumen';
-    } else if (isSuccess) {
-      titleEl.textContent = 'Listo';
-    } else if (isCreating) {
-      titleEl.textContent = 'Creando...';
-    }
-  }
-
-  function showLoading(text) {
-    stepLoading.querySelector('.auto-loading').innerHTML = '<div class="auto-spinner"></div> ' + esc(text);
-    showStep('auto-step-loading');
+  function resetState() {
+    infoInput.value = '';
+    extraInput.value = '';
+    generatedConfig = null;
+    createdClient = null;
+    creatingLocked = false;
+    abortGenerate = false;
+    setState('idle');
   }
 
   function openModal() {
     overlay.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
-    hideError();
-    showStep('auto-step-input');
+    resetState();
     infoInput.focus();
   }
 
   function closeModal() {
     overlay.classList.add('hidden');
     document.body.style.overflow = '';
-    generatedConfig = null;
     createdClient = null;
+    generatedConfig = null;
+    closeBtn.disabled = false;
   }
 
   openBtn.addEventListener('click', openModal);
   closeBtn.addEventListener('click', closeModal);
+
   overlay.addEventListener('click', function (e) {
     if (e.target === overlay) closeModal();
   });
-
-  function daysBetween(d1, d2) {
-    var diff = 0;
-    var current = new Date(d1);
-    var end = new Date(d2);
-    while (current <= end) { diff++; current.setDate(current.getDate() + 1); }
-    return diff;
-  }
 
   function generateId(name) {
     var base = name.toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 60) || 'chatbot';
-    var id = base;
-    var suffix = 2;
-    var clients = [];
-    try {
-      clients = window.__jbAdmin && window.__jbAdmin.getClients ? window.__jbAdmin.getClients() : [];
-    } catch(e) {}
+    var id = base, suffix = 2, clients = [];
+    try { clients = window.__jbAdmin && window.__jbAdmin.getClients ? window.__jbAdmin.getClients() : []; } catch(e) {}
     var existingIds = (clients || []).map(function(c) { return c.id; });
     while (existingIds.indexOf(id) !== -1) {
       id = base + '-' + suffix;
@@ -5167,12 +5222,14 @@ LÍMITES ESTRICTOS:
     if (info.length > 8000) { showError('La información es demasiado larga (máximo 8000 caracteres).'); return; }
 
     hideError();
-    showLoading('Analizando información del negocio...');
+    abortGenerate = false;
+    setState('generating', { text: 'Analizando información del negocio...' });
 
     var extra = extraInput.value.trim();
-
     var body = { businessInfo: info };
     if (extra) body.additionalInstructions = extra;
+
+    var aborted = false;
 
     fetch('/api/generate-client-config', {
       method: 'POST',
@@ -5184,20 +5241,29 @@ LÍMITES ESTRICTOS:
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (data.error) { showStep('auto-step-input'); showError(data.error); return; }
+        if (abortGenerate) { aborted = true; return; }
+        if (data.error) {
+          setState('error', { title: 'No se pudo generar la configuración', message: data.error });
+          return;
+        }
         generatedConfig = data;
         renderSummary(data);
-        showStep('auto-step-summary');
+        setState('review');
       })
       .catch(function (err) {
-        showStep('auto-step-input');
-        showError('Error de conexión. Verifica tu internet e intenta de nuevo.');
+        if (abortGenerate) { aborted = true; return; }
+        setState('error', { title: 'Error de conexión', message: 'No se pudo conectar con el servidor. Verifica tu internet e intenta de nuevo.' });
         console.error('[auto-create]', err);
       });
   }
 
   generateBtn.addEventListener('click', handleGenerate);
   regenerateBtn.addEventListener('click', handleGenerate);
+
+  cancelGenBtn.addEventListener('click', function () {
+    abortGenerate = true;
+    resetState();
+  });
 
   // ── Render Summary ──
   function renderSummary(config) {
@@ -5208,13 +5274,11 @@ LÍMITES ESTRICTOS:
     var f = config.features;
     var plan = config.planRecommendation;
     var missing = config.missingInformation;
-
     var dayLabels = { monday:'Lunes', tuesday:'Martes', wednesday:'Miércoles', thursday:'Jueves', friday:'Viernes', saturday:'Sábado', sunday:'Domingo' };
     var days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
 
     var html = '';
 
-    // Business
     html += '<div class="auto-summary-section"><h3>Negocio</h3><div class="auto-summary-grid">';
     html += '<div class="item"><span class="label">Nombre:</span><span class="value">' + esc(b.businessName || '—') + '</span></div>';
     html += '<div class="item"><span class="label">Tipo:</span><span class="value">' + esc(b.businessType || '—') + '</span></div>';
@@ -5224,81 +5288,52 @@ LÍMITES ESTRICTOS:
     html += '<div class="item"><span class="label">Idiomas:</span><span class="value">' + esc((b.languages || []).join(', ') || '—') + '</span></div>';
     html += '</div></div>';
 
-    // Design
     html += '<div class="auto-summary-section"><h3>Diseño</h3><div class="auto-summary-grid">';
     html += '<div class="item"><span class="label">Color primario:</span><span class="value"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:' + esc(d.primaryColor) + ';vertical-align:middle;margin-right:4px;border:1px solid #ddd;"></span>' + esc(d.primaryColor) + '</span></div>';
     html += '<div class="item"><span class="label">Color secundario:</span><span class="value"><span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:' + esc(d.secondaryColor) + ';vertical-align:middle;margin-right:4px;border:1px solid #ddd;"></span>' + esc(d.secondaryColor) + '</span></div>';
     html += '<div class="item"><span class="label">Estilo:</span><span class="value">' + esc(d.style) + '</span></div>';
     html += '</div></div>';
 
-    // Hours
     html += '<div class="auto-summary-section"><h3>Horarios</h3><div class="auto-hours-summary">';
     for (var i = 0; i < days.length; i++) {
-      var day = days[i];
-      var hd = h[day];
-      var label = dayLabels[day];
-      if (hd && hd.unknown) {
-        html += '<div class="day" style="color:#c62828;"><strong>' + label + ':</strong> No especificado</div>';
-      } else if (hd && hd.enabled && hd.ranges && hd.ranges.length) {
-        html += '<div class="day"><strong>' + label + ':</strong> ' + hd.ranges.map(function(r) { return r.start + '–' + r.end; }).join(', ') + '</div>';
-      } else {
-        html += '<div class="day" style="color:#999;"><strong>' + label + ':</strong> Cerrado</div>';
-      }
+      var dd = days[i], hd = h[dd], lb = dayLabels[dd];
+      if (hd && hd.unknown) { html += '<div class="day" style="color:#c62828;"><strong>' + lb + ':</strong> No especificado</div>'; }
+      else if (hd && hd.enabled && hd.ranges && hd.ranges.length) { html += '<div class="day"><strong>' + lb + ':</strong> ' + hd.ranges.map(function(r) { return r.start + '–' + r.end; }).join(', ') + '</div>'; }
+      else { html += '<div class="day" style="color:#999;"><strong>' + lb + ':</strong> Cerrado</div>'; }
     }
     html += '</div></div>';
 
-    // Services
     html += '<div class="auto-summary-section"><h3>Servicios</h3>';
     if (services && services.length) {
       for (var i = 0; i < services.length; i++) {
         var s = services[i];
         html += '<span class="auto-service-card">' + esc(s.nombre) + (s.precio ? ' <span class="price">' + esc(s.precio) + '</span>' : '') + (s.duracion ? ' <span style="color:#666;">(' + esc(s.duracion) + ')</span>' : '') + '</span>';
       }
-    } else {
-      html += '<span style="font-size:13px;color:#999;">No se detectaron servicios</span>';
-    }
+    } else { html += '<span style="font-size:13px;color:#999;">No se detectaron servicios</span>'; }
     html += '</div>';
 
-    // Features
-    var featureLabels = {
-      faq: 'Responder preguntas', prices: 'Mostrar precios', catalog: 'Mostrar catálogo',
-      reservations: 'Tomar reservas', leads: 'Guardar interesados',
-      emailNotifications: 'Avisar por correo', cancellation: 'Cancelar reservas',
-      rescheduling: 'Reagendar reservas'
-    };
+    var featureLabels = { faq:'Responder preguntas', prices:'Mostrar precios', catalog:'Mostrar catálogo', reservations:'Tomar reservas', leads:'Guardar interesados', emailNotifications:'Avisar por correo', cancellation:'Cancelar reservas', rescheduling:'Reagendar reservas' };
     html += '<div class="auto-summary-section"><h3>Funciones</h3><div class="auto-feature-list">';
     for (var key in featureLabels) {
-      if (f && f[key] !== undefined) {
-        html += '<span class="auto-feature-tag ' + (f[key] ? 'on' : 'off') + '">' + (f[key] ? '✓ ' : '✗ ') + esc(featureLabels[key]) + '</span>';
-      }
+      if (f && f[key] !== undefined) html += '<span class="auto-feature-tag ' + (f[key] ? 'on' : 'off') + '">' + (f[key] ? '✓ ' : '✗ ') + esc(featureLabels[key]) + '</span>';
     }
     html += '</div></div>';
 
-    // Plan recommendation
     html += '<div class="auto-summary-section"><h3>Plan recomendado</h3>';
     html += '<span class="auto-plan-box ' + plan.plan + '">' + (plan.plan === 'pro' ? 'Pro — $65/mes' : 'Básico — $49/mes') + '</span>';
     if (plan.reason) html += '<span style="font-size:13px;color:#666;margin-left:10px;">' + esc(plan.reason) + '</span>';
     html += '</div>';
 
-    // Missing info
     if (missing && missing.length) {
-      html += '<div class="auto-summary-section"><h3 style="color:#c62828;">Datos faltantes</h3>';
-      html += '<div class="auto-missing-list"><ul>';
-      for (var i = 0; i < missing.length; i++) {
-        html += '<li>' + esc(missing[i]) + '</li>';
-      }
+      html += '<div class="auto-summary-section"><h3 style="color:#c62828;">Datos faltantes</h3><div class="auto-missing-list"><ul>';
+      for (var i = 0; i < missing.length; i++) html += '<li>' + esc(missing[i]) + '</li>';
       html += '</ul></div></div>';
     }
 
     summaryContent.innerHTML = html;
 
-    // Prompt
-    if (config.systemPrompt) {
-      promptTextarea.value = config.systemPrompt;
-      promptToggle.classList.remove('hidden');
-    } else {
-      promptToggle.classList.add('hidden');
-    }
+    if (config.systemPrompt) { promptTextarea.value = config.systemPrompt; promptToggle.classList.remove('hidden'); }
+    else { promptToggle.classList.add('hidden'); }
     promptContent.classList.remove('open');
   }
 
@@ -5309,12 +5344,14 @@ LÍMITES ESTRICTOS:
 
   // ── Create ──
   createBtn.addEventListener('click', function () {
-    if (!generatedConfig) return;
-    showStep('auto-step-creating');
+    if (!generatedConfig || creatingLocked) return;
+    creatingLocked = true;
+    createBtn.disabled = true;
 
     var config = generatedConfig;
     var b = config.business;
     var clientId = generateId(b.businessName || 'chatbot');
+    setState('creating');
 
     var payload = {
       id: clientId,
@@ -5337,62 +5374,81 @@ LÍMITES ESTRICTOS:
       features: config.features,
     };
 
-    fetch('/api/clients', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-token': window.__jbAdmin ? window.__jbAdmin.getToken() : ''
-      },
-      body: JSON.stringify(payload),
-    })
+    function doCreate(idToUse) {
+      payload.id = idToUse;
+      return fetch('/api/clients', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': window.__jbAdmin ? window.__jbAdmin.getToken() : ''
+        },
+        body: JSON.stringify(payload),
+      });
+    }
+
+    doCreate(clientId)
       .then(function (r) {
         if (r.status === 409) {
           clientId = generateId(b.businessName || 'chatbot');
-          payload.id = clientId;
-          return fetch('/api/clients', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-admin-token': window.__jbAdmin ? window.__jbAdmin.getToken() : ''
-            },
-            body: JSON.stringify(payload),
-          });
+          return doCreate(clientId);
         }
-        return r;
+        return r.json();
       })
-      .then(function (r) { return r.json(); })
       .then(function (client) {
-        if (client.error) {
-          showStep('auto-step-summary');
-          showError('Error al crear: ' + client.error);
+        if (!client || client.error) {
+          setState('error', { title: 'No se pudo crear el chatbot', message: client ? client.error : 'Error desconocido' });
+          createBtn.disabled = false;
           return;
         }
+
+        var baseUrl = window.location.origin || 'https://jbstudio.app';
+        var assistantUrl = baseUrl + '/asistente/' + encodeURIComponent(client.id);
+        var snippet = client.widgetSnippet || '<script src="' + baseUrl + '/widget.js?id=' + client.id + '"><' + '/script>';
+
+        if (!client.id || !assistantUrl || !snippet) {
+          setState('error', { title: 'Error de validación', message: 'El chatbot se creó pero faltan datos. Revisa la lista de clientes.' });
+          createBtn.disabled = false;
+          return;
+        }
+
         createdClient = client;
-        showSuccess(client);
+
+        successName.textContent = (client.businessName || b.businessName) + ' — ' + (client.plan === 'pro' ? 'Pro' : 'Básico');
+        successUrl.value = assistantUrl;
+        successSnippet.value = snippet;
+
+        if (window.__jbAdmin && window.__jbAdmin.refreshClients) {
+          window.__jbAdmin.refreshClients();
+        }
+
+        setState('success');
+        createBtn.disabled = false;
       })
       .catch(function (err) {
-        showStep('auto-step-summary');
-        showError('Error de conexión al crear el chatbot.');
+        setState('error', { title: 'Error de conexión', message: 'No se pudo crear el chatbot. Verifica tu conexión e intenta de nuevo.' });
+        createBtn.disabled = false;
         console.error('[auto-create] create error:', err);
       });
   });
 
-  function showSuccess(client) {
-    showStep('auto-step-success');
-    successName.textContent = client.businessName + ' — ' + (client.plan === 'pro' ? 'Pro' : 'Básico');
-
-    var baseUrl = window.location.origin || 'https://jbstudio.app';
-    successUrl.value = baseUrl + '/asistente/' + client.id;
-    successSnippet.value = client.widgetSnippet || '<script src="' + baseUrl + '/widget.js?id=' + client.id + '"><' + '/script>';
-
-    if (window.__jbAdmin && window.__jbAdmin.refreshClients) {
-      window.__jbAdmin.refreshClients();
+  // ── Error retry ──
+  errorRetryBtn.addEventListener('click', function () {
+    if (generatedConfig) {
+      renderSummary(generatedConfig);
+      setState('review');
+    } else {
+      resetState();
     }
-  }
+  });
 
+  errorBackBtn.addEventListener('click', function () {
+    resetState();
+  });
+
+  // ── Success actions ──
   copyUrlBtn.addEventListener('click', function () {
     successUrl.select();
-    try { document.execCommand('copy'); } catch(e) {}
+    try { navigator.clipboard.writeText(successUrl.value); } catch(e) { document.execCommand('copy'); }
     var orig = copyUrlBtn.textContent;
     copyUrlBtn.textContent = '✓ Copiado';
     copyUrlBtn.style.borderColor = 'var(--green)';
@@ -5400,33 +5456,50 @@ LÍMITES ESTRICTOS:
   });
 
   viewBtn.addEventListener('click', function () {
-    if (createdClient) {
-      window.open('/asistente/' + createdClient.id, '_blank');
-    }
+    if (createdClient) window.open('/asistente/' + createdClient.id, '_blank');
+  });
+
+  checkoutBtn.addEventListener('click', function () {
+    if (!createdClient) return;
+    var plan = createdClient.plan || 'basic';
+    checkoutBtn.disabled = true;
+    checkoutBtn.textContent = 'Generando...';
+    fetch('/api/create-checkout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': window.__jbAdmin ? window.__jbAdmin.getToken() : ''
+      },
+      body: JSON.stringify({ clientId: createdClient.id, plan: plan, returnUrl: window.location.origin + '/asistente/' + createdClient.id }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.url) { window.open(d.url, '_blank'); }
+        else { alert('No se pudo generar el enlace de pago.'); }
+        checkoutBtn.disabled = false;
+        checkoutBtn.textContent = 'Generar enlace de pago';
+      })
+      .catch(function () {
+        alert('Error al generar el enlace de pago.');
+        checkoutBtn.disabled = false;
+        checkoutBtn.textContent = 'Generar enlace de pago';
+      });
   });
 
   createAnotherBtn.addEventListener('click', function () {
-    infoInput.value = '';
-    extraInput.value = '';
-    generatedConfig = null;
-    createdClient = null;
-    showStep('auto-step-input');
-    titleEl.textContent = 'Crear chatbot automáticamente';
-  });
-
-  // Keyboard shortcut: Enter to generate
-  infoInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && e.ctrlKey && !generateBtn.disabled) {
-      e.preventDefault();
-      handleGenerate();
-    }
+    resetState();
   });
 
   backBtn.addEventListener('click', function () {
-    generatedConfig = null;
-    createdClient = null;
-    showStep('auto-step-input');
-    titleEl.textContent = 'Crear chatbot automáticamente';
+    resetState();
+  });
+
+  // Keyboard shortcut
+  infoInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.ctrlKey && state === 'idle') {
+      e.preventDefault();
+      handleGenerate();
+    }
   });
 })();
 </script>
