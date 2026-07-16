@@ -110,20 +110,34 @@
     }
 
     /* ── Menu carousel ──────────────────────────────────────────────────── */
-    .a-cards-wrap { width: 100%; overflow-x: auto; padding: 2px 0 4px; -webkit-overflow-scrolling: touch; }
-    .a-cards { display: flex; gap: 10px; padding: 0 2px 8px; }
+    /* Tarjetas verticales dentro del hilo, como una recomendación del
+       asistente. Antes era un carrusel horizontal que obligaba a arrastrar. */
+    .a-cards-wrap { width: 100%; padding: 2px 0 4px; }
+    .a-cards { display: flex; flex-direction: column; gap: 8px; padding: 0 0 4px; }
     .a-card {
-      flex: 0 0 152px; background: #fff; border-radius: 16px; overflow: hidden;
-      box-shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 18px rgba(0,0,0,.06);
-      transition: transform .2s cubic-bezier(.22,1,.36,1), box-shadow .2s;
+      display: flex; align-items: flex-start; gap: 12px; width: 100%;
+      text-align: left; font-family: inherit; cursor: pointer;
+      background: #fff; border: 1.5px solid rgba(0,0,0,.06); border-radius: 16px;
+      padding: 13px 14px; min-height: 56px; /* cómodo de tocar en móvil */
+      box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.04);
+      transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s, border-color .18s;
+      opacity: 0; animation: a-card-in .34s cubic-bezier(.22,1,.36,1) forwards;
     }
-    .a-card:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(0,0,0,.06), 0 12px 28px rgba(0,0,0,.10); }
-    .a-card-img { width: 100%; height: 92px; object-fit: cover; display: block; background: #f2f2f4; }
-    .a-card-ph { width: 100%; height: 92px; display: flex; align-items: center; justify-content: center; font-size: 26px; }
-    .a-card-body { padding: 9px 10px 11px; }
-    .a-card-name { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
-    .a-card-price { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
-    .a-card-desc { font-size: 11.5px; color: #666; line-height: 1.4; }
+    @keyframes a-card-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .a-card:hover { transform: translateY(-2px); border-color: rgba(0,0,0,.10); box-shadow: 0 2px 4px rgba(0,0,0,.05), 0 10px 24px rgba(0,0,0,.09); }
+    .a-card:active { transform: translateY(0) scale(.99); }
+    .a-card-ico {
+      width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 20px;
+    }
+    .a-card-img { width: 42px; height: 42px; border-radius: 12px; object-fit: cover; flex-shrink: 0; display: block; background: #f2f2f4; }
+    .a-card-body { flex: 1; min-width: 0; }
+    .a-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .a-card-name { font-size: 14px; font-weight: 650; line-height: 1.3; }
+    .a-card-price { font-size: 14px; font-weight: 700; flex-shrink: 0; }
+    .a-card-desc { font-size: 12px; color: #6b6f76; line-height: 1.45; margin-top: 3px; }
+    .a-card-cta { font-size: 11.5px; color: #a8acb3; margin-top: 6px; font-weight: 500; }
+    @media (prefers-reduced-motion: reduce) { .a-card { animation: none; opacity: 1; } }
 
     /* ── Footer / input ─────────────────────────────────────────────────── */
     #a-foot {
@@ -422,62 +436,115 @@
     if (el) el.remove();
   }
 
+  // Icono por tipo de servicio. Si no reconoce nada usa un neutro elegante:
+  // mejor eso que el 🖼 roto de antes.
+  var ICON_RULES = [
+    [/masaj|spa|relaj|facial|belle|est[eé]t/i, '💆'],
+    [/pelo|corte|barb|peluqu|cabello|afeit/i,  '✂️'],
+    [/u[ñn]a|manicur|pedicur/i,                '💅'],
+    [/comida|men[uú]|plato|pizza|burger|caf[eé]|bebida|restaur/i, '🍽'],
+    [/diente|dental|odont/i,                   '🦷'],
+    [/consulta|m[eé]dic|salud|terap/i,         '🩺'],
+    [/clase|curso|taller|entren|gym|fitness/i, '🏋'],
+    [/foto|video|estudio/i,                    '📸'],
+    [/limpieza|hogar|lavad/i,                  '🧼'],
+    [/auto|coche|mec[aá]nic/i,                 '🚗'],
+  ];
+
+  function iconFor(nombre) {
+    var t = String(nombre || '');
+    for (var i = 0; i < ICON_RULES.length; i++) {
+      if (ICON_RULES[i][0].test(t)) return ICON_RULES[i][1];
+    }
+    return '✨';
+  }
+
   function renderMenu() {
     var items = Array.isArray(cfg.menu) ? cfg.menu : [];
     if (!items.length) return;
+
     var wrap = document.createElement('div');
     wrap.className = 'a-cards-wrap';
     var row = document.createElement('div');
     row.className = 'a-cards';
-    items.forEach(function (item) {
-      var card = document.createElement('div');
+
+    items.forEach(function (item, idx) {
+      // <button>: tocable, accesible por teclado y con foco propio.
+      var card = document.createElement('button');
       card.className = 'a-card';
+      card.type = 'button';
+      card.style.animationDelay = (idx * 55) + 'ms';
+
       if (item.imagen) {
         var img = document.createElement('img');
         img.className = 'a-card-img';
         img.src = item.imagen;
-        img.alt = item.nombre || '';
+        img.alt = '';
         img.loading = 'lazy';
+        // Una imagen rota queda peor que no tener imagen: cae al icono.
         img.onerror = function () {
-          var ph = document.createElement('div');
-          ph.className = 'a-card-ph';
-          ph.textContent = '🖼';
-          img.parentNode.replaceChild(ph, img);
+          if (img.parentNode) img.parentNode.replaceChild(buildIco(item.nombre), img);
         };
         card.appendChild(img);
       } else {
-        var ph = document.createElement('div');
-        ph.className = 'a-card-ph';
-        ph.textContent = '🖼';
-        card.appendChild(ph);
+        card.appendChild(buildIco(item.nombre));
       }
+
       var body = document.createElement('div');
       body.className = 'a-card-body';
-      if (item.nombre) {
-        var name = document.createElement('div');
-        name.className = 'a-card-name';
-        name.textContent = item.nombre;
-        body.appendChild(name);
-      }
+
+      var top = document.createElement('div');
+      top.className = 'a-card-top';
+      var name = document.createElement('span');
+      name.className = 'a-card-name';
+      name.textContent = item.nombre || 'Servicio';
+      top.appendChild(name);
       if (item.precio) {
-        var price = document.createElement('div');
+        var price = document.createElement('span');
         price.className = 'a-card-price';
         price.style.color = cfg.color;
         price.textContent = item.precio;
-        body.appendChild(price);
+        top.appendChild(price);
       }
+      body.appendChild(top);
+
       if (item.descripcion) {
         var desc = document.createElement('div');
         desc.className = 'a-card-desc';
         desc.textContent = item.descripcion;
         body.appendChild(desc);
       }
+
+      var cta = document.createElement('div');
+      cta.className = 'a-card-cta';
+      cta.textContent = cfg.language === 'en' ? 'Tap to ask about this' : 'Toca para consultar este servicio';
+      body.appendChild(cta);
+
       card.appendChild(body);
+
+      // Tocar una tarjeta continúa la conversación sin escribir nada.
+      card.addEventListener('click', function () {
+        if (inp.disabled) return;
+        var nom = item.nombre || 'este servicio';
+        send(cfg.language === 'en'
+          ? "I'm interested in the " + nom + ' service'
+          : 'Me interesa el servicio ' + nom);
+      });
+
       row.appendChild(card);
     });
+
     wrap.appendChild(row);
     msgsEl.appendChild(wrap);
     msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
+  function buildIco(nombre) {
+    var el = document.createElement('div');
+    el.className = 'a-card-ico';
+    el.textContent = iconFor(nombre);
+    el.style.background = hexToRgba(cfg.color, 0.12);
+    return el;
   }
 
   function submitBooking() {

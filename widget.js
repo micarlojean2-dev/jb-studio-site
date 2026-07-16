@@ -200,23 +200,30 @@
       'border-radius:22px;}',
     '}',
 
-    '.jbw-cards-wrap{width:100%;overflow-x:auto;padding:4px 0 0;}',
-    '.jbw-cards-wrap::-webkit-scrollbar{height:3px;}',
-    '.jbw-cards-wrap::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:2px;}',
-    '.jbw-cards{display:flex;gap:12px;padding:2px 4px 12px;}',
-    '.jbw-card{flex:0 0 152px;background:#fff;border-radius:16px;overflow:hidden;',
-    'box-shadow:0 1px 2px rgba(0,0,0,.05),0 6px 18px rgba(0,0,0,.06);',
-    'transition:transform .2s cubic-bezier(.22,1,.36,1),box-shadow .2s;}',
-    '.jbw-card:hover{transform:translateY(-3px);box-shadow:0 2px 4px rgba(0,0,0,.06),0 12px 28px rgba(0,0,0,.10);}',
-    '.jbw-card-img{width:100%;height:92px;object-fit:cover;display:block;background:#f2f2f4;}',
-    // Sin imagen real no inventamos un hueco gris: un icono sobre un degradado
-    // suave del color del negocio se ve intencional, no roto.
-    '.jbw-card-ph{width:100%;height:92px;display:flex;align-items:center;',
-    'justify-content:center;font-size:26px;}',
-    '.jbw-card-body{padding:11px 12px 13px;}',
-    '.jbw-card-name{font-size:13px;font-weight:650;color:#16181d;line-height:1.3;margin-bottom:3px;}',
-    '.jbw-card-price{font-size:13.5px;font-weight:700;margin-bottom:5px;}',
-    '.jbw-card-desc{font-size:11px;color:#6b6f76;line-height:1.45;}',
+    '.jbw-cards-wrap{width:100%;padding:2px 0 0;}',
+    '.jbw-cards{display:flex;flex-direction:column;gap:8px;padding:0 0 4px;}',
+    '.jbw-card{display:flex;align-items:flex-start;gap:11px;width:100%;',
+    'text-align:left;font-family:inherit;cursor:pointer;background:#fff;',
+    'border:1.5px solid rgba(0,0,0,.06);border-radius:16px;padding:12px 13px;',
+    'min-height:54px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 12px rgba(0,0,0,.04);',
+    'transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s,border-color .18s;',
+    'opacity:0;animation:jbw-card-in .34s cubic-bezier(.22,1,.36,1) forwards;}',
+    '@keyframes jbw-card-in{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}',
+    '.jbw-card:hover{transform:translateY(-2px);border-color:rgba(0,0,0,.10);',
+    'box-shadow:0 2px 4px rgba(0,0,0,.05),0 10px 24px rgba(0,0,0,.09);}',
+    '.jbw-card:active{transform:translateY(0) scale(.99);}',
+    '.jbw-card-ico{width:40px;height:40px;border-radius:11px;flex-shrink:0;',
+    'display:flex;align-items:center;justify-content:center;font-size:19px;}',
+    '.jbw-card-img{width:40px;height:40px;border-radius:11px;object-fit:cover;',
+    'flex-shrink:0;display:block;background:#f2f2f4;}',
+    '.jbw-card-body{flex:1;min-width:0;}',
+    '.jbw-card-top{display:flex;align-items:baseline;justify-content:space-between;gap:9px;}',
+    '.jbw-card-name{font-size:13.5px;font-weight:650;line-height:1.3;color:#16181d;}',
+    '.jbw-card-price{font-size:13.5px;font-weight:700;flex-shrink:0;}',
+    '.jbw-card-desc{font-size:11.5px;color:#6b6f76;line-height:1.45;margin-top:3px;}',
+    '.jbw-card-cta{font-size:11px;color:#a8acb3;margin-top:5px;font-weight:500;}',
+    '@media(prefers-reduced-motion:reduce){.jbw-card{animation:none;opacity:1;}}',
+
   ].join('');
   document.head.appendChild(css);
 
@@ -366,14 +373,14 @@
 
   function buildIcon(nombre) {
     var el = document.createElement('div');
-    el.className = 'jbw-card-ph';
+    el.className = 'jbw-card-ico';
     var txt = String(nombre || '');
     var chosen = '✨';
     for (var i = 0; i < ICON_RULES.length; i++) {
       if (ICON_RULES[i][0].test(txt)) { chosen = ICON_RULES[i][1]; break; }
     }
     el.textContent = chosen;
-    el.style.background = 'linear-gradient(135deg,' + hexToRgba(cfg.color, 0.13) + ',' + hexToRgba(cfg.color, 0.05) + ')';
+    el.style.background = hexToRgba(cfg.color, 0.12);
     return el;
   }
 
@@ -387,18 +394,18 @@
     var row = document.createElement('div');
     row.className = 'jbw-cards';
 
-    items.forEach(function (item) {
-      var card = document.createElement('div');
+    items.forEach(function (item, idx) {
+      var card = document.createElement('button');
       card.className = 'jbw-card';
+      card.type = 'button';
+      card.style.animationDelay = (idx * 55) + 'ms';
 
       if (item.imagen) {
         var img = document.createElement('img');
         img.className = 'jbw-card-img';
-        img.src     = item.imagen;
-        img.alt     = item.nombre || '';
+        img.src = item.imagen;
+        img.alt = '';
         img.loading = 'lazy';
-        // Una imagen rota se ve peor que no tener imagen: la sustituimos por
-        // el icono, igual que si el servicio nunca hubiera traído foto.
         img.onerror = function () {
           if (img.parentNode) img.parentNode.replaceChild(buildIcon(item.nombre), img);
         };
@@ -410,27 +417,44 @@
       var body = document.createElement('div');
       body.className = 'jbw-card-body';
 
-      if (item.nombre) {
-        var name = document.createElement('div');
-        name.className   = 'jbw-card-name';
-        name.textContent = item.nombre;
-        body.appendChild(name);
-      }
+      var top = document.createElement('div');
+      top.className = 'jbw-card-top';
+      var name = document.createElement('span');
+      name.className = 'jbw-card-name';
+      name.textContent = item.nombre || 'Servicio';
+      top.appendChild(name);
       if (item.precio) {
-        var price = document.createElement('div');
-        price.className   = 'jbw-card-price';
+        var price = document.createElement('span');
+        price.className = 'jbw-card-price';
         price.style.color = cfg.color;
         price.textContent = item.precio;
-        body.appendChild(price);
+        top.appendChild(price);
       }
+      body.appendChild(top);
+
       if (item.descripcion) {
         var desc = document.createElement('div');
-        desc.className   = 'jbw-card-desc';
+        desc.className = 'jbw-card-desc';
         desc.textContent = item.descripcion;
         body.appendChild(desc);
       }
 
+      var cta = document.createElement('div');
+      cta.className = 'jbw-card-cta';
+      cta.textContent = cfg.language === 'en' ? 'Tap to ask about this' : 'Toca para consultar este servicio';
+      body.appendChild(cta);
+
       card.appendChild(body);
+
+      // Tocar continúa la conversación sin que el cliente escriba nada.
+      card.addEventListener('click', function () {
+        if (inp.disabled) return;
+        var nom = item.nombre || 'este servicio';
+        send(cfg.language === 'en'
+          ? "I'm interested in the " + nom + ' service'
+          : 'Me interesa el servicio ' + nom);
+      });
+
       row.appendChild(card);
     });
 
