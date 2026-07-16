@@ -1,11 +1,12 @@
 {
   "outputDirectory": ".",
   "cleanUrls": true,
+  "_comment_rewrites": "Fase 4.2: con cleanUrls:true, Vercel deja de servir las rutas .html (pasan a ser un redirect 308 hacia la ruta limpia). Por eso un rewrite cuyo destino termina en .html resuelve a algo que no es un archivo y devuelve 404 — era la causa del 404 de /asistente/{id} y /reservas/{id}. Los destinos deben ser rutas limpias, sin .html. El rewrite es interno: el navegador sigue mostrando /asistente/{id}, así que los HTML pueden seguir leyendo el id del pathname (un ?id=:id en el destino NO sería visible para el JS del cliente).",
   "rewrites": [
-    { "source": "/ventas",           "destination": "/ventas.html"    },
-    { "source": "/demo",             "destination": "/chatbot.html"   },
-    { "source": "/reservas/:path*",  "destination": "/reservas.html"  },
-    { "source": "/asistente/:path*", "destination": "/asistente.html" }
+    { "source": "/ventas",         "destination": "/ventas.html" },
+    { "source": "/demo",           "destination": "/chatbot"     },
+    { "source": "/reservas/:id",   "destination": "/reservas"    },
+    { "source": "/asistente/:id",  "destination": "/asistente"   }
   ],
   "headers": [
     {

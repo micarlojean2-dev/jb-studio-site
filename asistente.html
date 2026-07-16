@@ -161,11 +161,35 @@
 (function () {
   'use strict';
 
-  // clientId comes from the path — vercel.json rewrites /asistente/:path*
-  // to this file WITHOUT changing the visible URL, same pattern as
-  // /reservas/:path* → reservas.html.
-  var pathParts = window.location.pathname.split('/').filter(Boolean);
-  var clientId  = pathParts[1] || '';
+  // Fase 4.2: el id se resuelve desde ?id= o desde el pathname, para no
+  // depender de una única configuración de Vercel. El rewrite de
+  // /asistente/:id es interno (el navegador sigue mostrando la URL bonita),
+  // así que en producción gana la rama del pathname; ?id= cubre el acceso
+  // directo a /asistente.html?id=... y cualquier despliegue sin rewrites.
+  // Solo se aceptan minúsculas, números y guiones — igual que el id que
+  // valida api/clients.js.
+  function resolveClientId() {
+    var fromQuery = '';
+    try {
+      fromQuery = new URLSearchParams(window.location.search).get('id') || '';
+    } catch (e) {
+      fromQuery = '';
+    }
+    if (fromQuery) return sanitizeId(fromQuery);
+
+    // /asistente/{id} → ['asistente', '{id}']
+    var parts = window.location.pathname.split('/').filter(Boolean);
+    var idx   = parts.indexOf('asistente');
+    var seg   = idx !== -1 ? (parts[idx + 1] || '') : (parts[1] || '');
+    return sanitizeId(seg);
+  }
+
+  function sanitizeId(raw) {
+    var v = String(raw || '').trim().toLowerCase();
+    return /^[a-z0-9-]{1,80}$/.test(v) ? v : '';
+  }
+
+  var clientId = resolveClientId();
 
   var API = window.location.origin;
 
@@ -173,7 +197,7 @@
   var appEl      = document.getElementById('a-app');
   var notfoundEl = document.getElementById('a-notfound');
 
-  if (!clientId || !/^[a-z0-9-]+$/.test(clientId)) {
+  if (!clientId) {
     loadingEl.style.display = 'none';
     notfoundEl.style.display = 'flex';
     return;

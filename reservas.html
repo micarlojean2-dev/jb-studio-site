@@ -358,8 +358,32 @@
 
 <script>
   // ── Extract clientId from URL ────────────────────────────────────────────
-  var pathParts = window.location.pathname.split('/').filter(Boolean);
-  var clientId  = pathParts[1] || '';   // /reservas/{clientId}
+  // Fase 4.2: se resuelve desde ?id= o desde el pathname (/reservas/{id}),
+  // para no depender de una única configuración de Vercel. Solo se aceptan
+  // minúsculas, números y guiones — antes no se sanitizaba el segmento.
+  // El token NO se lee de la query string a propósito: viaja por fragmento
+  // (#t=), que el navegador nunca envía al servidor.
+  function resolveClientId() {
+    var fromQuery = '';
+    try {
+      fromQuery = new URLSearchParams(window.location.search).get('id') || '';
+    } catch (e) {
+      fromQuery = '';
+    }
+    if (fromQuery) return sanitizeId(fromQuery);
+
+    var parts = window.location.pathname.split('/').filter(Boolean);
+    var idx   = parts.indexOf('reservas');
+    var seg   = idx !== -1 ? (parts[idx + 1] || '') : (parts[1] || '');
+    return sanitizeId(seg);
+  }
+
+  function sanitizeId(raw) {
+    var v = String(raw || '').trim().toLowerCase();
+    return /^[a-z0-9-]{1,80}$/.test(v) ? v : '';
+  }
+
+  var clientId  = resolveClientId();
   var API       = 'https://jbstudio.app';
   var STORE_KEY = 'jbr_' + clientId + '_token';
 
