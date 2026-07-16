@@ -329,7 +329,11 @@
     return;
   }
 
-  if (previewToken) {
+  // El banner NO se muestra solo por llevar ?preview= en la URL: cualquiera
+  // podría añadir un token inventado a la página pública y leer que el
+  // negocio no ha pagado. Se muestra cuando el servidor confirma que el
+  // token es válido (client-chat devuelve preview:true).
+  function marcarModoPrueba() {
     var pb = document.getElementById('a-preview-banner');
     if (pb) pb.hidden = false;
   }
@@ -689,6 +693,21 @@ function resolverHora(n, minutos, sufijo, businessHours) {
   if (am && !pm) return { hora: n + mm + ' AM' };
   return { ambigua: n, mm: mm };                    // ambas o ninguna: preguntar
 }
+
+  // El modelo emite marcadores internos ([MOSTRAR_MENU], [RESERVA_CONFIRMADA],
+  // [LEAD_MINIMO]…). Antes solo se quitaba [MOSTRAR_MENU] y el resto se
+  // pintaba tal cual: al confirmar una reserva el visitante veía
+  // "[RESERVA_CONFIRMADA]" en pantalla. Se limpian todos por patrón, así que
+  // un marcador nuevo tampoco se escapará.
+  var MARCADOR_RE = /\[[A-Z_]{3,}\]/g;
+
+  function limpiarMarcadores(txt) {
+    return String(txt || '')
+      .replace(MARCADOR_RE, '')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
 
 function extractBooking(text, menu) {
   var t = String(text || '');
@@ -1100,8 +1119,9 @@ function extractBooking(text, menu) {
         if (d.error === 'inactive') {
           addMsg('bot', d.message || (cfg.language === 'en' ? 'This service is temporarily unavailable.' : 'Este servicio no está disponible temporalmente.'));
         } else if (d.text) {
+          if (d.preview === true) marcarModoPrueba();
           var showMenu  = /\[MOSTRAR_MENU\]/.test(d.text);
-          var cleanText = d.text.replace(/\[MOSTRAR_MENU\]/g, '').trim();
+          var cleanText = limpiarMarcadores(d.text);
           if (cleanText) addMsg('bot', cleanText);
           if (showMenu)  renderMenu();
           msgs.push({ role: 'assistant', content: d.text });

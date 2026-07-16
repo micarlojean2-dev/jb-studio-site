@@ -628,6 +628,21 @@ function resolverHora(n, minutos, sufijo, businessHours) {
   return { ambigua: n, mm: mm };                    // ambas o ninguna: preguntar
 }
 
+  // El modelo emite marcadores internos ([MOSTRAR_MENU], [RESERVA_CONFIRMADA],
+  // [LEAD_MINIMO]…). Antes solo se quitaba [MOSTRAR_MENU] y el resto se
+  // pintaba tal cual: al confirmar una reserva el visitante veía
+  // "[RESERVA_CONFIRMADA]" en pantalla. Se limpian todos por patrón, así que
+  // un marcador nuevo tampoco se escapará.
+  var MARCADOR_RE = /\[[A-Z_]{3,}\]/g;
+
+  function limpiarMarcadores(txt) {
+    return String(txt || '')
+      .replace(MARCADOR_RE, '')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
 function extractBooking(text, menu) {
   var t = String(text || '');
   var out = {};
@@ -1036,7 +1051,7 @@ function extractBooking(text, menu) {
             : 'Este servicio no está disponible temporalmente.'));
         } else if (d.text) {
           var showMenu   = /\[MOSTRAR_MENU\]/.test(d.text);
-          var cleanText  = d.text.replace(/\[MOSTRAR_MENU\]/g, '').trim();
+          var cleanText  = limpiarMarcadores(d.text);
           if (cleanText) addMsg('bot', cleanText);
           if (showMenu)  renderMenu();
           msgs.push({ role: 'assistant', content: d.text });
