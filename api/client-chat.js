@@ -28,7 +28,7 @@ function maybeCleanup() {
 
 // ── Provider config ────────────────────────────────────────────────────────
 function getProvider() {
-  return (process.env.CLIENT_CHAT_PROVIDER || 'deepseek').toLowerCase();
+  return (process.env.CLIENT_CHAT_PROVIDER || 'anthropic').toLowerCase();
 }
 
 function getModel() {
