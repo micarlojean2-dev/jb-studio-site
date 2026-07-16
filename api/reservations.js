@@ -674,7 +674,7 @@ export default async function handler(req, res) {
         ok: false,
         motivo: 'needs_setup',
         // Al cliente no se le habla de configuración: se le da una salida.
-        mensaje: 'Ahora mismo no puedo agendar la cita desde aquí. Puedes contactar directamente con el negocio y te la reservan sin problema.',
+        mensaje: 'No puedo confirmar citas en este momento, pero puedo ayudarte con información del negocio.',
       });
     }
 

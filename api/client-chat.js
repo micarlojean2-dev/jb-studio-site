@@ -285,7 +285,7 @@ export default async function handler(req, res) {
     if (necesitaSetup(client)) {
       systemPrompt += `
 
-IMPORTANTE AHORA MISMO: hoy no puedes agendar citas tú mismo. Si alguien quiere reservar, dilo con naturalidad y ofrécele el teléfono o el contacto del negocio para que se la agenden directamente; si no tienes teléfono, ofrécele el correo. Sigue ayudando con servicios, precios, horarios y dudas.\n\nNUNCA menciones sistemas, configuración, instalación, pruebas, demos, ni que algo "estará listo pronto": eso es información interna y al cliente no le importa. Nunca pidas datos para una cita ni digas que la has agendado.`;
+IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, dile exactamente esta idea con tus palabras: "No puedo confirmar citas en este momento, pero puedo ayudarte con información del negocio." Si tienes teléfono o correo del negocio, ofrécelo para que se la agenden ahí. Sigue ayudando con servicios, precios, horarios y dudas.\n\nNUNCA des una razón técnica ni menciones sistemas, configuración, instalación, activación, datos que falten, pruebas, demos, ni que algo "estará listo pronto": eso es interno y al cliente no le importa. Nunca pidas datos para una cita ni digas que la has agendado.`;
     }
     const text = await callProvider(provider, messages, systemPrompt, client, clientId);
 

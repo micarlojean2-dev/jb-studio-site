@@ -533,8 +533,8 @@
       .catch(function () {
         hideTyping();
         addMsg('bot', lang === 'en'
-          ? 'Connection error. Please try again.'
-          : 'Error de conexión. Por favor intenta de nuevo.');
+          ? "Sorry, that didn't go through 😅 Mind trying again?"
+          : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
       })
       .finally(function () {
         cancelStep = 0;
@@ -850,8 +850,8 @@ function extractBooking(text, menu) {
       .catch(function () {
         hideTyping();
         addMsg('bot', lang === 'en'
-          ? 'Connection error. Please try again.'
-          : 'Error de conexión. Por favor intenta de nuevo.');
+          ? "Sorry, that didn't go through 😅 Mind trying again?"
+          : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
       })
       .finally(function () {
         bookingStep = 0;
@@ -1002,15 +1002,15 @@ function extractBooking(text, menu) {
           save();
         } else {
           addMsg('bot', cfg.language === 'en'
-            ? 'Something went wrong. Please try again.'
-            : 'Algo salió mal. Por favor intenta de nuevo.');
+            ? "Sorry, I didn't catch that 😅 Could you say it again?"
+            : 'Perdona, no te entendí bien 😅 ¿Me lo repites?');
         }
       })
       .catch(function () {
         hideTyping();
         addMsg('bot', cfg.language === 'en'
-          ? 'Connection error. Please try again.'
-          : 'Error de conexión. Por favor intenta de nuevo.');
+          ? "Sorry, that didn't go through 😅 Mind trying again?"
+          : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
       })
       .finally(function () {
         busy = false;
