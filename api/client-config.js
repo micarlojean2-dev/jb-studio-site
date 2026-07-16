@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 
 // Fase 3: estaba usando KV_REST_API_URL/TOKEN, que no existen como variables
 // de entorno en este proyecto Vercel (solo UPSTASH_REDIS_REST_URL/TOKEN, las
@@ -9,49 +10,6 @@ const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
-
-// Qué le falta a un negocio para poder tomar reservas con criterio.
-// Se calcula, no se guarda: un flag almacenado se queda obsoleto en cuanto
-// alguien edita el cliente, y entonces miente. Esto siempre dice la verdad.
-function faltaConfig(client) {
-  const f = [];
-  if (!client || typeof client !== 'object') return ['datos del negocio'];
-
-  if (!client.timezone) f.push('zona horaria');
-
-  const bh = client.businessHours;
-  let diasAbiertos = 0;
-  if (bh && typeof bh === 'object') {
-    Object.keys(bh).forEach(d => {
-      const dia = bh[d];
-      if (dia && dia.enabled !== false && !dia.unknown && Array.isArray(dia.ranges) && dia.ranges.length) diasAbiertos++;
-    });
-  }
-  if (!bh) f.push('horario del negocio');
-  else if (!diasAbiertos) f.push('días abiertos con horario');
-
-  if (!Number.isFinite(client.minNoticeHours)) f.push('anticipación mínima');
-
-  const menu = Array.isArray(client.menu) ? client.menu : [];
-  if (!menu.length) f.push('servicios');
-  else if (menu.some(m => !m.duracion)) f.push('duración de los servicios');
-
-  return f;
-}
-
-// Solo importa si el negocio realmente toma reservas. Un Básico no las tiene,
-// así que no tiene sentido bloquearlo por no configurarlas.
-//
-// El criterio debe ser el MISMO que featureOn() en el chat (!features ||
-// features[k] !== false). Con el criterio estricto (=== true) los clientes
-// legacy, que no tienen features, quedaban fuera del bloqueo mientras el
-// chat sí les ofrecía reservar: justo el agujero que esto viene a cerrar.
-function necesitaSetup(client) {
-  if (!client) return false;
-  const reservas = !client.features || client.features.reservations !== false;
-  if (!reservas) return false;
-  return faltaConfig(client).length > 0;
-}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin',  '*');
@@ -81,10 +39,15 @@ export default async function handler(req, res) {
       // El horario de apertura es información pública (está en la web del
       // negocio). El chat lo usa para resolver "a las 4" sin preguntar.
       businessHours:  client.businessHours && typeof client.businessHours === 'object' ? client.businessHours : null,
-      timezone:       client.timezone || 'UTC',
+      // Se devuelve lo guardado, sin máscara: 'UTC' por defecto ocultaba si el
+      // campo existía y obligaba a conjeturar durante los diagnósticos.
+      timezone:       client.timezone || null,
       // El chat lo usa para no ofrecer reservas que el servidor rechazaría.
       needsSetup:     necesitaSetup(client),
-      minNoticeHours: Number.isFinite(client.minNoticeHours) ? client.minNoticeHours : 0,
+      minNoticeHours: Number.isFinite(client.minNoticeHours) ? client.minNoticeHours : null,
+      // Lista literal de lo que falta. No es información privada: solo dice qué
+      // no está configurado, y permite diagnosticar sin el admin token.
+      falta:          faltaConfig(client),
     };
     // Only present for clients created with the automatic wizard — omit the
     // key entirely for legacy clients so widget.js's "!== false" checks keep

@@ -1,4 +1,5 @@
 import { Redis }  from '@upstash/redis';
+import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { Resend } from 'resend';
 
 const redis  = new Redis({
@@ -197,49 +198,6 @@ function clientHtml(r, businessName, lang, color) {
        </table>
        <p style="font-size:15px;color:#333;margin:20px 0 0">See you soon ✨</p>`;
   return shell(inner, es ? 'Solicitud recibida ✨' : 'Request received ✨', color, businessName);
-}
-
-// Qué le falta a un negocio para poder tomar reservas con criterio.
-// Se calcula, no se guarda: un flag almacenado se queda obsoleto en cuanto
-// alguien edita el cliente, y entonces miente. Esto siempre dice la verdad.
-function faltaConfig(client) {
-  const f = [];
-  if (!client || typeof client !== 'object') return ['datos del negocio'];
-
-  if (!client.timezone) f.push('zona horaria');
-
-  const bh = client.businessHours;
-  let diasAbiertos = 0;
-  if (bh && typeof bh === 'object') {
-    Object.keys(bh).forEach(d => {
-      const dia = bh[d];
-      if (dia && dia.enabled !== false && !dia.unknown && Array.isArray(dia.ranges) && dia.ranges.length) diasAbiertos++;
-    });
-  }
-  if (!bh) f.push('horario del negocio');
-  else if (!diasAbiertos) f.push('días abiertos con horario');
-
-  if (!Number.isFinite(client.minNoticeHours)) f.push('anticipación mínima');
-
-  const menu = Array.isArray(client.menu) ? client.menu : [];
-  if (!menu.length) f.push('servicios');
-  else if (menu.some(m => !m.duracion)) f.push('duración de los servicios');
-
-  return f;
-}
-
-// Solo importa si el negocio realmente toma reservas. Un Básico no las tiene,
-// así que no tiene sentido bloquearlo por no configurarlas.
-//
-// El criterio debe ser el MISMO que featureOn() en el chat (!features ||
-// features[k] !== false). Con el criterio estricto (=== true) los clientes
-// legacy, que no tienen features, quedaban fuera del bloqueo mientras el
-// chat sí les ofrecía reservar: justo el agujero que esto viene a cerrar.
-function necesitaSetup(client) {
-  if (!client) return false;
-  const reservas = !client.features || client.features.reservations !== false;
-  if (!reservas) return false;
-  return faltaConfig(client).length > 0;
 }
 
 // Validación de reservas. Vive en el servidor a propósito: la del navegador
@@ -612,6 +570,54 @@ export default async function handler(req, res) {
 
   // Proceso diario (Vercel Cron). Vive aquí y no en api/cron.js porque el
   // proyecto está en el límite de 12 funciones del plan Hobby.
+  // Auditoría de clientes. Protegida con el mismo secreto del cron y de solo
+  // lectura: no toca ningún dato. Sirve para ver de un vistazo qué negocios no
+  // pueden tomar reservas y por qué, sin tener que abrir el panel.
+  if (req.method === 'GET' && req.query?.cron === 'audit') {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || (req.headers.authorization || '') !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    try {
+      const keys = await redis.keys('client:*');
+      const items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+      const clientes = [];
+      keys.forEach((k, i) => {
+        const c = items[i];
+        if (!c) return;
+        const menu = Array.isArray(c.menu) ? c.menu : [];
+        clientes.push({
+          id: k.replace('client:', ''),
+          negocio: c.businessName || null,
+          plan: c.plan || null,
+          active: c.active === true,
+          paymentStatus: c.paymentStatus || null,
+          reservasEnPlan: !c.features || c.features.reservations !== false,
+          timezone: c.timezone || null,
+          minNoticeHours: Number.isFinite(c.minNoticeHours) ? c.minNoticeHours : null,
+          capacityPerSlot: Number.isFinite(c.capacityPerSlot) ? c.capacityPerSlot : null,
+          holidays: Array.isArray(c.holidays) ? c.holidays.length : null,
+          businessHours: !!c.businessHours,
+          servicios: menu.length,
+          sinDuracion: menu.filter((m) => !m.duracion).map((m) => m.nombre),
+          ownerEmail: c.ownerEmail ? 'sí' : 'NO',
+          needsSetup: necesitaSetup(c),
+          falta: faltaConfig(c),
+        });
+      });
+      clientes.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      return res.status(200).json({
+        ok: true,
+        total: clientes.length,
+        listosParaReservar: clientes.filter((c) => c.active && !c.needsSetup).length,
+        clientes,
+      });
+    } catch (err) {
+      console.error('[api/reservations] audit:', err.message);
+      return res.status(500).json({ error: 'Audit failed' });
+    }
+  }
+
   if (req.method === 'GET' && req.query?.cron === 'daily') {
     const secret = process.env.CRON_SECRET;
     const auth = req.headers.authorization || '';

@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 
 const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -36,46 +37,6 @@ function getModel() {
     return process.env.DEEPSEEK_MODEL || 'deepseek-chat';
   }
   return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
-}
-
-// Qué le falta a un negocio para poder tomar reservas con criterio.
-// Se calcula, no se guarda: un flag almacenado se queda obsoleto en cuanto
-// alguien edita el cliente, y entonces miente. Esto siempre dice la verdad.
-function faltaConfig(client) {
-  const f = [];
-  if (!client || typeof client !== 'object') return ['datos del negocio'];
-
-  if (!client.timezone) f.push('zona horaria');
-
-  const bh = client.businessHours;
-  let diasAbiertos = 0;
-  if (bh && typeof bh === 'object') {
-    Object.keys(bh).forEach(d => {
-      const dia = bh[d];
-      if (dia && dia.enabled !== false && !dia.unknown && Array.isArray(dia.ranges) && dia.ranges.length) diasAbiertos++;
-    });
-  }
-  if (!bh) f.push('horario del negocio');
-  else if (!diasAbiertos) f.push('días abiertos con horario');
-
-  if (!Number.isFinite(client.minNoticeHours)) f.push('anticipación mínima');
-
-  const menu = Array.isArray(client.menu) ? client.menu : [];
-  if (!menu.length) f.push('servicios');
-  else if (menu.some(m => !m.duracion)) f.push('duración de los servicios');
-
-  return f;
-}
-
-// Solo importa si el negocio realmente toma reservas. Un Básico no las tiene,
-// así que no tiene sentido bloquearlo por no configurarlas.
-// Mismo criterio permisivo que featureOn() en el chat: los clientes legacy
-// no tienen features y sí ofrecen reservas.
-function necesitaSetup(client) {
-  if (!client) return false;
-  const reservas = !client.features || client.features.reservations !== false;
-  if (!reservas) return false;
-  return faltaConfig(client).length > 0;
 }
 
 // ── Build system prompt with injected context ──────────────────────────────
