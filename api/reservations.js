@@ -611,7 +611,8 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: false,
         motivo: 'needs_setup',
-        mensaje: 'Estamos configurando el sistema de reservas de este negocio.',
+        // Al cliente no se le habla de configuración: se le da una salida.
+        mensaje: 'Ahora mismo no puedo agendar la cita desde aquí. Puedes contactar directamente con el negocio y te la reservan sin problema.',
       });
     }
 

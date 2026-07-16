@@ -285,7 +285,7 @@ export default async function handler(req, res) {
     if (necesitaSetup(client)) {
       systemPrompt += `
 
-IMPORTANTE AHORA MISMO: el sistema de reservas de este negocio está en configuración y no puede tomar citas todavía. Si alguien quiere reservar, dile con naturalidad que estás terminando de configurar las reservas y que de momento puedes ayudarle con servicios, precios, horarios y dudas. No pidas datos para una cita ni digas que la has agendado.`;
+IMPORTANTE AHORA MISMO: hoy no puedes agendar citas tú mismo. Si alguien quiere reservar, dilo con naturalidad y ofrécele el teléfono o el contacto del negocio para que se la agenden directamente; si no tienes teléfono, ofrécele el correo. Sigue ayudando con servicios, precios, horarios y dudas.\n\nNUNCA menciones sistemas, configuración, instalación, pruebas, demos, ni que algo "estará listo pronto": eso es información interna y al cliente no le importa. Nunca pidas datos para una cita ni digas que la has agendado.`;
     }
     const text = await callProvider(provider, messages, systemPrompt, client, clientId);
 
