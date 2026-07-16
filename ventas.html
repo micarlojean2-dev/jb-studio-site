@@ -888,6 +888,12 @@
   function trackConversationStart() {
     if (conversationStarted) return;
     if (typeof window.fbq !== 'function') return;
+    try {
+      if (sessionStorage.getItem('inicio_conversacion_tracked')) return;
+      sessionStorage.setItem('inicio_conversacion_tracked', '1');
+    } catch (err) {
+      console.error('[ventas] inicio_conversacion session flag failed', err);
+    }
     conversationStarted = true;
     window.fbq('trackCustom', 'InicioConversacion');
   }
