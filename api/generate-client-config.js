@@ -60,8 +60,8 @@ ESTRUCTURA QUE DEBES DEVOLVER:
     "wednesday": { "enabled": true, "ranges": [{ "start": "09:00", "end": "19:00" }] },
     "thursday": { "enabled": true, "ranges": [{ "start": "09:00", "end": "19:00" }] },
     "friday": { "enabled": true, "ranges": [{ "start": "09:00", "end": "19:00" }] },
-    "saturday": { "enabled": true, "ranges": [{ "start": "09:00", "end": "19:00" }] },
-    "sunday": { "enabled": false, "ranges": [{ "start": "09:00", "end": "19:00" }] }
+    "saturday": { "enabled": true, "unknown": false, "ranges": [{ "start": "09:00", "end": "19:00" }] },
+    "sunday": { "enabled": false, "unknown": true, "ranges": [] }
   },
   "services": [
     { "name": "Corte de cabello", "price": "$20", "duration": "45 min", "description": "", "category": "" }
@@ -86,7 +86,7 @@ ESTRUCTURA QUE DEBES DEVOLVER:
 }
 
 REGLAS DE EXTRACCIÓN:
-1. businessHours: Incluye los 7 días. Usa enabled: false + ranges vacío para días cerrados. Si no se menciona un día, usa enabled: false.
+1. businessHours: Incluye los 7 días. Si el cliente menciona que un día está cerrado explícitamente → enabled: false, unknown: false. Si no se menciona un día en absoluto → unknown: true, enabled: false, ranges vacío. Ejemplo: si el texto dice "abre lunes a sábado", domingo debe quedar unknown: true.
 2. services: Extrae cada servicio con su precio y duración si están disponibles. Si hay precios pero no nombres específicos, crea servicios genéricos.
 3. features: Basado en lo que el negocio necesita. Si pide reservas → reservations: true, leads: true. Si dice "tomar reservas" o "permitir reservar" → reservations: true. Si menciona "responder preguntas" → faq: true.
 4. planRecommendation: basic si no necesita reservas ni captura de leads. pro si necesita reservas, captura de leads, o notificaciones por correo.
@@ -136,7 +136,7 @@ function sanitizeBusinessHours(hours) {
   for (const day of DAYS) {
     const src = hours[day];
     if (!src || typeof src !== 'object') {
-      out[day] = { enabled: false, ranges: [] };
+      out[day] = { enabled: false, unknown: true, ranges: [] };
       continue;
     }
     const ranges = Array.isArray(src.ranges)
@@ -145,7 +145,11 @@ function sanitizeBusinessHours(hours) {
           return { start: r.start, end: r.end };
         }).filter(Boolean).slice(0, 2)
       : [];
-    out[day] = { enabled: !!src.enabled, ranges };
+    out[day] = {
+      enabled: !!src.enabled,
+      unknown: src.unknown === true,
+      ranges,
+    };
   }
   return out;
 }
@@ -305,11 +309,25 @@ function normalizeConfig(raw, additionalInstructions) {
       reason: sanitizeText(raw.planRecommendation?.reason || '', 200),
     },
     additionalInstructions: sanitizeText(additionalInstructions || '', 500),
-    missingInformation: sanitizeMissingInfo(raw.missingInformation),
+    missingInformation: addUnknownDayInfo(sanitizeMissingInfo(raw.missingInformation), h),
     systemPrompt: raw.systemPrompt
       ? sanitizeText(raw.systemPrompt, 6000)
       : '',
   };
+}
+
+function addUnknownDayInfo(missing, hours) {
+  if (!hours) return missing;
+  const dayLabels = { monday: 'Lunes', tuesday: 'Martes', wednesday: 'Miércoles', thursday: 'Jueves', friday: 'Viernes', saturday: 'Sábado', sunday: 'Domingo' };
+  const out = missing.slice();
+  for (const day of DAYS) {
+    const d = hours[day];
+    if (d && d.unknown) {
+      const label = 'Horario del ' + dayLabels[day];
+      if (!out.includes(label)) out.push(label);
+    }
+  }
+  return out;
 }
 
 export default async function handler(req, res) {
