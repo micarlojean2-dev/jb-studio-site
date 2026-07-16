@@ -1289,11 +1289,12 @@
     #clients-list .clients-table th:nth-child(8), #clients-list .clients-table td:nth-child(8) { width: 14%; }
 
     /* Pagos: Cliente, Mensualidad, Próximo pago, Estado, Acción */
-    #pagos-list .clients-table th:nth-child(1), #pagos-list .clients-table td:nth-child(1) { width: 30%; }
-    #pagos-list .clients-table th:nth-child(2), #pagos-list .clients-table td:nth-child(2) { width: 16%; }
-    #pagos-list .clients-table th:nth-child(3), #pagos-list .clients-table td:nth-child(3) { width: 18%; }
-    #pagos-list .clients-table th:nth-child(4), #pagos-list .clients-table td:nth-child(4) { width: 16%; }
-    #pagos-list .clients-table th:nth-child(5), #pagos-list .clients-table td:nth-child(5) { width: 20%; }
+    #pagos-list .clients-table th:nth-child(1), #pagos-list .clients-table td:nth-child(1) { width: 24%; }
+    #pagos-list .clients-table th:nth-child(2), #pagos-list .clients-table td:nth-child(2) { width: 12%; }
+    #pagos-list .clients-table th:nth-child(3), #pagos-list .clients-table td:nth-child(3) { width: 15%; }
+    #pagos-list .clients-table th:nth-child(4), #pagos-list .clients-table td:nth-child(4) { width: 15%; }
+    #pagos-list .clients-table th:nth-child(5), #pagos-list .clients-table td:nth-child(5) { width: 14%; }
+    #pagos-list .clients-table th:nth-child(6), #pagos-list .clients-table td:nth-child(6) { width: 20%; }
 
     .ct-business { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 
@@ -2524,11 +2525,12 @@ LÍMITES ESTRICTOS:
           <div class="summary-row"><span>Último pago</span><span id="pago-info-last"></span></div>
           <div class="summary-row"><span>Próximo pago</span><span id="pago-info-next"></span></div>
           <div class="summary-row"><span>Días restantes</span><span id="pago-info-days"></span></div>
+          <div class="summary-row" id="pago-info-grace-row" style="display:none"><span>Período de gracia hasta</span><span id="pago-info-grace"></span></div>
           <div class="summary-row"><span>Estado</span><span id="pago-info-status"></span></div>
         </div>
         <div style="padding:18px 26px 24px;display:flex;flex-direction:column;gap:10px;">
           <div id="pago-generate-wrap"></div>
-          <a id="pago-stripe-link" class="wizard-btn-secondary" style="display:none;text-align:center;text-decoration:none;" target="_blank" rel="noopener noreferrer">Abrir en Stripe</a>
+          <a id="pago-stripe-link" class="wizard-btn-secondary" style="display:none;text-align:center;text-decoration:none;" target="_blank" rel="noopener noreferrer">Abrir cliente en Stripe</a>
           <button type="button" id="pago-modal-cancel" class="wizard-btn-secondary">Cerrar</button>
         </div>
       </div>
@@ -2617,7 +2619,26 @@ LÍMITES ESTRICTOS:
       return price != null ? ('$' + price + '/mes') : 'Sin monto';
     }
 
+    // Fase 4: clientes creados desde el wizard automático siempre traen
+    // `paymentStatus` (lo pone el servidor — ver api/clients.js / el webhook
+    // de Stripe). Clientes antiguos (formulario manual, ej. Barbería Prueba)
+    // no lo tienen — para esos se mantiene exactamente la lógica de siempre.
     function paymentStatusInfo(c) {
+      if (c.paymentStatus) {
+        const today = new Date().toISOString().slice(0, 10);
+        switch (c.paymentStatus) {
+          case 'cancelled': return { label: 'Cancelado', cls: 'st-red' };
+          case 'failed':    return { label: 'Pago fallido', cls: 'st-red' };
+          case 'past_due':
+            return (c.gracePeriodEndsAt && c.gracePeriodEndsAt >= today)
+              ? { label: 'En período de gracia', cls: 'st-yellow' }
+              : { label: 'Pago fallido', cls: 'st-red' };
+          case 'paid':    return { label: 'Pagado', cls: 'st-green' };
+          case 'pending': return { label: 'Esperando pago', cls: 'st-yellow' };
+          default:        return { label: 'No pagado', cls: 'st-red' };
+        }
+      }
+      // ── Lógica original (clientes sin paymentStatus) ──────────────────────
       if (c.subscriptionEnded) return { label: 'Cancelado', cls: 'st-red' };
       if (c.paymentFailed)     return { label: 'Pago fallido', cls: 'st-red' };
       if (c.paidUntil) {
@@ -2628,6 +2649,7 @@ LÍMITES ESTRICTOS:
     }
 
     function chatbotStatusInfo(c) {
+      if (!c.active && c.paymentStatus === 'pending') return { label: 'Esperando pago', cls: 'st-yellow' };
       return c.active ? { label: 'Activo', cls: 'st-green' } : { label: 'Pausado', cls: 'st-gray' };
     }
 
@@ -2660,7 +2682,7 @@ LÍMITES ESTRICTOS:
           <td>${escHTML(PLAN_LABELS[c.plan] || c.plan)}</td>
           <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver</button></td>
           <td>${planPriceLabelPerMonth(c.plan)}</td>
-          <td>${escHTML(c.paidUntil || 'Sin fecha')}</td>
+          <td>${escHTML(c.nextPaymentAt || c.paidUntil || 'Sin fecha')}</td>
           <td><span class="st-badge ${pay.cls}">${pay.label}</span></td>
           <td><span class="st-badge ${bot.cls}">${bot.label}</span></td>
           <td><button type="button" class="manage-btn ct-manage" data-cid="${escHTML(c.id)}">Administrar</button></td>
@@ -2681,7 +2703,7 @@ LÍMITES ESTRICTOS:
           <div class="cc-rows">
             <div class="cc-row"><span>Chatbot</span><span class="st-badge ${bot.cls}">${bot.label}</span></div>
             <div class="cc-row"><span>Pago</span><span class="st-badge ${pay.cls}">${pay.label}</span></div>
-            <div class="cc-row"><span>Próximo pago</span><span>${escHTML(c.paidUntil || 'Sin fecha')}</span></div>
+            <div class="cc-row"><span>Próximo pago</span><span>${escHTML(c.nextPaymentAt || c.paidUntil || 'Sin fecha')}</span></div>
           </div>
           <div class="cc-actions">
             <button type="button" class="cc-btn-secondary ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>
@@ -2904,7 +2926,10 @@ LÍMITES ESTRICTOS:
         box.innerHTML = `
           <div class="pay-link-label">Enlace de pago — envíalo al cliente</div>
           <div class="snippet-box" style="word-break:break-all;">${escHTML(d.url)}</div>
-          <button class="copy-link" style="margin-top:8px">Copiar enlace</button>`;
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <button class="copy-link" style="margin-top:0">Copiar enlace</button>
+            <a class="copy-link" style="margin-top:0;text-decoration:none;display:inline-block;" href="${escHTML(d.url)}" target="_blank" rel="noopener noreferrer">Abrir enlace</a>
+          </div>`;
         box.querySelector('.copy-link').addEventListener('click', function () {
           navigator.clipboard.writeText(d.url).then(() => {
             this.textContent = 'Copiado ✓';
@@ -2934,7 +2959,17 @@ LÍMITES ESTRICTOS:
       manageTitle.textContent = c.businessName;
       manageSub.textContent = `Plan ${PLAN_LABELS[c.plan] || c.plan}`;
       managePayInfo.style.display = 'none';
-      document.getElementById('mg-toggle-active').textContent = c.active ? '⏸ Pausar chatbot' : '▶ Reanudar chatbot';
+      // Fase 4: antes del primer pago el botón deja claro que es una
+      // activación de prueba, no un pago real — reutiliza el mismo PUT
+      // /api/clients {active} de siempre, no hay backend nuevo.
+      const toggleBtn = document.getElementById('mg-toggle-active');
+      if (c.active) {
+        toggleBtn.textContent = '⏸ Pausar chatbot';
+      } else if (c.paymentStatus === 'pending') {
+        toggleBtn.textContent = '▶ Activar para prueba (sin pago)';
+      } else {
+        toggleBtn.textContent = '▶ Reanudar chatbot';
+      }
       manageOverlay.style.display = 'flex';
     }
 
@@ -2986,7 +3021,9 @@ LÍMITES ESTRICTOS:
       const pay = paymentStatusInfo(c);
       const lines = [
         `Estado: ${pay.label}`,
-        `Próximo pago: ${c.paidUntil || 'Sin fecha'}`,
+        `Último pago: ${c.lastPaymentAt || 'Sin fecha'}`,
+        `Próximo pago: ${c.nextPaymentAt || c.paidUntil || 'Sin fecha'}`,
+        (c.gracePeriodEndsAt && c.paymentStatus === 'past_due') ? `Período de gracia hasta: ${c.gracePeriodEndsAt}` : null,
         c.stripeCustomerId ? null : 'Todavía no hay un pago registrado para este cliente.',
       ].filter(Boolean);
       managePayInfo.innerHTML = lines.map(l => escHTML(l)).join('<br>');
@@ -3194,7 +3231,8 @@ LÍMITES ESTRICTOS:
         <tr data-id="${escHTML(c.id)}">
           <td>${escHTML(c.businessName)}</td>
           <td>${planPriceLabelPerMonth(c.plan)}</td>
-          <td>${escHTML(c.paidUntil || 'Sin fecha')}</td>
+          <td>${escHTML(c.lastPaymentAt || 'Sin fecha')}</td>
+          <td>${escHTML(c.nextPaymentAt || c.paidUntil || 'Sin fecha')}</td>
           <td><span class="st-badge ${pay.cls}">${pay.label}</span></td>
           <td><button type="button" class="manage-btn ct-pago-manage" data-cid="${escHTML(c.id)}">Administrar pago</button></td>
         </tr>`;
@@ -3207,7 +3245,8 @@ LÍMITES ESTRICTOS:
           <div class="cc-top"><div class="cc-name">${escHTML(c.businessName)}</div></div>
           <div class="cc-meta">${planPriceLabelPerMonth(c.plan)}</div>
           <div class="cc-rows">
-            <div class="cc-row"><span>Próximo pago</span><span>${escHTML(c.paidUntil || 'Sin fecha')}</span></div>
+            <div class="cc-row"><span>Último pago</span><span>${escHTML(c.lastPaymentAt || 'Sin fecha')}</span></div>
+            <div class="cc-row"><span>Próximo pago</span><span>${escHTML(c.nextPaymentAt || c.paidUntil || 'Sin fecha')}</span></div>
             <div class="cc-row"><span>Estado</span><span class="st-badge ${pay.cls}">${pay.label}</span></div>
           </div>
           <div class="cc-actions">
@@ -3220,7 +3259,7 @@ LÍMITES ESTRICTOS:
         <div class="clients-table-wrap">
           <table class="clients-table">
             <thead><tr>
-              <th>Cliente</th><th>Mensualidad</th><th>Próximo pago</th><th>Estado</th><th>Acción</th>
+              <th>Cliente</th><th>Mensualidad</th><th>Último pago</th><th>Próximo pago</th><th>Estado</th><th>Administrar pago</th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>
@@ -3248,15 +3287,29 @@ LÍMITES ESTRICTOS:
       document.getElementById('pago-modal-title').textContent = c.businessName;
       document.getElementById('pago-info-plan').textContent   = PLAN_LABELS[c.plan] || c.plan;
       document.getElementById('pago-info-price').textContent  = planPriceLabelPerMonth(c.plan);
-      document.getElementById('pago-info-last').textContent   = 'Sin fecha';
-      document.getElementById('pago-info-next').textContent   = c.paidUntil || 'Sin fecha';
-      document.getElementById('pago-info-days').textContent   = daysRemainingLabel(c.paidUntil);
+      document.getElementById('pago-info-last').textContent   = c.lastPaymentAt || 'Sin fecha';
+      document.getElementById('pago-info-next').textContent   = c.nextPaymentAt || c.paidUntil || 'Sin fecha';
+      document.getElementById('pago-info-days').textContent   = daysRemainingLabel(c.nextPaymentAt || c.paidUntil);
       document.getElementById('pago-info-status').innerHTML   = `<span class="st-badge ${pay.cls}">${pay.label}</span>`;
 
-      // Solo se muestran las acciones que corresponden al estado real.
+      const graceRow = document.getElementById('pago-info-grace-row');
+      if (c.gracePeriodEndsAt && c.paymentStatus === 'past_due') {
+        document.getElementById('pago-info-grace').textContent = c.gracePeriodEndsAt;
+        graceRow.style.display = '';
+      } else {
+        graceRow.style.display = 'none';
+      }
+
+      // Solo se muestran las acciones que corresponden al estado real —
+      // basado en paymentStatus (Fase 4) cuando existe; si no, en las
+      // señales antiguas, igual que antes.
+      const failed = c.paymentStatus
+        ? (c.paymentStatus === 'past_due' || c.paymentStatus === 'failed')
+        : c.paymentFailed;
+
       const genWrap = document.getElementById('pago-generate-wrap');
       genWrap.innerHTML = '';
-      if (c.paymentFailed) {
+      if (failed) {
         genWrap.innerHTML = `<button type="button" class="action-btn ct-pay-action" data-cid="${escHTML(c.id)}" data-plan="${escHTML(c.plan)}" style="margin-top:0;width:100%;">Reintentar cobro</button>`;
       } else if (!c.stripeCustomerId) {
         genWrap.innerHTML = `<button type="button" class="action-btn ct-pay-action" data-cid="${escHTML(c.id)}" data-plan="${escHTML(c.plan)}" style="margin-top:0;width:100%;">Generar enlace de pago</button>`;
@@ -3265,9 +3318,12 @@ LÍMITES ESTRICTOS:
         btn.addEventListener('click', () => generatePaymentLink(btn.dataset.cid, btn.dataset.plan, btn));
       });
 
+      // dashboard.stripe.com/test/... — todo lo de esta fase corre en Stripe
+      // Test Mode. Cuando se conecten claves live en producción, este enlace
+      // necesitará distinguir el modo real de la suscripción.
       const stripeLink = document.getElementById('pago-stripe-link');
       if (c.stripeCustomerId) {
-        stripeLink.href = `https://dashboard.stripe.com/customers/${encodeURIComponent(c.stripeCustomerId)}`;
+        stripeLink.href = `https://dashboard.stripe.com/test/customers/${encodeURIComponent(c.stripeCustomerId)}`;
         stripeLink.style.display = '';
       } else {
         stripeLink.style.display = 'none';

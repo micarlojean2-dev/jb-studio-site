@@ -19,6 +19,10 @@ const PLAN_FEATURES = {
 };
 const FEATURE_KEYS = ['faq', 'prices', 'catalog', 'reservations', 'leads', 'emailNotifications', 'cancellation', 'rescheduling'];
 const STYLES = ['Moderno', 'Elegante', 'Amigable', 'Minimalista'];
+// Fase 4: únicamente estos dos planes tienen suscripción real en Stripe. El
+// monto guardado siempre se deriva del plan — nunca de lo que mande el
+// cliente — para que coincida exactamente con lo que Stripe va a cobrar.
+const PLAN_PRICES = { basic: 49, pro: 65 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function sanitizeServiceImage(raw) {
@@ -89,8 +93,10 @@ export default async function handler(req, res) {
     const {
       id, businessName, ownerName, ownerEmail, plan, color, language, whatsapp, prompt, menu,
       secondaryColor, style, address, hours, businessType, services, features,
-      monthlyPrice, billingDay, trialEnabled, trialDays,
+      billingDay, trialEnabled, trialDays,
     } = req.body || {};
+    // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
+    // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
 
     if (!id || !businessName || !prompt)
       return res.status(400).json({ error: 'id, businessName, and prompt are required' });
@@ -139,18 +145,26 @@ export default async function handler(req, res) {
         menu:         menuSafe,
         services:     servicesSafe,
         features:     featuresSafe,
-        monthlyPrice: Number.isFinite(Number(monthlyPrice)) && Number(monthlyPrice) > 0 ? Math.min(Number(monthlyPrice), 100000) : null,
+        monthlyPrice: PLAN_PRICES[planSafe] || null,
         billingDay:   Number.isInteger(Number(billingDay)) && Number(billingDay) >= 1 && Number(billingDay) <= 28 ? Number(billingDay) : 1,
         trialEnabled: !!trialEnabled,
         trialDays:    Number.isInteger(Number(trialDays)) && Number(trialDays) >= 1 && Number(trialDays) <= 90 ? Number(trialDays) : 7,
-        // Server-authoritative — never trust these from the request body,
-        // Stripe is not connected yet (Fase 4).
-        active:             true,
-        paymentStatus:      'pending',
-        paidUntil:           null,
-        paymentFailed:       false,
-        stripeCustomerId:    null,
-        stripeSubscriptionId: null,
+        // Server-authoritative — never trust these from the request body.
+        // Fase 4: el chatbot ya no queda activo al crearse — necesita el
+        // primer pago real. Solo el webhook de Stripe puede poner active:true
+        // o cambiar paymentStatus a partir de aquí (ver api/stripe-webhook.js).
+        active:                false,
+        paymentStatus:         'pending',
+        paidUntil:             null,
+        paymentFailed:         false,
+        stripeCustomerId:      null,
+        stripeSubscriptionId:  null,
+        stripeCheckoutSessionId: null,
+        lastPaymentAt:         null,
+        nextPaymentAt:         null,
+        gracePeriodEndsAt:     null,
+        cancelAtPeriodEnd:     false,
+        cancelledAt:           null,
         createdAt:    new Date().toISOString().slice(0, 10),
         panelToken:   randomUUID(),
         widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}"></script>`,
@@ -179,7 +193,11 @@ export default async function handler(req, res) {
       if (businessName !== undefined) client.businessName = String(businessName).slice(0, 120);
       if (ownerName !== undefined) client.ownerName   = String(ownerName).slice(0, 120);
       if (ownerEmail!== undefined) client.ownerEmail  = String(ownerEmail).slice(0, 120);
-      if (plan      !== undefined && ['basic','pro','premium'].includes(plan)) client.plan = plan;
+      if (plan      !== undefined && ['basic','pro','premium'].includes(plan)) {
+        client.plan = plan;
+        // Mantiene el monto sincronizado con el plan, igual que en la creación.
+        if (PLAN_PRICES[plan]) client.monthlyPrice = PLAN_PRICES[plan];
+      }
       if (color     !== undefined && /^#[0-9a-fA-F]{3,6}$/.test(color)) client.color = color;
       if (language  !== undefined) client.language    = language === 'en' ? 'en' : 'es';
       if (whatsapp  !== undefined) client.whatsapp    = String(whatsapp).slice(0, 30);
