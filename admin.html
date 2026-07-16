@@ -1730,6 +1730,16 @@
      Sin esta regla, cualquier display: flex/block de las reglas de abajo
      gana y todas las vistas se pintan a la vez. */
   #auto-overlay [hidden] { display: none !important; }
+  #setup-overlay [hidden] { display: none !important; }
+  #setup-overlay.hidden { display: none; }
+  .setup-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .setup-day { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 13px; }
+  .setup-day .nom { width: 92px; font-weight: 600; }
+  .setup-day input[type=time] { width: 108px; }
+  .setup-day input[type=checkbox] { width: 16px; height: 16px; }
+  .setup-dur { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  .setup-dur .nom { flex: 1; font-size: 13.5px; font-weight: 600; }
+  .setup-dur select { width: 120px; }
 
   /* Selector de formato (página completa vs cuadro en esquina) */
   .auto-display-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
@@ -3080,6 +3090,155 @@ LÍMITES ESTRICTOS:
 
     let clientsCache = [];
 
+    // ── Completar configuración de un cliente ─────────────────────────────
+    const SETUP_TZ = [
+      ['America/Los_Angeles','EE. UU. — Los Ángeles'], ['America/New_York','EE. UU. — Nueva York'],
+      ['America/Mexico_City','México — Ciudad de México'], ['America/Santiago','Chile — Santiago'],
+      ['America/Bogota','Colombia — Bogotá'], ['America/Lima','Perú — Lima'],
+      ['America/Argentina/Buenos_Aires','Argentina — Buenos Aires'], ['America/Sao_Paulo','Brasil — São Paulo'],
+      ['Europe/Madrid','España — Madrid'], ['Europe/London','Reino Unido — Londres'],
+      ['America/Toronto','Canadá — Toronto'], ['UTC','UTC'],
+    ];
+    const SETUP_DIAS = [['monday','Lunes'],['tuesday','Martes'],['wednesday','Miércoles'],
+      ['thursday','Jueves'],['friday','Viernes'],['saturday','Sábado'],['sunday','Domingo']];
+    const SETUP_DURS = ['15 min','30 min','45 min','60 min','90 min','120 min'];
+    let setupClient = null;
+
+    function abrirSetup(c) {
+      setupClient = c;
+      document.getElementById('setup-title').textContent = 'Completar — ' + c.businessName;
+      document.getElementById('setup-falta').textContent =
+        'Sin estos datos el asistente no puede agendar citas. Falta: ' + faltaConfigCliente(c).join(', ') + '.';
+
+      const tz = document.getElementById('setup-tz');
+      tz.innerHTML = '';
+      SETUP_TZ.forEach(o => { const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; tz.appendChild(op); });
+      tz.value = c.timezone || 'America/Los_Angeles';
+
+      document.getElementById('setup-email').value = c.ownerEmail || '';
+      document.getElementById('setup-notice').value = Number.isFinite(c.minNoticeHours) ? String(c.minNoticeHours) : '2';
+      document.getElementById('setup-cap').value = Number.isFinite(c.capacityPerSlot) ? String(c.capacityPerSlot) : '1';
+
+      // Horario: se precarga lo que ya haya guardado; lo que falte, 09:00-19:00
+      // y domingo cerrado, que es lo más común. El dueño lo ajusta.
+      const cont = document.getElementById('setup-hours');
+      cont.innerHTML = '';
+      SETUP_DIAS.forEach(([k, label]) => {
+        const prev = (c.businessHours && c.businessHours[k]) || null;
+        const abierto = prev ? prev.enabled !== false && !prev.unknown : k !== 'sunday';
+        const r = prev && prev.ranges && prev.ranges[0] ? prev.ranges[0] : { start: '09:00', end: '19:00' };
+        const row = document.createElement('div');
+        row.className = 'setup-day';
+        row.innerHTML = '<input type="checkbox" data-d="' + k + '"' + (abierto ? ' checked' : '') + '>' +
+          '<span class="nom">' + label + '</span>' +
+          '<input type="time" class="admin-input" data-s="' + k + '" value="' + r.start + '">' +
+          '<span>a</span>' +
+          '<input type="time" class="admin-input" data-e="' + k + '" value="' + r.end + '">';
+        cont.appendChild(row);
+      });
+
+      const durs = document.getElementById('setup-durs');
+      durs.innerHTML = '';
+      (c.menu || []).forEach((m, i) => {
+        const row = document.createElement('div');
+        row.className = 'setup-dur';
+        const sel = ['<option value="">Elige…</option>'].concat(
+          SETUP_DURS.map(d => '<option value="' + d + '"' + (m.duracion === d ? ' selected' : '') + '>' + d + '</option>')).join('');
+        row.innerHTML = '<span class="nom">' + escHTML(m.nombre) + (m.precio ? ' · ' + escHTML(m.precio) : '') + '</span>' +
+          '<select class="admin-input" data-svc="' + i + '">' + sel + '</select>';
+        durs.appendChild(row);
+      });
+
+      document.getElementById('setup-error').hidden = true;
+      document.getElementById('setup-overlay').classList.remove('hidden');
+    }
+
+    document.getElementById('setup-close').addEventListener('click', () => {
+      document.getElementById('setup-overlay').classList.add('hidden');
+    });
+
+    document.getElementById('setup-save').addEventListener('click', async () => {
+      if (!setupClient) return;
+      const err = document.getElementById('setup-error');
+      const btn = document.getElementById('setup-save');
+
+      const email = document.getElementById('setup-email').value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+        err.textContent = 'Escribe un correo válido: es donde llegarán las reservas.';
+        err.hidden = false; return;
+      }
+
+      const businessHours = {};
+      let abiertos = 0;
+      for (const [k] of SETUP_DIAS) {
+        const on = document.querySelector('[data-d="' + k + '"]').checked;
+        const st = document.querySelector('[data-s="' + k + '"]').value;
+        const en = document.querySelector('[data-e="' + k + '"]').value;
+        if (on && st && en && en > st) { businessHours[k] = { enabled: true, ranges: [{ start: st, end: en }] }; abiertos++; }
+        else businessHours[k] = { enabled: false, ranges: [] };
+      }
+      if (!abiertos) { err.textContent = 'Marca al menos un día abierto con su horario.'; err.hidden = false; return; }
+
+      const services = (setupClient.menu || []).map((m, i) => ({
+        nombre: m.nombre, precio: m.precio, descripcion: m.descripcion, imagen: m.imagen,
+        duracion: document.querySelector('[data-svc="' + i + '"]').value,
+      }));
+      if (services.some(x => !x.duracion)) {
+        err.textContent = 'Elige la duración de todos los servicios: sin ella no se puede saber si una cita cabe antes del cierre.';
+        err.hidden = false; return;
+      }
+
+      btn.disabled = true; btn.textContent = 'Guardando...';
+      try {
+        const res = await fetch('/api/clients', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+          body: JSON.stringify({
+            id: setupClient.id,
+            timezone: document.getElementById('setup-tz').value,
+            ownerEmail: email,
+            minNoticeHours: parseInt(document.getElementById('setup-notice').value, 10),
+            capacityPerSlot: parseInt(document.getElementById('setup-cap').value, 10),
+            businessHours, services,
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok || d.error) throw new Error(d.error || 'Error al guardar');
+        document.getElementById('setup-overlay').classList.add('hidden');
+        await loadClients();
+      } catch (e) {
+        err.textContent = e.message || 'No se pudo guardar.';
+        err.hidden = false;
+      } finally {
+        btn.disabled = false; btn.textContent = 'Guardar configuración';
+      }
+    });
+
+
+    // Mismo criterio que lib/setup.js en el servidor. Se duplica aquí a
+    // propósito: el panel es HTML estático y no puede importar del backend.
+    // Si cambia allí, cambia aquí — está anotado en ambos sitios.
+    function faltaConfigCliente(c) {
+      const f = [];
+      const reservas = !c.features || c.features.reservations !== false;
+      if (!reservas) return f;                        // sin reservas no aplica
+      if (!c.timezone) f.push('zona horaria');
+      const bh = c.businessHours;
+      let abiertos = 0;
+      if (bh) Object.keys(bh).forEach(d => {
+        const dia = bh[d];
+        if (dia && dia.enabled !== false && !dia.unknown && dia.ranges && dia.ranges.length) abiertos++;
+      });
+      if (!bh) f.push('horario');
+      else if (!abiertos) f.push('días abiertos');
+      if (!Number.isFinite(c.minNoticeHours)) f.push('anticipación mínima');
+      const menu = Array.isArray(c.menu) ? c.menu : [];
+      if (!menu.length) f.push('servicios');
+      else if (menu.some(m => !m.duracion)) f.push('duración de servicios');
+      if (!c.ownerEmail) f.push('correo del dueño');
+      return f;
+    }
+
     function renderClients(clients) {
       clientsCache = clients;
       if (!clients.length) {
@@ -3098,7 +3257,11 @@ LÍMITES ESTRICTOS:
             </div>
           </td>
           <td>${escHTML(PLAN_LABELS[c.plan] || c.plan)}</td>
-          <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver</button></td>
+          <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver</button>${
+            faltaConfigCliente(c).length
+              ? `<button type="button" class="ct-link ct-setup" data-cid="${escHTML(c.id)}" title="Faltan: ${escHTML(faltaConfigCliente(c).join(', '))}" style="color:#a01b1b;display:block;margin-top:4px">⚠️ Completar</button>`
+              : ''
+          }</td>
           <td>${planPriceLabelPerMonth(c.plan)}</td>
           <td>${escHTML(c.nextPaymentAt || c.paidUntil || 'Sin fecha')}</td>
           <td><span class="st-badge ${pay.cls}">${pay.label}</span></td>
@@ -3142,6 +3305,12 @@ LÍMITES ESTRICTOS:
         </div>
         <div class="client-cards">${cards}</div>`;
 
+      clientsListEl.querySelectorAll('.ct-setup').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const c = clientsCache.find(x => x.id === btn.dataset.cid);
+          if (c) abrirSetup(c);
+        });
+      });
       clientsListEl.querySelectorAll('.ct-view-bot').forEach(btn => {
         btn.addEventListener('click', () => {
           const c = clientsCache.find(x => x.id === btn.dataset.cid);
@@ -5051,6 +5220,60 @@ LÍMITES ESTRICTOS:
   </script>
 
 <!-- ── Auto-creation modal (Fase 5) ── -->
+<!-- Completar configuración de un cliente creado antes de que existieran
+     estos campos. Sin ellos el asistente no puede agendar: no sabe cuánto
+     dura un servicio ni en qué franja horaria vive el negocio. -->
+<div id="setup-overlay" class="auto-overlay hidden">
+  <div class="auto-modal">
+    <div class="auto-header">
+      <h2 id="setup-title">Completar configuración</h2>
+      <button type="button" class="auto-close-btn" id="setup-close">&times;</button>
+    </div>
+    <div class="auto-body">
+      <p class="auto-owner-help" id="setup-falta"></p>
+
+      <label class="auto-label">Zona horaria</label>
+      <select id="setup-tz" class="admin-input"></select>
+
+      <label class="auto-label">Correo del dueño (recibe las reservas)</label>
+      <input type="email" id="setup-email" class="admin-input" placeholder="dueno@negocio.com">
+
+      <div class="setup-row">
+        <div>
+          <label class="auto-label">Anticipación mínima</label>
+          <select id="setup-notice" class="admin-input">
+            <option value="0">Sin mínimo</option>
+            <option value="1">1 hora</option>
+            <option value="2" selected>2 horas</option>
+            <option value="4">4 horas</option>
+            <option value="24">1 día</option>
+          </select>
+        </div>
+        <div>
+          <label class="auto-label">Citas a la vez</label>
+          <select id="setup-cap" class="admin-input">
+            <option value="1" selected>1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">4</option>
+            <option value="5">5</option><option value="8">8</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="auto-label">Horario semanal</label>
+      <div id="setup-hours"></div>
+
+      <label class="auto-label">Duración de cada servicio</label>
+      <div id="setup-durs"></div>
+
+      <div id="setup-error" class="auto-error" hidden></div>
+    </div>
+    <div class="auto-footer">
+      <div class="auto-spacer"></div>
+      <button type="button" class="auto-btn auto-btn-primary" id="setup-save">Guardar configuración</button>
+    </div>
+  </div>
+</div>
+
 <div id="auto-overlay" class="auto-overlay hidden">
   <div class="auto-modal" id="auto-modal">
     <div class="auto-header">
