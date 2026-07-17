@@ -869,12 +869,37 @@ function extractBooking(text, menu) {
       });
   }
 
+  // Mensaje final según lo que confirmó el backend. La cita SIEMPRE nace
+  // pendiente: nunca "confirmada". Cubre los casos A/B/C del requisito.
   function mensajeReservaGuardada(d, lang) {
+    var en = lang === 'en';
     var nombre = bookingData.nombre ? String(bookingData.nombre).split(/\s+/)[0] : '';
-    var hola = nombre ? (lang === 'en' ? 'Done, ' + nombre + '. ' : 'Listo, ' + nombre + '. ') : (lang === 'en' ? 'Done. ' : 'Listo. ');
-    return hola + (lang === 'en'
-      ? 'Your request has been registered. The business will confirm availability soon. It is still pending confirmation.'
-      : 'Tu solicitud quedó registrada. El negocio confirmará la disponibilidad pronto. Sigue pendiente de confirmación.');
+    var hola = nombre ? (en ? 'Done, ' + nombre + '. ' : 'Listo, ' + nombre + '. ') : (en ? 'Done. ' : 'Listo. ');
+    var negocio = cfg.businessName || (en ? 'the business' : 'el negocio');
+    var n = (d && d.notifications) || {};
+    var ownerSent = n.owner && n.owner.sent;
+    var ownerTried = n.owner && n.owner.attempted;
+    var custTried = n.customer && n.customer.attempted;
+    var custSent = n.customer && n.customer.sent;
+
+    // Caso C: no se pudo avisar al negocio.
+    if (ownerTried && !ownerSent) {
+      return hola + (en
+        ? 'Your request has been registered, but we couldn\'t notify ' + negocio + ' by email. You can try again or contact them directly. It is still pending confirmation.'
+        : 'Tu solicitud quedó registrada, pero no pudimos avisar a ' + negocio + ' por correo. Puedes intentarlo de nuevo o contactar directamente al negocio. Sigue pendiente de confirmación.');
+    }
+
+    // Aviso al negocio enviado (o no había a quién avisar). Copia al cliente:
+    var avisamos = ownerSent
+      ? (en ? 'Your request has been registered and we notified ' + negocio + '.' : 'Tu solicitud quedó registrada y avisamos a ' + negocio + '.')
+      : (en ? 'Your request has been registered.' : 'Tu solicitud quedó registrada.');
+
+    var copia = '';
+    if (custTried && custSent) copia = en ? ' We also sent a copy to your email.' : ' También enviamos una copia a tu correo.';
+    else if (custTried && !custSent) copia = en ? ' We couldn\'t send the copy to your email, but your request was saved.' : ' No pudimos enviar la copia a tu correo, pero tu solicitud sí fue guardada.';
+
+    var pendiente = en ? ' It is still pending confirmation.' : ' Sigue pendiente de confirmación.';
+    return hola + avisamos + copia + pendiente;
   }
 
   // ── Send message ─────────────────────────────────────────────────────────
