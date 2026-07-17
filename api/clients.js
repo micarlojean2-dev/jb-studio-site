@@ -370,7 +370,7 @@ export default async function handler(req, res) {
   // ── PUT: update client fields ───────────────────────────────────────────
   if (req.method === 'PUT') {
     const { id, active, prompt, businessName, ownerName, ownerEmail, plan,
-            color, language, whatsapp, menu, services,
+            color, language, whatsapp, menu, services, features,
             timezone, minNoticeHours, businessHours, capacityPerSlot, holidays } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id is required' });
 
@@ -397,6 +397,9 @@ export default async function handler(req, res) {
       if (minNoticeHours !== undefined) client.minNoticeHours = normalizeMinNotice(minNoticeHours);
       if (capacityPerSlot !== undefined) client.capacityPerSlot = normalizeCapacity(capacityPerSlot);
       if (holidays !== undefined) client.holidays = normalizeHolidays(holidays);
+      if (features !== undefined && typeof features === 'object') {
+        client.features = sanitizeFeatures(features, client.plan || 'basic');
+      }
       if (businessHours !== undefined) {
         const bh = sanitizeBusinessHours(businessHours);
         if (bh) client.businessHours = bh;
