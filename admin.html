@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>JB Studio — Admin</title>
   <meta name="robots" content="noindex, nofollow">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -3939,12 +3942,18 @@ LÍMITES ESTRICTOS:
       try {
         const res = await fetch('/api/clients', { headers: { 'x-admin-token': t } });
         if (res.status === 401 || res.status === 403) throw new Error('bad token');
-        if (!res.ok) throw new Error(`${res.status}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const body = await res.json();
+        if (!Array.isArray(body)) throw new Error('unexpected response type: ' + typeof body);
         token = t;
         loginScreen.style.display = 'none';
         adminPanel.style.display  = 'block';
         loadClients();
-      } catch {
+      } catch (err) {
+        console.error('[admin] login error:', err);
+        loginError.textContent = err.message === 'bad token'
+          ? 'Invalid token. Please try again.'
+          : 'Connection error (' + err.message + '). Check console.';
         loginError.style.display = 'block';
         loginBtn.disabled = false;
         loginBtn.textContent = 'Access Panel →';
