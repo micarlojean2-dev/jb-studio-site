@@ -1743,6 +1743,11 @@
   .setup-dur { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
   .setup-dur .nom { flex: 1; font-size: 13.5px; font-weight: 600; }
   .setup-dur select { width: 120px; }
+  .setup-hint { font-size: 12px; color: #6b6f76; margin: 2px 0 6px; line-height: 1.4; }
+  .setup-email-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+  .setup-email-row .setup-email-inp { flex: 1; }
+  .setup-email-del { font-size: 12px; color: var(--danger, #c0392b); background: none; border: none; cursor: pointer; padding: 4px 6px; }
+  .setup-email-del:hover { text-decoration: underline; }
 
   /* Selector de formato (página completa vs cuadro en esquina) */
   .auto-display-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
@@ -3105,6 +3110,43 @@ LÍMITES ESTRICTOS:
     const SETUP_DIAS = [['monday','Lunes'],['tuesday','Martes'],['wednesday','Miércoles'],
       ['thursday','Jueves'],['friday','Viernes'],['saturday','Sábado'],['sunday','Domingo']];
     const SETUP_DURS = ['15 min','30 min','45 min','60 min','90 min','120 min'];
+    const EMAIL_RE_SETUP = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+    // Lista editable de correos de aviso (Fase 3): añadir/eliminar/validar.
+    function setupEmailRow(valor) {
+      var row = document.createElement('div');
+      row.className = 'setup-email-row';
+      var inp = document.createElement('input');
+      inp.type = 'email'; inp.className = 'admin-input setup-email-inp';
+      inp.placeholder = 'correo@negocio.com'; inp.value = valor || '';
+      var del = document.createElement('button');
+      del.type = 'button'; del.className = 'setup-email-del'; del.textContent = 'Eliminar';
+      del.addEventListener('click', function () {
+        var cont = document.getElementById('setup-emails');
+        if (cont.querySelectorAll('.setup-email-row').length > 1) row.remove();
+        else inp.value = '';   // nunca quedar sin ninguna fila
+      });
+      row.appendChild(inp); row.appendChild(del);
+      return row;
+    }
+    function renderSetupEmails(lista) {
+      var cont = document.getElementById('setup-emails');
+      cont.innerHTML = '';
+      (lista && lista.length ? lista : ['']).forEach(function (e) { cont.appendChild(setupEmailRow(e)); });
+    }
+    function leerSetupEmails() {
+      var vistos = {}, out = [];
+      document.querySelectorAll('#setup-emails .setup-email-inp').forEach(function (inp) {
+        var v = String(inp.value || '').trim().toLowerCase();
+        if (EMAIL_RE_SETUP.test(v) && !vistos[v]) { vistos[v] = 1; out.push(v); }
+      });
+      return out.slice(0, 10);
+    }
+    document.getElementById('setup-add-email').addEventListener('click', function () {
+      var cont = document.getElementById('setup-emails');
+      if (cont.querySelectorAll('.setup-email-row').length < 10) cont.appendChild(setupEmailRow(''));
+    });
+
     let setupClient = null;
     let setupCloseRegistered = false;
 
@@ -3119,7 +3161,12 @@ LÍMITES ESTRICTOS:
       SETUP_TZ.forEach(o => { const op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; tz.appendChild(op); });
       tz.value = c.timezone || 'America/Los_Angeles';
 
-      document.getElementById('setup-email').value = c.ownerEmail || '';
+      // Lista de correos: se siembra de notificationEmails o, si no existe, del
+      // ownerEmail antiguo. Al menos una fila.
+      var seed = (Array.isArray(c.notificationEmails) && c.notificationEmails.length)
+        ? c.notificationEmails.slice()
+        : (c.ownerEmail ? [c.ownerEmail] : ['']);
+      renderSetupEmails(seed);
       document.getElementById('setup-notice').value = Number.isFinite(c.minNoticeHours) ? String(c.minNoticeHours) : '2';
       document.getElementById('setup-cap').value = Number.isFinite(c.capacityPerSlot) ? String(c.capacityPerSlot) : '1';
 
@@ -3167,9 +3214,11 @@ LÍMITES ESTRICTOS:
           var err = document.getElementById('setup-error');
           var btn = document.getElementById('setup-save');
 
-          var email = document.getElementById('setup-email').value.trim();
-          if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-            err.textContent = 'Escribe un correo válido: es donde llegarán las reservas.';
+          // Lista de correos de aviso: válidos, en minúsculas, sin duplicados.
+          // Al menos uno si el negocio toma reservas.
+          var notificationEmails = leerSetupEmails();
+          if (!notificationEmails.length) {
+            err.textContent = 'Agrega al menos un correo válido: es donde llegarán los avisos de reservas.';
             err.hidden = false; return;
           }
 
@@ -3204,7 +3253,8 @@ LÍMITES ESTRICTOS:
               body: JSON.stringify({
                 id: setupClient.id,
                 timezone: document.getElementById('setup-tz').value,
-                ownerEmail: email,
+                notificationEmails: notificationEmails,
+                ownerEmail: notificationEmails[0],   // compatibilidad con el campo antiguo
                 minNoticeHours: parseInt(document.getElementById('setup-notice').value, 10),
                 capacityPerSlot: parseInt(document.getElementById('setup-cap').value, 10),
                 businessHours: businessHours, services: services,
@@ -5251,8 +5301,10 @@ LÍMITES ESTRICTOS:
       <label class="auto-label">Zona horaria</label>
       <select id="setup-tz" class="admin-input"></select>
 
-      <label class="auto-label">Correo del dueño (recibe las reservas)</label>
-      <input type="email" id="setup-email" class="admin-input" placeholder="dueno@negocio.com">
+      <label class="auto-label">Correos para recibir avisos de reservas</label>
+      <p class="setup-hint">Agrega las personas que deben recibir un aviso cuando un cliente solicite una cita. Si las reservas están activas, hace falta al menos uno.</p>
+      <div id="setup-emails"></div>
+      <button type="button" class="auto-btn auto-btn-secondary" id="setup-add-email" style="font-size:13px;padding:7px 12px;margin-top:6px;">+ Agregar otro correo</button>
 
       <div class="setup-row">
         <div>
@@ -5982,6 +6034,9 @@ LÍMITES ESTRICTOS:
       id: clientId,
       businessName: b.businessName || 'Mi negocio',
       ownerEmail: ownerEmailValue(),
+      // El correo recogido en el creador siembra la lista de avisos. Se pueden
+      // añadir más desde "Administrar".
+      notificationEmails: ownerEmailValue() ? [ownerEmailValue()] : [],
       plan: config.planRecommendation.plan || 'basic',
       languages: b.languages || ['es'],
       primaryLanguage: b.primaryLanguage || 'es',
