@@ -3106,6 +3106,7 @@ LÍMITES ESTRICTOS:
       ['thursday','Jueves'],['friday','Viernes'],['saturday','Sábado'],['sunday','Domingo']];
     const SETUP_DURS = ['15 min','30 min','45 min','60 min','90 min','120 min'];
     let setupClient = null;
+    let setupCloseRegistered = false;
 
     function abrirSetup(c) {
       setupClient = c;
@@ -3154,68 +3155,74 @@ LÍMITES ESTRICTOS:
 
       document.getElementById('setup-error').hidden = true;
       document.getElementById('setup-overlay').classList.remove('hidden');
-    }
 
-    document.getElementById('setup-close').addEventListener('click', () => {
-      document.getElementById('setup-overlay').classList.add('hidden');
-    });
-
-    document.getElementById('setup-save').addEventListener('click', async () => {
-      if (!setupClient) return;
-      const err = document.getElementById('setup-error');
-      const btn = document.getElementById('setup-save');
-
-      const email = document.getElementById('setup-email').value.trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-        err.textContent = 'Escribe un correo válido: es donde llegarán las reservas.';
-        err.hidden = false; return;
-      }
-
-      const businessHours = {};
-      let abiertos = 0;
-      for (const [k] of SETUP_DIAS) {
-        const on = document.querySelector('[data-d="' + k + '"]').checked;
-        const st = document.querySelector('[data-s="' + k + '"]').value;
-        const en = document.querySelector('[data-e="' + k + '"]').value;
-        if (on && st && en && en > st) { businessHours[k] = { enabled: true, ranges: [{ start: st, end: en }] }; abiertos++; }
-        else businessHours[k] = { enabled: false, ranges: [] };
-      }
-      if (!abiertos) { err.textContent = 'Marca al menos un día abierto con su horario.'; err.hidden = false; return; }
-
-      const services = (setupClient.menu || []).map((m, i) => ({
-        nombre: m.nombre, precio: m.precio, descripcion: m.descripcion, imagen: m.imagen,
-        duracion: document.querySelector('[data-svc="' + i + '"]').value,
-      }));
-      if (services.some(x => !x.duracion)) {
-        err.textContent = 'Elige la duración de todos los servicios: sin ella no se puede saber si una cita cabe antes del cierre.';
-        err.hidden = false; return;
-      }
-
-      btn.disabled = true; btn.textContent = 'Guardando...';
-      try {
-        const res = await fetch('/api/clients', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
-          body: JSON.stringify({
-            id: setupClient.id,
-            timezone: document.getElementById('setup-tz').value,
-            ownerEmail: email,
-            minNoticeHours: parseInt(document.getElementById('setup-notice').value, 10),
-            capacityPerSlot: parseInt(document.getElementById('setup-cap').value, 10),
-            businessHours, services,
-          }),
+      // Register modal event listeners lazily (elements exist after full page parse)
+      if (!setupCloseRegistered) {
+        setupCloseRegistered = true;
+        document.getElementById('setup-close').addEventListener('click', function () {
+          document.getElementById('setup-overlay').classList.add('hidden');
         });
-        const d = await res.json();
-        if (!res.ok || d.error) throw new Error(d.error || 'Error al guardar');
-        document.getElementById('setup-overlay').classList.add('hidden');
-        await loadClients();
-      } catch (e) {
-        err.textContent = e.message || 'No se pudo guardar.';
-        err.hidden = false;
-      } finally {
-        btn.disabled = false; btn.textContent = 'Guardar configuración';
+        document.getElementById('setup-save').addEventListener('click', async function () {
+          if (!setupClient) return;
+          var err = document.getElementById('setup-error');
+          var btn = document.getElementById('setup-save');
+
+          var email = document.getElementById('setup-email').value.trim();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+            err.textContent = 'Escribe un correo válido: es donde llegarán las reservas.';
+            err.hidden = false; return;
+          }
+
+          var businessHours = {};
+          var abiertos = 0;
+          for (var ki = 0; ki < SETUP_DIAS.length; ki++) {
+            var k = SETUP_DIAS[ki][0];
+            var on = document.querySelector('[data-d="' + k + '"]').checked;
+            var st = document.querySelector('[data-s="' + k + '"]').value;
+            var en = document.querySelector('[data-e="' + k + '"]').value;
+            if (on && st && en && en > st) { businessHours[k] = { enabled: true, ranges: [{ start: st, end: en }] }; abiertos++; }
+            else businessHours[k] = { enabled: false, ranges: [] };
+          }
+          if (!abiertos) { err.textContent = 'Marca al menos un día abierto con su horario.'; err.hidden = false; return; }
+
+          var services = (setupClient.menu || []).map(function(m, i) {
+            return {
+              nombre: m.nombre, precio: m.precio, descripcion: m.descripcion, imagen: m.imagen,
+              duracion: document.querySelector('[data-svc="' + i + '"]').value,
+            };
+          });
+          if (services.some(function(x) { return !x.duracion; })) {
+            err.textContent = 'Elige la duración de todos los servicios: sin ella no se puede saber si una cita cabe antes del cierre.';
+            err.hidden = false; return;
+          }
+
+          btn.disabled = true; btn.textContent = 'Guardando...';
+          try {
+            var res = await fetch('/api/clients', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+              body: JSON.stringify({
+                id: setupClient.id,
+                timezone: document.getElementById('setup-tz').value,
+                ownerEmail: email,
+                minNoticeHours: parseInt(document.getElementById('setup-notice').value, 10),
+                capacityPerSlot: parseInt(document.getElementById('setup-cap').value, 10),
+                businessHours: businessHours, services: services,
+              }),
+            });
+            var d = await res.json();
+            if (!res.ok || d.error) throw new Error(d.error || 'Error al guardar');
+            document.getElementById('setup-overlay').classList.add('hidden');
+            await loadClients();
+          } catch (e) {
+            err.textContent = e.message || 'No se pudo guardar.';
+            err.hidden = false;
+          } finally {
+            btn.disabled = false; btn.textContent = 'Guardar configuración';
+          }
+        });
       }
-    });
+    }
 
 
     // Mismo criterio que lib/setup.js en el servidor. Se duplica aquí a
@@ -3933,17 +3940,14 @@ LÍMITES ESTRICTOS:
 
     // ── Login / Logout ─────────────────────────────────────────────────────
      async function tryLogin() {
-      alert("CLICK DETECTADO - tryLogin ejecutandose");
       const t = tokenInput.value.trim();
-      if (!t) { alert("Token vacio - escribiste la contrasena?"); return; }
+      if (!t) return;
       loginError.style.display = 'none';
       loginBtn.disabled = true;
       loginBtn.textContent = 'Checking…';
 
       try {
-        alert("Enviando fetch a /api/clients con token: " + t.substring(0, 3) + "...");
         const res = await fetch('/api/clients', { headers: { 'x-admin-token': t } });
-        alert("Respuesta recibida - Status: " + res.status);
         if (res.status === 401 || res.status === 403) throw new Error('bad token');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const body = await res.json();
