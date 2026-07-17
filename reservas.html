@@ -3,463 +3,197 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Panel de Reservas — JB Studio</title>
+  <title>Citas — JB Studio</title>
   <meta name="robots" content="noindex, nofollow">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:      #0d0d0d;
-      --surface: #161616;
-      --border:  #2a2a2a;
-      --text:    #e8e8e8;
-      --muted:   #888;
-      --green:   #4ade80;
-      --accent:  #1a4a2e;
+      --bg: #f6f4ee;      /* beige claro */
+      --card: #ffffff;
+      --line: #e7e3d9;
+      --ink: #23211c;
+      --muted: #7c7768;
+      --accent: #1a4a2e;
+      --cancel: #b23b3b;
     }
-
     body {
       background: var(--bg);
-      color: var(--text);
-      font-family: 'IBM Plex Mono', monospace;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
       min-height: 100vh;
-      padding: 0 0 60px;
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* ── Header ── */
+    /* ── Cabecera ── */
     .hdr {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 16px 24px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
+      background: var(--card);
+      border-bottom: 1px solid var(--line);
+      padding: 16px 20px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     }
-    .hdr-logo {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      text-decoration: none;
+    .hdr-biz { font-size: 17px; font-weight: 650; flex: 1; min-width: 0; }
+    .hdr-btn {
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+      background: var(--card); color: var(--ink); border: 1px solid var(--line);
+      border-radius: 9px; padding: 8px 13px;
     }
-    .hdr-logo img { width: 32px; height: 32px; border-radius: 6px; }
-    .hdr-logo span {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.3rem;
-      letter-spacing: 2px;
-      color: var(--text);
-    }
-    .hdr-sep { flex: 1; }
-    .hdr-biz {
-      font-size: 12px;
-      color: var(--muted);
-      background: var(--border);
-      padding: 4px 10px;
-      border-radius: 6px;
-    }
+    .hdr-btn:hover { border-color: #cfc9bb; }
+    .hdr-btn.ghost { color: var(--muted); border-color: transparent; }
 
-    /* ── Login screen ── */
-    #login-screen {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: calc(100vh - 65px);
-      padding: 24px;
-    }
-    .login-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 40px 36px;
-      max-width: 400px;
-      width: 100%;
-    }
-    .login-card h2 {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.6rem;
-      letter-spacing: 2px;
-      color: var(--text);
-      margin-bottom: 8px;
-    }
-    .login-card p {
-      font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 28px;
-      line-height: 1.6;
-    }
-    .login-card label {
-      display: block;
-      font-size: 11px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: .06em;
-      margin-bottom: 8px;
-    }
-    .login-card input {
-      width: 100%;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 14px;
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 13px;
-      color: var(--text);
-      outline: none;
-      transition: border-color .15s;
-      margin-bottom: 16px;
-    }
-    .login-card input:focus { border-color: var(--green); }
-    .btn-primary {
-      width: 100%;
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 13px;
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1rem;
-      letter-spacing: 2px;
-      cursor: pointer;
-      transition: opacity .15s;
-    }
-    .btn-primary:hover { opacity: .85; }
-    .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
-    .login-err {
-      margin-top: 12px;
-      font-size: 12px;
-      color: #f87171;
-      display: none;
-    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 22px 16px 60px; }
 
-    /* ── Main panel ── */
-    #panel-screen { display: none; }
+    h1 { font-size: 24px; font-weight: 700; margin-bottom: 2px; }
+    .sub { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
 
-    .panel-wrap {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 28px 20px;
-    }
-    .panel-title-row {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      flex-wrap: wrap;
-      margin-bottom: 24px;
-    }
-    .panel-title {
-      font-family: 'Bebas Neue', sans-serif;
-      font-size: 1.8rem;
-      letter-spacing: 2px;
-    }
-    .panel-count {
-      font-size: 11px;
-      color: var(--muted);
-      background: var(--border);
-      padding: 4px 10px;
-      border-radius: 20px;
-    }
-
-    /* ── Filters ── */
-    .filter-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 4px; }
-    .stats { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 4px; }
-    .stat {
-      flex: 1 1 150px; background: #fff; border: 1px solid var(--border);
-      border-radius: 14px; padding: 14px 16px;
-      box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 14px rgba(0,0,0,.04);
-    }
-    .stat-val { font-size: 24px; font-weight: 700; line-height: 1.1; }
-    .stat-lbl { font-size: 12px; color: #6b6f76; margin-top: 4px; }
-    .setup-warn {
-      background: #fff4e5; border: 1.5px solid #f0d9b5; border-radius: 12px;
-      padding: 14px 16px; margin: 14px 0 0; color: #8a4b00; font-size: 13.5px; line-height: 1.5;
-    }
-    .setup-warn strong { display: block; margin-bottom: 4px; font-size: 14.5px; }
-    .motivo { font-size: 10.5px; color: #8a8f96; margin-top: 3px; }
-    .stat-note { flex: 1 1 100%; font-size: 11.5px; color: #8a8f96; padding: 2px 2px 0; }
-    @media (max-width: 600px) { .stat { flex: 1 1 100%; } }
-    .filters {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 20px;
-    }
+    /* ── Filtros (solo dos) ── */
+    .filters { display: flex; gap: 8px; margin-bottom: 16px; }
     .filter-btn {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--muted);
-      border-radius: 20px;
-      padding: 6px 14px;
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 11px;
-      cursor: pointer;
-      transition: all .15s;
+      font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+      background: var(--card); color: var(--muted); border: 1px solid var(--line);
+      border-radius: 20px; padding: 8px 16px;
     }
-    .filter-btn:hover { border-color: var(--green); color: var(--text); }
-    .filter-btn.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
-    }
+    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-    /* ── Table ── */
-    .tbl-wrap {
-      overflow-x: auto;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-      min-width: 900px;
-    }
+    /* ── Tabla (escritorio) ── */
+    .sheet { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
     thead th {
-      background: var(--surface);
-      color: var(--muted);
-      font-weight: 500;
-      text-align: left;
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--border);
-      text-transform: uppercase;
-      font-size: 10px;
-      letter-spacing: .06em;
-      white-space: nowrap;
+      text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: .03em;
+      text-transform: uppercase; color: var(--muted);
+      padding: 12px 14px; border-bottom: 1px solid var(--line); white-space: nowrap;
     }
-    tbody tr {
-      border-bottom: 1px solid var(--border);
-      transition: background .12s;
-    }
-    tbody tr:last-child { border-bottom: none; }
-    tbody tr:hover { background: var(--surface); }
-    td {
-      padding: 13px 14px;
-      vertical-align: top;
-      color: var(--text);
-      max-width: 180px;
-      word-break: break-word;
-    }
-    td.muted { color: var(--muted); font-size: 11px; }
+    tbody td { padding: 13px 14px; font-size: 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    tbody tr:last-child td { border-bottom: none; }
+    .cel-nom { font-weight: 600; }
+    .cel-muted { color: var(--muted); }
+    .estado { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+    .estado.nueva { background: #e7f2ea; color: var(--accent); }
+    .estado.reprogramada { background: #fff4e2; color: #8a5a00; }
+    .estado.cancelada { background: #fbe9e9; color: var(--cancel); }
 
-    /* ── Estado badges ── */
-    .badge {
-      display: inline-block;
-      padding: 3px 9px;
-      border-radius: 20px;
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      white-space: nowrap;
-    }
-    .badge-pendiente  { background: #78350f22; color: #fbbf24; border: 1px solid #78350f88; }
-    .badge-confirmada { background: #14532d22; color: #4ade80; border: 1px solid #14532d88; }
-    .badge-rechazada  { background: #7f1d1d22; color: #f87171; border: 1px solid #7f1d1d88; }
-    .badge-cancelada  { background: #27272722; color: #888;    border: 1px solid #3f3f3f88; }
+    .empty { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 14px; }
+    .updated { font-size: 12px; color: var(--muted); margin-top: 12px; text-align: right; }
 
-    /* ── Action buttons ── */
-    .actions { display: flex; gap: 6px; flex-wrap: wrap; }
-    .act-btn {
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--muted);
-      border-radius: 6px;
-      padding: 4px 9px;
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 10px;
-      cursor: pointer;
-      transition: all .15s;
-      white-space: nowrap;
+    /* ── Móvil: cada cita como tarjeta, sin tabla ancha ── */
+    @media (max-width: 620px) {
+      .sheet { background: transparent; border: none; }
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tbody tr {
+        background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+        padding: 14px; margin-bottom: 12px;
+      }
+      tbody td { border: none; padding: 2px 0; font-size: 14px; }
+      tbody td.cel-nom { font-size: 16px; margin-bottom: 2px; }
+      tbody td[data-lbl]::before { content: attr(data-lbl) ": "; color: var(--muted); font-weight: 500; }
+      tbody td.cel-nom::before, tbody td.cel-estado::before { content: none; }
+      tbody td.cel-estado { margin-top: 8px; }
     }
-    .act-btn:hover { color: var(--text); border-color: #555; }
-    .act-btn.confirm { color: #4ade80; border-color: #14532d88; }
-    .act-btn.confirm:hover { background: #14532d44; }
-    .act-btn.reject  { color: #f87171; border-color: #7f1d1d88; }
-    .act-btn.reject:hover  { background: #7f1d1d44; }
-    .act-btn.cancel  { color: #888;    border-color: #3f3f3f88; }
-    .act-btn.cancel:hover  { background: #27272744; }
-    .act-btn:disabled { opacity: .3; cursor: not-allowed; }
 
-    /* ── Empty / loading ── */
-    .panel-msg {
-      text-align: center;
-      padding: 60px 20px;
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .panel-msg p { margin-top: 8px; font-size: 11px; }
-
-    /* ── Logout ── */
-    .logout-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      border-radius: 6px;
-      padding: 6px 12px;
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 11px;
-      cursor: pointer;
-      transition: all .15s;
-    }
-    .logout-btn:hover { color: var(--text); border-color: #555; }
-
-    /* ── Refresh ── */
-    .refresh-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      border-radius: 6px;
-      padding: 6px 12px;
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 11px;
-      cursor: pointer;
-      transition: all .15s;
-    }
-    .refresh-btn:hover { color: var(--text); border-color: #555; }
-
-    @media (max-width: 600px) {
-      .panel-wrap { padding: 16px 12px; }
-      .login-card { padding: 28px 20px; }
-    }
+    /* ── Login ── */
+    #login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .login-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 28px; max-width: 380px; width: 100%; }
+    .login-card h2 { font-size: 20px; margin-bottom: 6px; }
+    .login-card p { font-size: 13.5px; color: var(--muted); margin-bottom: 16px; line-height: 1.5; }
+    .login-inp { width: 100%; font: inherit; font-size: 15px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fbfaf6; }
+    .login-inp:focus { outline: none; border-color: var(--accent); }
+    .login-go { width: 100%; margin-top: 10px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 12px; }
+    .login-go:disabled { opacity: .6; cursor: not-allowed; }
+    .login-err { display: none; color: var(--cancel); font-size: 13px; margin-top: 10px; }
   </style>
 </head>
 <body>
 
-  <!-- ── Header ── -->
-  <header class="hdr">
-    <a href="https://jbstudio.app" class="hdr-logo">
-      <img src="/public/chatbot-logo.png" alt="JB Studio">
-      <span>JB STUDIO</span>
-    </a>
-    <div class="hdr-sep"></div>
-    <span class="hdr-biz" id="hdr-biz" style="display:none"></span>
-    <button class="logout-btn" id="logout-btn" style="display:none" onclick="logout()">Cerrar sesión</button>
-  </header>
-
-  <!-- ── Login ── -->
-  <div id="login-screen">
+  <!-- Login -->
+  <div id="login">
     <div class="login-card">
-      <h2>Panel de Reservas</h2>
-      <p id="login-desc">Ingresa tu clave de acceso para ver las reservas.</p>
-      <label for="token-inp">Clave de acceso</label>
-      <input type="password" id="token-inp" placeholder="••••••••••••••••••••" autocomplete="off">
-      <button class="btn-primary" id="login-btn" onclick="doLogin()">Ingresar →</button>
-      <div class="login-err" id="login-err">Clave incorrecta. Verifica e intenta de nuevo.</div>
+      <h2>Tus citas</h2>
+      <p id="login-desc">Introduce tu clave de acceso para ver las citas de tu negocio.</p>
+      <input class="login-inp" id="token-inp" type="password" placeholder="Clave de acceso" autocomplete="off">
+      <button class="login-go" id="login-btn" onclick="doLogin()">Entrar</button>
+      <div class="login-err" id="login-err">Clave incorrecta. Inténtalo de nuevo.</div>
     </div>
   </div>
 
-  <!-- ── Panel ── -->
-  <div id="panel-screen">
-    <div class="panel-wrap">
-      <div class="panel-title-row">
-        <span class="panel-title">Reservas</span>
-        <span class="panel-count" id="panel-count">—</span>
-        <div style="flex:1"></div>
-        <button class="refresh-btn" onclick="loadReservations()">↻ Actualizar</button>
+  <!-- Panel -->
+  <div id="panel" style="display:none">
+    <div class="hdr">
+      <span class="hdr-biz" id="hdr-biz"></span>
+      <button class="hdr-btn" id="refresh-btn" onclick="loadReservations()">↻ Actualizar</button>
+      <button class="hdr-btn ghost" onclick="logout()">Salir</button>
+    </div>
+    <div class="wrap">
+      <h1>Citas</h1>
+      <div class="sub" id="count">—</div>
+      <div class="filters">
+        <button class="filter-btn active" data-f="proximas" onclick="setFilter('proximas',this)">Próximas</button>
+        <button class="filter-btn" data-f="canceladas" onclick="setFilter('canceladas',this)">Canceladas</button>
       </div>
-
-      <div class="filters" id="filters">
-        <button class="filter-btn active" data-filter="all"       onclick="setFilter('all',this)">Todas</button>
-        <button class="filter-btn"        data-filter="pendiente" onclick="setFilter('pendiente',this)">Pendientes</button>
-        <button class="filter-btn"        data-filter="confirmada" onclick="setFilter('confirmada',this)">Confirmadas</button>
-        <button class="filter-btn"        data-filter="rechazada" onclick="setFilter('rechazada',this)">Rechazadas</button>
-        <button class="filter-btn"        data-filter="cancelada" onclick="setFilter('cancelada',this)">Canceladas</button>
-        <span class="filter-sep"></span>
-        <button class="filter-btn"        data-filter="hoy"      onclick="setFilter('hoy',this)">Hoy</button>
-        <button class="filter-btn"        data-filter="manana"   onclick="setFilter('manana',this)">Mañana</button>
-        <button class="filter-btn"        data-filter="semana"   onclick="setFilter('semana',this)">Semana</button>
-      </div>
-      <div class="stats" id="stats"></div>
-
-      <div class="tbl-wrap" id="tbl-wrap">
-        <div class="panel-msg" id="panel-loading">Cargando reservas…</div>
-      </div>
+      <div class="sheet" id="sheet"></div>
+      <div class="updated" id="updated"></div>
     </div>
   </div>
 
 <script>
-  // ── Extract clientId from URL ────────────────────────────────────────────
-  // Fase 4.2: se resuelve desde ?id= o desde el pathname (/reservas/{id}),
-  // para no depender de una única configuración de Vercel. Solo se aceptan
-  // minúsculas, números y guiones — antes no se sanitizaba el segmento.
-  // El token NO se lee de la query string a propósito: viaja por fragmento
-  // (#t=), que el navegador nunca envía al servidor.
-  function resolveClientId() {
-    var fromQuery = '';
-    try {
-      fromQuery = new URLSearchParams(window.location.search).get('id') || '';
-    } catch (e) {
-      fromQuery = '';
-    }
-    if (fromQuery) return sanitizeId(fromQuery);
-
-    var parts = window.location.pathname.split('/').filter(Boolean);
-    var idx   = parts.indexOf('reservas');
-    var seg   = idx !== -1 ? (parts[idx + 1] || '') : (parts[1] || '');
-    return sanitizeId(seg);
-  }
-
+  // clientId desde ?id= o /reservas/{id}. El token viaja por fragmento (#t=),
+  // que el navegador nunca manda al servidor — nunca en la query string.
   function sanitizeId(raw) {
     var v = String(raw || '').trim().toLowerCase();
     return /^[a-z0-9-]{1,80}$/.test(v) ? v : '';
+  }
+  function resolveClientId() {
+    var q = '';
+    try { q = new URLSearchParams(window.location.search).get('id') || ''; } catch (e) {}
+    if (q) return sanitizeId(q);
+    var parts = window.location.pathname.split('/').filter(Boolean);
+    var idx = parts.indexOf('reservas');
+    return sanitizeId(idx !== -1 ? (parts[idx + 1] || '') : (parts[1] || ''));
   }
 
   var clientId  = resolveClientId();
   var API       = 'https://jbstudio.app';
   var STORE_KEY = 'jbr_' + clientId + '_token';
+  var currentToken = '';
+  var allData = [];
+  var activeFilter = 'proximas';
+  var refreshTimer = null;
 
   if (!clientId) {
-    document.getElementById('login-desc').textContent = 'URL inválida. Asegúrate de acceder como: jbstudio.app/reservas/{tu-id}';
+    document.getElementById('login-desc').textContent = 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio';
     document.getElementById('login-btn').disabled = true;
   }
 
-  // ── State ────────────────────────────────────────────────────────────────
-  var currentToken = '';
-  var allData      = [];
-  var activeFilter = 'all';
-
-  // ── Try saved token on load ───────────────────────────────────────────────
-  // A token can also arrive once via a URL fragment (#t=...) — e.g. from the
-  // admin panel's "Ver panel de reservas" button right after creating a
-  // client. The fragment is never sent to the server and is scrubbed from
-  // the visible address bar immediately, so the token is never shown as
-  // plain text anywhere in the admin UI.
   window.addEventListener('DOMContentLoaded', function () {
-    var fragToken = '';
+    var frag = '';
     if (window.location.hash && window.location.hash.indexOf('t=') !== -1) {
-      fragToken = decodeURIComponent(window.location.hash.replace(/^#t=/, ''));
+      frag = decodeURIComponent(window.location.hash.replace(/^#t=/, ''));
       history.replaceState(null, '', window.location.pathname + window.location.search);
     }
-
-    if (fragToken) {
-      tryToken(fragToken);
-    } else {
-      var saved = localStorage.getItem(STORE_KEY);
-      if (saved) tryToken(saved);
-    }
-
-    document.getElementById('token-inp').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') doLogin();
-    });
+    if (frag) tryToken(frag);
+    else { var saved = localStorage.getItem(STORE_KEY); if (saved) tryToken(saved); }
+    document.getElementById('token-inp').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
   });
 
   function doLogin() {
     var t = document.getElementById('token-inp').value.trim();
     if (!t) return;
-    document.getElementById('login-btn').disabled = true;
-    document.getElementById('login-btn').textContent = 'Verificando…';
+    var b = document.getElementById('login-btn');
+    b.disabled = true; b.textContent = 'Verificando…';
     document.getElementById('login-err').style.display = 'none';
     tryToken(t);
   }
 
-  function tryToken(t) {
-    fetch(API + '/api/reservations-list?clientId=' + encodeURIComponent(clientId) + '&token=' + encodeURIComponent(t))
+  function fetchList(t) {
+    return fetch(API + '/api/reservations-list?clientId=' + encodeURIComponent(clientId) + '&token=' + encodeURIComponent(t))
       .then(function (r) {
         if (r.status === 401) throw new Error('unauthorized');
         if (!r.ok) throw new Error('error');
         return r.json();
-      })
+      });
+  }
+
+  function tryToken(t) {
+    fetchList(t)
       .then(function (data) {
         currentToken = t;
         localStorage.setItem(STORE_KEY, t);
@@ -467,252 +201,104 @@
       })
       .catch(function (err) {
         localStorage.removeItem(STORE_KEY);
-        document.getElementById('login-btn').disabled = false;
-        document.getElementById('login-btn').textContent = 'Ingresar →';
-        if (err.message === 'unauthorized') {
-          document.getElementById('login-err').style.display = 'block';
-        }
+        var b = document.getElementById('login-btn');
+        b.disabled = false; b.textContent = 'Entrar';
+        if (err.message === 'unauthorized') document.getElementById('login-err').style.display = 'block';
       });
   }
 
   function showPanel(data) {
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('panel-screen').style.display = 'block';
-    document.getElementById('logout-btn').style.display   = 'inline-block';
-    var biz = document.getElementById('hdr-biz');
-    biz.style.display  = 'inline-block';
-    biz.textContent    = clientId;
-    allData = data;
-    renderTable(data);
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('panel').style.display = 'block';
+    document.getElementById('hdr-biz').textContent = clientId.replace(/-/g, ' ');
+    allData = data || [];
+    render();
+    startAutoRefresh();
   }
 
+  // Carga bajo demanda (botón Actualizar). No hay polling continuo.
   function loadReservations() {
-    fetch(API + '/api/reservations-list?clientId=' + encodeURIComponent(clientId) + '&token=' + encodeURIComponent(currentToken))
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-      .then(function (data) {
-        allData = data;
-        // El catálogo trae los precios; sin él, la estimación no se muestra.
-        fetch('/api/client-config?id=' + encodeURIComponent(clientId))
-          .then(function (r) { return r.ok ? r.json() : null; })
-          .then(function (cfg) {
-            window.__menu = (cfg && cfg.menu) || [];
-            // Sin configuración completa el asistente no toma citas. El dueño
-            // debe verlo aquí, no descubrirlo porque dejan de entrar reservas.
-            if (cfg && cfg.needsSetup === true) mostrarAvisoSetup();
-            renderTable(filtered(allData));
-          })
-          .catch(function () { window.__menu = []; renderTable(filtered(allData)); });
-      })
+    fetchList(currentToken)
+      .then(function (data) { allData = data || []; render(); })
       .catch(function () {});
+  }
+
+  // Refresco cada 5 min SOLO si la pestaña está visible — nada de peticiones
+  // en segundo plano. Se salta el ciclo si la pestaña está oculta.
+  function startAutoRefresh() {
+    if (refreshTimer) return;
+    refreshTimer = setInterval(function () {
+      if (document.visibilityState === 'visible') loadReservations();
+    }, 5 * 60 * 1000);
   }
 
   function logout() {
     localStorage.removeItem(STORE_KEY);
     currentToken = ''; allData = [];
-    document.getElementById('panel-screen').style.display = 'none';
-    document.getElementById('login-screen').style.display = 'flex';
-    document.getElementById('logout-btn').style.display   = 'none';
-    document.getElementById('hdr-biz').style.display      = 'none';
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    document.getElementById('panel').style.display = 'none';
+    document.getElementById('login').style.display = 'flex';
     document.getElementById('token-inp').value = '';
-    document.getElementById('login-btn').disabled  = false;
-    document.getElementById('login-btn').textContent = 'Ingresar →';
+    var b = document.getElementById('login-btn');
+    b.disabled = false; b.textContent = 'Entrar';
   }
 
-  // ── Filter ───────────────────────────────────────────────────────────────
   function setFilter(f, btn) {
     activeFilter = f;
-    document.querySelectorAll('.filter-btn').forEach(function (b) { b.classList.remove('active'); });
+    document.querySelectorAll('.filter-btn').forEach(function (x) { x.classList.remove('active'); });
     btn.classList.add('active');
-    renderTable(filtered(allData));
-  }
-
-  // Los filtros por día usan fechaISO, la copia normalizada de la fecha.
-  // Las reservas antiguas no la tienen y quedan fuera de estos filtros: no
-  // se puede deducir el día de "este sábado" escrito hace semanas.
-  function todayISO(offset) {
-    var d = new Date();
-    d.setDate(d.getDate() + (offset || 0));
-    return d.toISOString().slice(0, 10);
-  }
-
-  function filtered(data) {
-    if (activeFilter === 'all') return data;
-    if (activeFilter === 'hoy')    return data.filter(function (r) { return r.fechaISO === todayISO(0); });
-    if (activeFilter === 'manana') return data.filter(function (r) { return r.fechaISO === todayISO(1); });
-    if (activeFilter === 'semana') {
-      var desde = todayISO(0), hasta = todayISO(7);
-      return data.filter(function (r) { return r.fechaISO && r.fechaISO >= desde && r.fechaISO <= hasta; });
-    }
-    return data.filter(function (r) { return r.estado === activeFilter; });
-  }
-
-  // Estimación de ingresos: suma los precios del catálogo que coincidan con el
-  // servicio de cada reserva no cancelada. Si un servicio no cuadra, no suma:
-  // es una estimación, y prefiero quedarme corto a inflar la cifra.
-  function mostrarAvisoSetup() {
-    if (document.getElementById('setup-warn')) return;
-    var el = document.createElement('div');
-    el.id = 'setup-warn';
-    el.className = 'setup-warn';
-    el.innerHTML = '<strong>⚠️ Configuración incompleta</strong>' +
-      '<div>Tu asistente no está tomando reservas todavía. Faltan datos del negocio ' +
-      '(zona horaria, horario, anticipación mínima o duración de los servicios). ' +
-      'Complétalos desde el panel de administración para activarlas.</div>';
-    var cont = document.getElementById('stats');
-    if (cont && cont.parentNode) cont.parentNode.insertBefore(el, cont);
-  }
-
-  function renderStats(data) {
-    var el = document.getElementById('stats');
-    if (!el) return;
-    var hoy = data.filter(function (r) { return r.fechaISO === todayISO(0) && r.estado !== 'cancelada' && r.estado !== 'rechazada'; });
-    var desde = todayISO(0), hasta = todayISO(7);
-    var semana = data.filter(function (r) { return r.fechaISO && r.fechaISO >= desde && r.fechaISO <= hasta && r.estado !== 'cancelada' && r.estado !== 'rechazada'; });
-
-    var ingresos = 0, estimables = 0;
-    semana.forEach(function (r) {
-      var precio = precioDe(r.servicio);
-      if (precio !== null) { ingresos += precio * (parseInt(r.personas, 10) || 1); estimables++; }
-    });
-
-    var sinFecha = data.filter(function (r) { return !r.fechaISO; }).length;
-
-    el.innerHTML =
-      stat('Citas hoy', hoy.length) +
-      stat('Clientes esta semana', semana.length) +
-      stat('Ingresos estimados', ingresos > 0 ? '$' + ingresos : '—') +
-      (sinFecha ? '<div class="stat-note">' + sinFecha + ' reserva(s) sin fecha reconocida quedan fuera de estos cálculos</div>' : '');
-  }
-
-  function stat(label, val) {
-    return '<div class="stat"><div class="stat-val">' + val + '</div><div class="stat-lbl">' + label + '</div></div>';
-  }
-
-  function precioDe(servicio) {
-    if (!servicio || !window.__menu) return null;
-    var s = String(servicio).toLowerCase().trim();
-    for (var i = 0; i < window.__menu.length; i++) {
-      var m = window.__menu[i];
-      if (!m.nombre || !m.precio) continue;
-      if (s.indexOf(String(m.nombre).toLowerCase()) !== -1 || String(m.nombre).toLowerCase().indexOf(s) !== -1) {
-        var n = String(m.precio).match(/\d+(?:[.,]\d+)?/);
-        if (n) return parseFloat(n[0].replace(',', '.'));
-      }
-    }
-    return null;
-  }
-
-  // ── Render table ─────────────────────────────────────────────────────────
-  function fmtDate(iso) {
-    if (!iso) return '—';
-    try { return new Date(iso).toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }); }
-    catch (e) { return iso.slice(0, 16).replace('T', ' '); }
-  }
-
-  function badge(estado) {
-    // Punto de color: el estado se reconoce de un vistazo sin leer.
-    var labels = {
-      pendiente:  '🟡 Pendiente',
-      confirmada: '🟢 Confirmada',
-      rechazada:  '🔴 Rechazada',
-      cancelada:  '🔴 Cancelada'
-    };
-    return '<span class="badge badge-' + (estado || 'pendiente') + '">' + (labels[estado] || estado) + '</span>';
-  }
-
-  // Por qué el sistema rechazó una cita sola. Sin esto, el dueño ve "Rechazada"
-  // y no sabe si fue él o el asistente.
-  var MOTIVOS = {
-    dia_cerrado: 'día cerrado',
-    fuera_de_horario: 'fuera de horario',
-    poca_anticipacion: 'poca anticipación',
-    no_cabe_antes_del_cierre: 'no cabía antes del cierre'
-  };
-
-  function motivoTxt(r) {
-    if (!r.motivoRechazo) return '';
-    return '<div class="motivo">auto: ' + (MOTIVOS[r.motivoRechazo] || esc(r.motivoRechazo)) + '</div>';
-  }
-
-  function actionBtns(r) {
-    var k   = encodeKey(r._key);
-    var est = r.estado;
-    var html = '<div class="actions">';
-    if (est !== 'confirmada' && est !== 'cancelada' && est !== 'rechazada') {
-      html += '<button class="act-btn confirm" onclick="updateEstado(\'' + k + '\',\'confirmada\')">✓ Confirmar</button>';
-    }
-    if (est !== 'rechazada' && est !== 'cancelada') {
-      html += '<button class="act-btn reject" onclick="updateEstado(\'' + k + '\',\'rechazada\')">✗ Rechazar</button>';
-    }
-    if (est !== 'cancelada') {
-      html += '<button class="act-btn cancel" onclick="updateEstado(\'' + k + '\',\'cancelada\')">○ Cancelar</button>';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  function encodeKey(k) { return encodeURIComponent(k); }
-
-  function renderTable(data) {
-    renderStats(allData || []);
-    var wrap  = document.getElementById('tbl-wrap');
-    var count = document.getElementById('panel-count');
-    count.textContent = data.length + ' reserva' + (data.length !== 1 ? 's' : '');
-
-    if (!data.length) {
-      wrap.innerHTML = '<div class="panel-msg">No hay reservas' +
-        (activeFilter !== 'all' ? ' con estado "' + activeFilter + '"' : '') + '.' +
-        '<p>Las reservas aparecen aquí cuando los clientes las soliciten desde el chat.</p></div>';
-      return;
-    }
-
-    var rows = data.map(function (r) {
-      return '<tr>' +
-        '<td class="muted">' + fmtDate(r.fechaSolicitud) + '</td>' +
-        '<td><strong>' + esc(r.nombre) + '</strong></td>' +
-        '<td>' + esc(r.telefono) + '</td>' +
-        '<td class="muted">' + esc(r.email || '—') + '</td>' +
-        '<td>' + esc(r.fecha) + '</td>' +
-        '<td>' + esc(r.hora) + '</td>' +
-        '<td class="muted">' + esc(r.servicio || '—') + '</td>' +
-        '<td>' + (r.personas ? esc(r.personas) : '<span class="muted">—</span>') + '</td>' +
-        '<td class="muted">' + esc(r.nota || '—') + '</td>' +
-        '<td>' + badge(r.estado) + motivoTxt(r) + '</td>' +
-        '<td>' + actionBtns(r) + '</td>' +
-        '</tr>';
-    }).join('');
-
-    wrap.innerHTML = '<table>' +
-      '<thead><tr>' +
-        '<th>Solicitud</th><th>Nombre</th><th>Teléfono</th><th>Email</th>' +
-        '<th>Fecha</th><th>Hora</th><th>Servicio</th><th>Personas</th><th>Nota</th>' +
-        '<th>Estado</th><th>Acciones</th>' +
-      '</tr></thead>' +
-      '<tbody>' + rows + '</tbody>' +
-      '</table>';
+    render();
   }
 
   function esc(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // ── Update estado ─────────────────────────────────────────────────────────
-  function updateEstado(encodedKey, estado) {
-    var key = decodeURIComponent(encodedKey);
-    var btns = document.querySelectorAll('.act-btn');
-    btns.forEach(function (b) { b.disabled = true; });
+  // Estados que ve el dueño: Nueva / Reprogramada / Cancelada. Nada más.
+  function estadoInfo(r) {
+    if (r.estado === 'cancelada' || r.estado === 'rechazada') return { cls: 'cancelada', txt: 'Cancelada' };
+    if (r.estado === 'reprogramada') return { cls: 'reprogramada', txt: 'Reprogramada' };
+    return { cls: 'nueva', txt: 'Nueva' };
+  }
 
-    fetch(API + '/api/reservations-list?clientId=' + encodeURIComponent(clientId) + '&token=' + encodeURIComponent(currentToken), {
-      method:  'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ clientId: clientId, token: currentToken, key: key, estado: estado }),
-    })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-      .then(function () { loadReservations(); })
-      .catch(function () {
-        btns.forEach(function (b) { b.disabled = false; });
-        alert('Error al actualizar. Intenta de nuevo.');
-      });
+  function filtered() {
+    if (activeFilter === 'canceladas') {
+      return allData.filter(function (r) { return r.estado === 'cancelada' || r.estado === 'rechazada'; });
+    }
+    // Próximas: todo lo que no está cancelado.
+    return allData.filter(function (r) { return r.estado !== 'cancelada' && r.estado !== 'rechazada'; });
+  }
+
+  function render() {
+    var data = filtered().slice().sort(function (a, b) {
+      return String(a.fechaISO || '').localeCompare(String(b.fechaISO || '')) ||
+             String(a.horaISO || '').localeCompare(String(b.horaISO || ''));
+    });
+    document.getElementById('count').textContent =
+      data.length + (data.length === 1 ? ' cita' : ' citas') + (activeFilter === 'canceladas' ? ' canceladas' : ' próximas');
+
+    var sheet = document.getElementById('sheet');
+    if (!data.length) {
+      sheet.innerHTML = '<div class="empty">No hay citas ' + (activeFilter === 'canceladas' ? 'canceladas' : 'próximas') + '.</div>';
+    } else {
+      var rows = data.map(function (r) {
+        var e = estadoInfo(r);
+        return '<tr>' +
+          '<td class="cel-nom">' + esc(r.nombre) + '</td>' +
+          '<td data-lbl="Servicio" class="cel-muted">' + esc(r.servicio || '—') + '</td>' +
+          '<td data-lbl="Fecha">' + esc(r.fecha || '—') + '</td>' +
+          '<td data-lbl="Hora">' + esc(r.hora || '—') + '</td>' +
+          '<td data-lbl="Teléfono" class="cel-muted">' + esc(r.telefono || '—') + '</td>' +
+          '<td data-lbl="Correo" class="cel-muted">' + esc(r.email || '—') + '</td>' +
+          '<td class="cel-estado"><span class="estado ' + e.cls + '">' + e.txt + '</span></td>' +
+          '</tr>';
+      }).join('');
+      sheet.innerHTML = '<table><thead><tr>' +
+        '<th>Cliente</th><th>Servicio</th><th>Fecha</th><th>Hora</th><th>Teléfono</th><th>Correo</th><th>Estado</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+    var now = new Date();
+    document.getElementById('updated').textContent = 'Actualizado ' + now.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   }
 </script>
 </body>
