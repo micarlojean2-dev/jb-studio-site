@@ -151,7 +151,13 @@ function normalizePersonas(v) {
   return '';
 }
 
-function ownerHtml(r, businessName, color) {
+function ownerHtml(r, businessName, color, panelUrl) {
+  const boton = panelUrl ? `<div style="margin:22px 0 4px">
+      <a href="${esc(panelUrl)}" style="display:inline-block;background:${esc(color)};color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 20px;border-radius:10px">
+        Ver y confirmar en tu panel →
+      </a>
+    </div>
+    <p style="font-size:12px;color:#a8acb3;margin:6px 0 0">Desde tu panel puedes confirmar, rechazar o cancelar esta cita.</p>` : '';
   const inner = `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 18px">
       Tu asistente acaba de recibir una solicitud de reserva.
     </p>
@@ -166,6 +172,7 @@ function ownerHtml(r, businessName, color) {
       ${fila('Nota',     r.nota,     color)}
       ${fila('Estado',   'Pendiente', color)}
     </table>
+    ${boton}
     <p style="font-size:12.5px;color:#8a8f96;margin:18px 0 0">
       Recibida el ${esc(new Date(r.fechaSolicitud).toLocaleString('es'))}.
     </p>`;
@@ -743,6 +750,11 @@ export default async function handler(req, res) {
     const lang         = client.language || 'es';
     const notifyOwner  = !client.features || client.features.emailNotifications !== false;
     const ownerRecipients = notifyOwner ? destinatariosAviso(client) : [];
+    // Enlace privado al panel del negocio, con su panelToken, para ver/confirmar/
+    // rechazar/cancelar. Antes el correo del dueño no lo incluía.
+    const panelUrl = client.panelToken
+      ? `https://jbstudio.app/reservas/${encodeURIComponent(clientId)}#t=${encodeURIComponent(client.panelToken)}`
+      : null;
 
     const notifications = {
       owner:    { attempted: false, sent: false, count: 0 },
@@ -761,7 +773,7 @@ export default async function handler(req, res) {
         jobs.push({ tipo: 'owner', to, p: resend.emails.send({
           from: FROM, to,
           subject: `Nueva solicitud de reserva — ${reservation.nombre}`,
-          html: ownerHtml(reservation, businessName, client.color || '#1a4a2e'),
+          html: ownerHtml(reservation, businessName, client.color || '#1a4a2e', panelUrl),
         }) });
       });
       if (reservation.email) {

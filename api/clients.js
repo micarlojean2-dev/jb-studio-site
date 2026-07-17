@@ -40,6 +40,20 @@ function normalizeCapacity(v) {
   return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 1;   // por defecto, uno
 }
 
+// Correos que reciben los avisos de reserva del negocio. Array, minúsculas,
+// sin espacios, sin duplicados, máximo 10. Se descartan los que no sean correo.
+function normalizeNotificationEmails(v) {
+  if (!Array.isArray(v)) return [];
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  const vistos = {};
+  const out = [];
+  v.forEach((e) => {
+    const s = String(e || '').trim().toLowerCase().slice(0, 120);
+    if (re.test(s) && !vistos[s]) { vistos[s] = 1; out.push(s); }
+  });
+  return out.slice(0, 10);
+}
+
 // Días sueltos cerrados (YYYY-MM-DD). Se descarta lo que no sea una fecha.
 function normalizeHolidays(v) {
   if (!Array.isArray(v)) return [];
@@ -233,7 +247,7 @@ export default async function handler(req, res) {
       secondaryColor, style, address, hours, businessType, services, features,
       billingDay, trialEnabled, trialDays,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
-      displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, holidays,
+      displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, holidays, notificationEmails,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -355,6 +369,7 @@ export default async function handler(req, res) {
         minNoticeHours: normalizeMinNotice(minNoticeHours),
         capacityPerSlot: normalizeCapacity(capacityPerSlot),
         holidays:        normalizeHolidays(holidays),
+        notificationEmails: normalizeNotificationEmails(notificationEmails),
         widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}" data-position="${position}"></script>`,
         assistantUrl:  `https://jbstudio.app/asistente/${id}`,
       };
@@ -371,7 +386,7 @@ export default async function handler(req, res) {
   if (req.method === 'PUT') {
     const { id, active, prompt, businessName, ownerName, ownerEmail, plan,
             color, language, whatsapp, menu, services, features,
-            timezone, minNoticeHours, businessHours, capacityPerSlot, holidays } = req.body || {};
+            timezone, minNoticeHours, businessHours, capacityPerSlot, holidays, notificationEmails } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id is required' });
 
     try {
@@ -397,6 +412,7 @@ export default async function handler(req, res) {
       if (minNoticeHours !== undefined) client.minNoticeHours = normalizeMinNotice(minNoticeHours);
       if (capacityPerSlot !== undefined) client.capacityPerSlot = normalizeCapacity(capacityPerSlot);
       if (holidays !== undefined) client.holidays = normalizeHolidays(holidays);
+      if (notificationEmails !== undefined) client.notificationEmails = normalizeNotificationEmails(notificationEmails);
       if (features !== undefined && typeof features === 'object') {
         client.features = sanitizeFeatures(features, client.plan || 'basic');
       }
