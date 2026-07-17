@@ -329,7 +329,20 @@ window.JBChatCore = (function () {
     if (forzar || estaAlFondo(el)) el.scrollTop = el.scrollHeight;
   }
 
+  // ¿El mensaje es una confirmación natural del resumen ("sí", "todo
+  // correcto", "confirmar")? Se normaliza (sin acentos ni puntuación) y se
+  // rechaza si hay señales de cambio, para que "sí, mejor a la 1" NO confirme.
+  var CONFIRMACIONES = /^(si|si todo correcto|si todo bien|si esta bien|si correcto|si confirma|si confirmar|si confirmo|si adelante|si dale|confirmar|confirma|confirma la cita|confirmo|confirmo la cita|todo correcto|todo bien|todo esta bien|esta bien|correcto|adelante|dale|de acuerdo|ok|okay|listo|perfecto|si por favor)$/;
+  function esConfirmacion(t) {
+    var s = String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!s) return false;
+    if (/\b(cambiar|corregir|equivoq|mejor|otra|otro|modif|no |cancel)\b/.test(s)) return false;
+    return CONFIRMACIONES.test(s);
+  }
+
   return {
+    esConfirmacion: esConfirmacion,
     BOOKING_STEPS: BOOKING_STEPS,
     CANCEL_STEPS: CANCEL_STEPS,
     RESUMEN_ICONOS: RESUMEN_ICONOS,

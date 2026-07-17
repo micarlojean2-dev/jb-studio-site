@@ -87,6 +87,8 @@
   // ── Booking flow state ───────────────────────────────────────────────────
   var bookingStep = 0;   // 0 = idle, >0 = en modo reserva (DeepSeek conduce)
   var bookingPending = null;   // campo que DeepSeek está pidiendo ahora
+  var bookingReview = false;   // el resumen final está a la vista, esperando confirmación
+  var submitting = false;      // evita envíos duplicados de la reserva
   var bookingData = {};
 
   // ── Cancel flow state ────────────────────────────────────────────────────
@@ -808,21 +810,23 @@ function extractBooking(text, menu) {
         bookingData = {};
         bookingStep = 1;
         bookingPending = null;
+        bookingReview = false;
         askBookingTurn(lang);
       });
       wrap.appendChild(b);
     });
     msgsEl.appendChild(wrap);
     CORE.irAlFondo(msgsEl, );
+    bookingReview = true;   // el cliente puede confirmar por botón o por texto
   }
 
   function submitBooking() {
+    if (submitting) return;        // evita envíos duplicados
+    submitting = true;
+    bookingReview = false;
     var lang = cfg.language === 'en' ? 'en' : 'es';
-    busy = true;
-    inp.disabled = true;
-    snd.disabled = true;
-    showTyping();
-
+    busy = true; inp.disabled = true; snd.disabled = true;
+    addMsg('bot', lang === 'en' ? 'Saving your request…' : 'Guardando tu solicitud…');
     fetch(API + '/api/reservations', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -830,9 +834,6 @@ function extractBooking(text, menu) {
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        hideTyping();
-        // El servidor rechazó la cita (cerrado, poca anticipación, no cabe…).
-        // Se lo decimos con naturalidad y, si hay hueco, se ofrece.
         if (d && d.ok === false && d.motivo) {
           var msg = (lang === 'en' ? 'Sorry 😊 ' : 'Uy 😊 ') + (d.mensaje || '');
           if (d.alternativa) {
@@ -843,34 +844,37 @@ function extractBooking(text, menu) {
           }
           addMsg('bot', msg);
           delete bookingData.hora;
-          bookingStep = 0;
-          busy = false; inp.disabled = false; snd.disabled = false;
+          bookingStep = 1;
           return;
         }
-        if (d.ok) {
-          addMsg('bot', lang === 'en'
-            ? '✅ Your request has been received! The business will review availability and confirm with you soon.'
-            : '✅ Tu solicitud fue recibida. El negocio revisará disponibilidad y te confirmará pronto.');
-        } else {
-          addMsg('bot', lang === 'en'
-            ? 'There was an error saving your request. Please try again.'
-            : 'Hubo un error al guardar tu solicitud. Por favor intenta de nuevo.');
+        if (d && d.ok) {   // éxito: compatible con {ok:true} (hoy) y con reservationCreated (Fase 2)
+          addMsg('bot', mensajeReservaGuardada(d, lang));
+          bookingStep = 0; bookingData = {}; bookingPending = null;
+          return;
         }
+        addMsg('bot', lang === 'en'
+          ? "We couldn't save your request 😕 Your details are still here — want to try again?"
+          : 'No pudimos guardar tu solicitud 😕 Tus datos siguen aquí, ¿lo intentamos de nuevo?');
+        showBookingSummary();
       })
       .catch(function () {
-        hideTyping();
         addMsg('bot', lang === 'en'
-          ? "Sorry, that didn't go through 😅 Mind trying again?"
-          : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
+          ? "Sorry, that didn't go through 😅 Your details are still here — try again?"
+          : 'Uy, no se envió 😅 Tus datos siguen aquí, ¿lo intentamos otra vez?');
+        showBookingSummary();
       })
       .finally(function () {
-        bookingStep = 0;
-        bookingData = {};
-        busy = false;
-        inp.disabled = false;
-        snd.disabled = false;
-        inp.focus();
+        submitting = false;
+        busy = false; inp.disabled = false; snd.disabled = false; inp.focus();
       });
+  }
+
+  function mensajeReservaGuardada(d, lang) {
+    var nombre = bookingData.nombre ? String(bookingData.nombre).split(/\s+/)[0] : '';
+    var hola = nombre ? (lang === 'en' ? 'Done, ' + nombre + '. ' : 'Listo, ' + nombre + '. ') : (lang === 'en' ? 'Done. ' : 'Listo. ');
+    return hola + (lang === 'en'
+      ? 'Your request has been registered. The business will confirm availability soon. It is still pending confirmation.'
+      : 'Tu solicitud quedó registrada. El negocio confirmará la disponibilidad pronto. Sigue pendiente de confirmación.');
   }
 
   // ── Send message ─────────────────────────────────────────────────────────
@@ -907,12 +911,20 @@ function extractBooking(text, menu) {
       if (/^(cancelar|cancel|salir|exit)$/i.test(t)) {
         bookingStep = 0;
         bookingData = {};
+        bookingReview = false;
         addMsg('user', t);
         addMsg('bot', lang === 'en'
           ? 'Reservation cancelled. Is there anything else I can help with?'
           : 'Reserva cancelada. ¿Hay algo más en lo que pueda ayudarte?');
         return;
       }
+      // Confirmación por texto en el resumen final → crea la reserva de verdad.
+      if (bookingReview && CORE.esConfirmacion(t)) {
+        addMsg('user', t);
+        submitBooking();
+        return;
+      }
+      bookingReview = false;
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
       if (resolverHoraPendiente(t, lang)) return;

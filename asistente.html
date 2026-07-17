@@ -360,6 +360,8 @@
   // escueta ("Mike") en el sitio correcto. Solo para campos de texto libre.
   var bookingPending = null;
   var BARE_OK = { nombre: 1, telefono: 1, email: 1 };
+  var bookingReview = false;   // el resumen final está a la vista, esperando confirmación
+  var submitting = false;      // evita envíos duplicados de la reserva
   var cancelStep  = 0, cancelData  = {};
 
   var CANCEL_TRIGGERS  = /\bcancel(ar)?\b|quiero cancelar/i;
@@ -860,6 +862,7 @@ function extractBooking(text, menu) {
           bookingData = {};
           bookingStep = 1;
           bookingPending = null;
+          bookingReview = false;
           addMsg('user', a.label);
           askBookingTurn(lang);
         }
@@ -868,12 +871,16 @@ function extractBooking(text, menu) {
     });
     msgsEl.appendChild(wrap);
     CORE.irAlFondo(msgsEl, );
+    bookingReview = true;   // el cliente puede confirmar por botón o por texto
   }
 
   function submitBooking() {
+    if (submitting) return;        // evita envíos duplicados (doble clic / doble Enter)
+    submitting = true;
+    bookingReview = false;
     var lang = cfg.language === 'en' ? 'en' : 'es';
     busy = true; inp.disabled = true; snd.disabled = true;
-    showTyping();
+    addMsg('bot', lang === 'en' ? 'Saving your request…' : 'Guardando tu solicitud…');
     fetch(API + '/api/reservations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -881,9 +888,7 @@ function extractBooking(text, menu) {
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        hideTyping();
-        // El servidor rechazó la cita (cerrado, poca anticipación, no cabe…).
-        // Se lo decimos con naturalidad y, si hay hueco, se ofrece.
+        // El servidor rechazó la cita (cerrado, poca anticipación, sin hueco…).
         if (d && d.ok === false && d.motivo) {
           var msg = (lang === 'en' ? 'Sorry 😊 ' : 'Uy 😊 ') + (d.mensaje || '');
           if (d.alternativa) {
@@ -893,24 +898,43 @@ function extractBooking(text, menu) {
             msg += (lang === 'en' ? ' Tell me another day or time and I\'ll check 😊' : ' Dime otro día u hora y lo miro 😊');
           }
           addMsg('bot', msg);
-          // Se conserva todo menos la hora: es lo único que hay que rehacer.
-          delete bookingData.hora;
-          bookingStep = 0;
-          busy = false; inp.disabled = false; snd.disabled = false;
+          delete bookingData.hora;   // se conserva todo menos la hora
+          bookingStep = 1;
           return;
         }
-        addMsg('bot', d.ok
-          ? (lang === 'en' ? '✅ Your request has been received! The business will review availability and confirm with you soon.' : '✅ Tu solicitud fue recibida. El negocio revisará disponibilidad y te confirmará pronto.')
-          : (lang === 'en' ? 'There was an error saving your request. Please try again.' : 'Hubo un error al guardar tu solicitud. Por favor intenta de nuevo.'));
+        if (d && d.ok) {   // éxito: compatible con {ok:true} (hoy) y con reservationCreated (Fase 2)
+          // El estado real lo dice el backend, no DeepSeek. La cita nace
+          // pendiente: nunca "confirmada".
+          addMsg('bot', mensajeReservaGuardada(d, lang));
+          bookingStep = 0; bookingData = {}; bookingPending = null;
+          return;
+        }
+        // No se pudo guardar: se conservan los datos y se ofrece reintentar.
+        addMsg('bot', lang === 'en'
+          ? "We couldn't save your request 😕 Your details are still here — want to try again?"
+          : 'No pudimos guardar tu solicitud 😕 Tus datos siguen aquí, ¿lo intentamos de nuevo?');
+        showBookingSummary();
       })
       .catch(function () {
-        hideTyping();
-        addMsg('bot', lang === 'en' ? "Sorry, that didn't go through 😅 Mind trying again?" : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
+        addMsg('bot', lang === 'en'
+          ? "Sorry, that didn't go through 😅 Your details are still here — try again?"
+          : 'Uy, no se envió 😅 Tus datos siguen aquí, ¿lo intentamos otra vez?');
+        showBookingSummary();
       })
       .finally(function () {
-        bookingStep = 0; bookingData = {};
+        submitting = false;
         busy = false; inp.disabled = false; snd.disabled = false; inp.focus();
       });
+  }
+
+  // Mensaje final según lo que confirmó el backend (Fase 4 lo detalla con el
+  // resultado de los correos). La cita siempre nace pendiente.
+  function mensajeReservaGuardada(d, lang) {
+    var nombre = bookingData.nombre ? String(bookingData.nombre).split(/\s+/)[0] : '';
+    var hola = nombre ? (lang === 'en' ? 'Done, ' + nombre + '. ' : 'Listo, ' + nombre + '. ') : (lang === 'en' ? 'Done. ' : 'Listo. ');
+    return hola + (lang === 'en'
+      ? 'Your request has been registered. The business will confirm availability soon. It is still pending confirmation.'
+      : 'Tu solicitud quedó registrada. El negocio confirmará la disponibilidad pronto. Sigue pendiente de confirmación.');
   }
 
   function submitCancellation() {
@@ -962,11 +986,22 @@ function extractBooking(text, menu) {
 
     if (bookingStep > 0) {
       if (/^(cancelar|cancel|salir|exit)$/i.test(t)) {
-        bookingStep = 0; bookingData = {};
+        bookingStep = 0; bookingData = {}; bookingReview = false;
         addMsg('user', t);
         addMsg('bot', lang === 'en' ? 'Reservation cancelled. Is there anything else I can help with?' : 'Reserva cancelada. ¿Hay algo más en lo que pueda ayudarte?');
         return;
       }
+      // En el resumen final: si el cliente confirma por texto ("sí", "todo
+      // correcto"…), se crea la reserva de verdad (submitBooking), igual que
+      // el botón. Quien decide si se creó es el backend, no DeepSeek.
+      if (bookingReview && CORE.esConfirmacion(t)) {
+        addMsg('user', t);
+        submitBooking();
+        return;
+      }
+      // Cualquier otra cosa en el resumen es un cambio: se sale de revisión y
+      // se procesa como corrección/dato nuevo.
+      bookingReview = false;
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
       if (resolverHoraPendiente(t, lang)) return;
