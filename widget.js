@@ -85,7 +85,8 @@
   var greeted = false;
 
   // ── Booking flow state ───────────────────────────────────────────────────
-  var bookingStep = 0;   // 0 = idle, 1–7 = collecting fields
+  var bookingStep = 0;   // 0 = idle, >0 = en modo reserva (DeepSeek conduce)
+  var bookingPending = null;   // campo que DeepSeek está pidiendo ahora
   var bookingData = {};
 
   // ── Cancel flow state ────────────────────────────────────────────────────
@@ -726,44 +727,50 @@ function extractBooking(text, menu) {
     return true;
   }
 
-  // Correcciones a media reserva: "me equivoqué, somos 3", "quiero cambiar la
-  // hora". Se actualiza lo que se pueda extraer y se repregunta solo eso.
-  function intentarCorreccion(t, lang) {
-    if (!CORRECCION_RE.test(t)) return false;
-    var extraido = CORE.extractBooking(t, cfg.menu, cfg.businessHours);
-    var campos = Object.keys(extraido);
-    if (campos.length) {
-      campos.forEach(function (k) { bookingData[k] = extraido[k]; });
-      addMsg('bot', (lang === 'en' ? 'Got it 😊 updated:\n\n' : 'Hecho 😊 lo actualicé:\n\n') +
-        campos.map(function (k) { return RESUMEN_ICONOS[k] + ' ' + RESUMEN_LABEL[lang][k] + ': ' + extraido[k]; }).join('\n'));
-      seguirDesdeLoQueFalta(lang);
-      return true;
-    }
-    // Dice qué quiere cambiar pero no el valor: se borra y se repregunta.
-    for (var i = 0; i < CAMPO_MENCIONADO.length; i++) {
-      if (CAMPO_MENCIONADO[i][0].test(t)) {
-        var campo = CAMPO_MENCIONADO[i][1];
-        var actual = bookingData[campo];
-        delete bookingData[campo];
-        var idx = 0;
-        for (var j = 0; j < BOOKING_STEPS.length; j++) if (BOOKING_STEPS[j].field === campo) idx = j;
-        addMsg('bot', (actual
-          ? (lang === 'en' ? 'Sure 😊 right now I have ' : 'Claro 😊 ahora mismo tengo ') +
-            RESUMEN_LABEL[lang][campo].toLowerCase() + ': ' + actual + '.\n\n'
-          : (lang === 'en' ? 'Sure 😊\n\n' : 'Claro 😊\n\n')) + BOOKING_STEPS[idx].ask[lang]);
-        bookingStep = idx + 1;
-        return true;
-      }
-    }
-    return false;
+  var BOOKING_REQUIRED = ['servicio', 'fecha', 'hora', 'nombre', 'telefono', 'email'];
+  var BARE_OK = { nombre: 1, telefono: 1, email: 1 };
+  function bookingFaltan() {
+    return BOOKING_REQUIRED.filter(function (k) { return !bookingData[k]; });
+  }
+  function bookingCaptured() {
+    var out = {};
+    ['servicio', 'fecha', 'hora', 'personas', 'nombre', 'telefono', 'email'].forEach(function (k) {
+      if (bookingData[k]) out[k] = bookingData[k];
+    });
+    return out;
   }
 
-  function seguirDesdeLoQueFalta(lang) {
-    var i = CORE.nextMissingIndex(bookingData);
-    if (i === -1) { showBookingSummary(); return; }
-    bookingStep = i + 1;
-    addMsg('bot', CORE.askConProgreso(i, lang));
+  // Cada turno de la reserva lo redacta DeepSeek con el estado estructurado.
+  // El frontend sigue siendo dueño del estado y la validación; el modelo nunca
+  // confirma ni inventa disponibilidad.
+  function askBookingTurn(lang) {
+    var faltan = bookingFaltan();
+    if (!faltan.length) { bookingPending = null; showBookingSummary(); return; }
+    bookingPending = faltan[0];
+    busy = true; inp.disabled = true; snd.disabled = true;
+    showTyping();
+    var body = { clientId: clientId, messages: msgs, booking: { captured: bookingCaptured(), faltan: faltan } };
+    if (previewToken) body.previewToken = previewToken;
+    fetch(API + '/api/client-chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        hideTyping();
+        var txt = (d && d.text) ? CORE.limpiarMarcadores(d.text) : '';
+        if (!txt) txt = (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + faltan[0] + '?';
+        addMsg('bot', txt);
+        if (d && d.text) msgs.push({ role: 'assistant', content: d.text });
+        save();
+      })
+      .catch(function () {
+        hideTyping();
+        addMsg('bot', lang === 'en' ? "Sorry, that didn't go through 😅 Mind trying again?" : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
+      })
+      .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
   }
+
+  function seguirDesdeLoQueFalta(lang) { askBookingTurn(lang); }
 
 
   // Revisar antes de guardar: un dedazo en el teléfono o la fecha se corrige
@@ -797,8 +804,8 @@ function extractBooking(text, menu) {
         if (a.ok) { submitBooking(); return; }
         bookingData = {};
         bookingStep = 1;
-        addMsg('bot', (lang === 'en' ? 'No problem 😊 let\'s do it again.\n\n' : 'Sin problema 😊 lo hacemos de nuevo.\n\n') +
-          CORE.askConProgreso(0, lang));
+        bookingPending = null;
+        askBookingTurn(lang);
       });
       wrap.appendChild(b);
     });
@@ -903,29 +910,26 @@ function extractBooking(text, menu) {
           : 'Reserva cancelada. ¿Hay algo más en lo que pueda ayudarte?');
         return;
       }
-      var step = BOOKING_STEPS[bookingStep - 1];
       addMsg('user', t);
+      msgs.push({ role: 'user', content: t });
       if (resolverHoraPendiente(t, lang)) return;
-      if (intentarCorreccion(t, lang)) return;
+
       var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours);
-      if (!CORE.valorValido(step.field, t)) {
-        // No sirve para este campo. Si aun así traía datos útiles se guardan,
-        // y se repregunta solo este, sin regañar.
-        var aplicados = Object.keys(yaVisto).filter(function (k) { return !bookingData[k]; });
-        aplicados.forEach(function (k) { bookingData[k] = yaVisto[k]; });
-        if (aplicados.length) {
-          addMsg('bot', (lang === 'en' ? 'Got it 😊 noted:\n\n' : 'Anotado 😊:\n\n') +
-            aplicados.map(function (k) { return RESUMEN_ICONOS[k] + ' ' + RESUMEN_LABEL[lang][k] + ': ' + bookingData[k]; }).join('\n'));
+      var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
+      var traidos = Object.keys(yaVisto);
+      traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
+
+      if (!traidos.length && CORRECCION_RE.test(t)) {
+        for (var ci = 0; ci < CAMPO_MENCIONADO.length; ci++) {
+          if (CAMPO_MENCIONADO[ci][0].test(t)) { delete bookingData[CAMPO_MENCIONADO[ci][1]]; break; }
         }
-        addMsg('bot', CORE.askConProgreso(bookingStep - 1, lang));
-        return;
+      } else if (!traidos.length && bookingPending && BARE_OK[bookingPending] &&
+                 !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
+        bookingData[bookingPending] = t;
       }
-      bookingData[step.field] = t;
-      var extraDicho = yaVisto;
-      Object.keys(extraDicho).forEach(function (k) {
-        if (k !== step.field && !bookingData[k]) bookingData[k] = extraDicho[k];
-      });
-      seguirDesdeLoQueFalta(lang);
+
+      if (amb) { preguntarHoraAmbigua(amb, lang); return; }
+      askBookingTurn(lang);
       return;
     }
 
@@ -946,26 +950,15 @@ function extractBooking(text, menu) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
       save();
+      bookingStep = 1;          // en modo reserva; DeepSeek conduce
       bookingData = {};
 
-      var yaDicho = preExtraido;
-      Object.keys(yaDicho).forEach(function (k) { bookingData[k] = yaDicho[k]; });
+      var ambigua = preExtraido.__horaAmbigua;
+      delete preExtraido.__horaAmbigua;
+      Object.keys(preExtraido).forEach(function (k) { bookingData[k] = preExtraido[k]; });
 
-      var ambigua = yaDicho.__horaAmbigua;
-      delete bookingData.__horaAmbigua;
-
-      var capturado = CORE.resumenDeLoCapturado(bookingData, lang);
-      var intro = capturado
-        ? (lang === 'en' ? '¡Perfect! 😄 Let me help you book your appointment.\n\nI\'ve got:\n' : '¡Perfecto! 😄 Te ayudo a reservar tu cita.\n\nTengo anotado:\n') + capturado +
-          (lang === 'en' ? '\n\nAlmost done 😊\n' : '\n\nYa casi terminamos 😊\n')
-        : (lang === 'en' ? '📅 Sure! I\'ll help you request an appointment. Write "cancel" at any time to stop.\n\n'
-                         : '📅 ¡Con gusto! Te ayudo a solicitar una cita. Escribe "cancelar" en cualquier momento para salir.\n\n');
-
-      if (ambigua) { addMsg('bot', intro.trim()); preguntarHoraAmbigua(ambigua, lang); return; }
-      var i0 = CORE.nextMissingIndex(bookingData);
-      if (i0 === -1) { addMsg('bot', intro.trim()); showBookingSummary(); return; }
-      bookingStep = i0 + 1;
-      addMsg('bot', intro + CORE.askConProgreso(i0, lang));
+      if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
+      askBookingTurn(lang);
       return;
     }
 

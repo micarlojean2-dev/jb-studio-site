@@ -197,7 +197,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
 
-  const { clientId, messages, previewToken } = req.body || {};
+  const { clientId, messages, previewToken, booking } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -243,6 +243,38 @@ export default async function handler(req, res) {
     // modelo arranca igualmente el flujo y le pide los datos a alguien para
     // nada. Se le dice aquí, no reescribiendo el prompt guardado.
     let systemPrompt = buildSystemPrompt(client.prompt, client);
+
+    // Modo reserva: el frontend manda el estado estructurado (lo capturado y
+    // lo que falta) y el modelo genera la respuesta conversacional. Así la
+    // reserva deja de ser una máquina de pasos rígida ("Paso 2/8"): DeepSeek
+    // entiende texto libre, corrige y pide solo lo que falta, mientras el
+    // frontend sigue siendo el dueño del estado, la validación y la creación.
+    // El modelo NUNCA confirma ni inventa disponibilidad: eso lo decide el
+    // servidor de reservas.
+    if (booking && typeof booking === 'object' && !necesitaSetup(client)) {
+      const cap = (booking.captured && typeof booking.captured === 'object') ? booking.captured : {};
+      const faltan = Array.isArray(booking.faltan) ? booking.faltan : [];
+      const capTxt = Object.keys(cap).length
+        ? Object.entries(cap).map(([k, v]) => `- ${k}: ${v}`).join('\n')
+        : '(todavía nada)';
+      systemPrompt += `
+
+ESTÁS AYUDANDO A AGENDAR UNA CITA AHORA MISMO.
+
+Datos que ya tienes:
+${capTxt}
+
+Datos que aún faltan (en orden): ${faltan.length ? faltan.join(', ') : 'ninguno'}
+
+Cómo responder:
+- Habla natural y cálido, como recepción. Confirma en una frase lo que el cliente acaba de decir.
+- Pide SOLO el primer dato que falta de la lista, uno a la vez. No enumeres pasos ("Paso 2 de 8") ni uses listas de datos pendientes.
+- Si el cliente corrige algo (cambia hora, servicio, etc.), acéptalo con naturalidad.
+- Si ya no falta nada, di que le muestras el resumen para confirmar (no lo confirmes tú).
+- NUNCA digas que la cita quedó agendada o confirmada. NUNCA inventes horarios libres ni disponibilidad: eso lo revisa el negocio al confirmar.
+- Frase breve, sin markdown.`;
+    }
+
     if (necesitaSetup(client)) {
       systemPrompt += `
 
