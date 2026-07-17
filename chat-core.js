@@ -249,7 +249,12 @@ window.JBChatCore = (function () {
   // Devuelve el primer campo sin rellenar, o -1 si ya está todo.
   function nextMissingIndex(bookingData) {
     for (var i = 0; i < BOOKING_STEPS.length; i++) {
-      if (!bookingData[BOOKING_STEPS[i].field]) return i;
+      var f = BOOKING_STEPS[i].field;
+      if (bookingData[f]) continue;
+      // personas y nota son opcionales: se auto-llenan y no bloquean el flujo
+      if (f === 'personas') { bookingData[f] = '1'; continue; }
+      if (f === 'nota')     { bookingData[f] = '';  continue; }
+      return i;
     }
     return -1;
   }
