@@ -1,5 +1,6 @@
 import { Redis }  from '@upstash/redis';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
+import { registrarCambio } from '../lib/changes.js';
 import { Resend } from 'resend';
 
 const redis  = new Redis({
@@ -743,83 +744,22 @@ export default async function handler(req, res) {
     await redis.set(key, reservation);
     console.log(`[api/reservations] Saved ${key}`);
 
-    // ── Avisos por correo: se ESPERAN antes de responder, para que la
-    //    respuesta refleje lo que de verdad pasó (no fire-and-forget, que en
-    //    Vercel puede congelarse tras responder y no enviarse nunca) ───────
-    const businessName = client.businessName || clientId;
-    const lang         = client.language || 'es';
-    const notifyOwner  = !client.features || client.features.emailNotifications !== false;
-    const ownerRecipients = notifyOwner ? destinatariosAviso(client) : [];
-    // Enlace privado al panel del negocio, con su panelToken, para ver/confirmar/
-    // rechazar/cancelar. Antes el correo del dueño no lo incluía.
-    const panelUrl = client.panelToken
-      ? `https://jbstudio.app/reservas/${encodeURIComponent(clientId)}#t=${encodeURIComponent(client.panelToken)}`
-      : null;
-
-    const notifications = {
-      owner:    { attempted: false, sent: false, count: 0 },
-      customer: { attempted: false, sent: false },
-    };
-    let notificationRecipients = [];   // se guarda en la reserva (server-side)
-    let notificationFailures   = [];
-
-    const apiKey = process.env.RESEND_API_KEY;
-    if (apiKey && (ownerRecipients.length || reservation.email)) {
-      const resend = new Resend(apiKey);
-      const jobs = [];   // { tipo, to, promise }
-
-      ownerRecipients.forEach((to) => {
-        notifications.owner.attempted = true;
-        jobs.push({ tipo: 'owner', to, p: resend.emails.send({
-          from: FROM, to,
-          subject: `Nueva solicitud de reserva — ${reservation.nombre}`,
-          html: ownerHtml(reservation, businessName, client.color || '#1a4a2e', panelUrl),
-        }) });
-      });
-      if (reservation.email) {
-        notifications.customer.attempted = true;
-        const es = lang !== 'en';
-        jobs.push({ tipo: 'customer', to: reservation.email, p: resend.emails.send({
-          from: FROM, to: reservation.email,
-          subject: es ? `Tu solicitud fue recibida — ${businessName}` : `Your request was received — ${businessName}`,
-          html: clientHtml(reservation, businessName, lang, client.color || '#1a4a2e'),
-        }) });
-      }
-
-      const results = await Promise.allSettled(jobs.map((j) => j.p));
-      let ownerOk = 0, ownerTot = 0, customerOk = true;
-      results.forEach((r, i) => {
-        const j = jobs[i];
-        // Resend resuelve incluso con error en el cuerpo; "enviado" = cumplido y sin error.
-        const ok = r.status === 'fulfilled' && !(r.value && r.value.error);
-        const err = r.status === 'rejected' ? (r.reason && r.reason.message)
-                  : (r.value && r.value.error && r.value.error.message) || null;
-        if (ok) notificationRecipients.push(j.to);
-        else    notificationFailures.push({ to: j.to, tipo: j.tipo, error: err || 'unknown' });
-        if (j.tipo === 'owner') { ownerTot++; if (ok) ownerOk++; }
-        if (j.tipo === 'customer') customerOk = ok;
-        console[ok ? 'log' : 'error'](`[api/reservations] Email ${j.tipo} ${ok ? 'sent' : 'FAILED'}${ok ? '' : ': ' + (err || '')}`);
-      });
-      notifications.owner.count = ownerOk;
-      notifications.owner.sent  = notifications.owner.attempted && ownerOk > 0;
-      notifications.customer.sent = notifications.customer.attempted && customerOk;
-
-      // Registrar el resultado en la reserva (los correos completos quedan
-      // solo aquí, en el servidor; nunca se devuelven al navegador).
-      reservation.notificationSentAt      = new Date().toISOString();
-      reservation.notificationRecipients  = notificationRecipients;
-      reservation.notificationFailures    = notificationFailures;
-      try { await redis.set(key, reservation); } catch (e) { console.error('[api/reservations] update notif:', e.message); }
-    } else if (!apiKey) {
-      console.warn('[api/reservations] RESEND_API_KEY not set — skipping emails');
-    }
+    // ── Sin correos inmediatos (Fase D). La cita ya está en la hoja del
+    //    dueño al instante; el aviso va en el resumen diario agrupado, y solo
+    //    si hubo cambios. Aquí solo se encola un evento diminuto (Fase B). ──
+    await registrarCambio(clientId, {
+      type: 'created', reservationId: key,
+      nombre: reservation.nombre, servicio: reservation.servicio,
+      fecha: reservation.fecha, hora: reservation.hora, telefono: reservation.telefono,
+    });
 
     return res.status(201).json({
       ok: true,
       reservationCreated: true,
       reservationId: key,
       status: reservation.estado,   // 'pendiente'
-      notifications,                // solo booleanos/contadores, sin direcciones
+      // No hay envío inmediato: el aviso al dueño va en el resumen diario.
+      notifications: { owner: { attempted: false, sent: false, count: 0 }, customer: { attempted: false, sent: false } },
     });
 
   } catch (err) {
