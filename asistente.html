@@ -787,10 +787,13 @@ function extractBooking(text, menu) {
   // la validación; el modelo nunca confirma ni inventa disponibilidad.
   function askBookingTurn(lang) {
     var faltan = bookingFaltan();
-    if (!faltan.length) { bookingPending = null; showBookingSummary(); return; }
-    bookingPending = faltan[0];
+    var completo = faltan.length === 0;
+    bookingPending = completo ? null : faltan[0];
     busy = true; inp.disabled = true; snd.disabled = true;
     showTyping();
+    // Siempre pasa por DeepSeek, también cuando ya no falta nada: así confirma
+    // el cambio con naturalidad antes de mostrar el resumen, en vez de saltar
+    // a una pantalla fija.
     var body = { clientId: clientId, messages: msgs, booking: { captured: bookingCaptured(), faltan: faltan } };
     if (previewToken) body.previewToken = previewToken;
     fetch(API + '/api/client-chat', {
@@ -800,10 +803,14 @@ function extractBooking(text, menu) {
       .then(function (d) {
         hideTyping();
         var txt = (d && d.text) ? CORE.limpiarMarcadores(d.text) : '';
-        if (!txt) txt = (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + faltan[0] + '?';
+        if (!txt) txt = completo
+          ? (lang === 'en' ? 'Great, I have everything 😊' : 'Genial, ya tengo todo 😊')
+          : (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + faltan[0] + '?';
         addMsg('bot', txt);
         if (d && d.text) msgs.push({ role: 'assistant', content: d.text });
         save();
+        // El resumen (local y fiable) se muestra tras el mensaje natural.
+        if (completo) showBookingSummary();
       })
       .catch(function () {
         hideTyping();

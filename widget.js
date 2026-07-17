@@ -745,8 +745,8 @@ function extractBooking(text, menu) {
   // confirma ni inventa disponibilidad.
   function askBookingTurn(lang) {
     var faltan = bookingFaltan();
-    if (!faltan.length) { bookingPending = null; showBookingSummary(); return; }
-    bookingPending = faltan[0];
+    var completo = faltan.length === 0;
+    bookingPending = completo ? null : faltan[0];
     busy = true; inp.disabled = true; snd.disabled = true;
     showTyping();
     var body = { clientId: clientId, messages: msgs, booking: { captured: bookingCaptured(), faltan: faltan } };
@@ -758,10 +758,13 @@ function extractBooking(text, menu) {
       .then(function (d) {
         hideTyping();
         var txt = (d && d.text) ? CORE.limpiarMarcadores(d.text) : '';
-        if (!txt) txt = (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + faltan[0] + '?';
+        if (!txt) txt = completo
+          ? (lang === 'en' ? 'Great, I have everything 😊' : 'Genial, ya tengo todo 😊')
+          : (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + faltan[0] + '?';
         addMsg('bot', txt);
         if (d && d.text) msgs.push({ role: 'assistant', content: d.text });
         save();
+        if (completo) showBookingSummary();
       })
       .catch(function () {
         hideTyping();
