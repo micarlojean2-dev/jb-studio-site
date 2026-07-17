@@ -261,7 +261,7 @@ window.JBChatCore = (function () {
 
   function resumenDeLoCapturado(data, lang) {
     var L = RESUMEN_LABEL[lang];
-    return ['servicio', 'fecha', 'hora', 'personas']
+    return ['nombre', 'servicio', 'fecha', 'hora', 'personas', 'telefono', 'email']
       .filter(function (k) { return data[k]; })
       .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + L[k] + ': ' + data[k]; })
       .join('\n');
