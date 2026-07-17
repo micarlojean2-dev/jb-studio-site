@@ -56,7 +56,7 @@
   ],
   "crons": [
     {
-      "path": "/api/reservations?cron=daily",
+      "path": "/api/reservations?cron=digest",
       "schedule": "0 13 * * *"
     }
   ]

@@ -152,61 +152,6 @@ function normalizePersonas(v) {
   return '';
 }
 
-function ownerHtml(r, businessName, color, panelUrl) {
-  const boton = panelUrl ? `<div style="margin:22px 0 4px">
-      <a href="${esc(panelUrl)}" style="display:inline-block;background:${esc(color)};color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 20px;border-radius:10px">
-        Ver y confirmar en tu panel →
-      </a>
-    </div>
-    <p style="font-size:12px;color:#a8acb3;margin:6px 0 0">Desde tu panel puedes confirmar, rechazar o cancelar esta cita.</p>` : '';
-  const inner = `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 18px">
-      Tu asistente acaba de recibir una solicitud de reserva.
-    </p>
-    <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">
-      ${fila('Cliente',  r.nombre,   color)}
-      ${fila('Servicio', r.servicio, color)}
-      ${fila('Fecha',    r.fecha,    color)}
-      ${fila('Hora',     r.hora,     color)}
-      ${fila('Personas', r.personas, color)}
-      ${fila('Teléfono', r.telefono, color)}
-      ${fila('Email',    r.email,    color)}
-      ${fila('Nota',     r.nota,     color)}
-      ${fila('Estado',   'Pendiente', color)}
-    </table>
-    ${boton}
-    <p style="font-size:12.5px;color:#8a8f96;margin:18px 0 0">
-      Recibida el ${esc(new Date(r.fechaSolicitud).toLocaleString('es'))}.
-    </p>`;
-  return shell(inner, 'Nueva reserva recibida 📅', color, businessName);
-}
-
-function clientHtml(r, businessName, lang, color) {
-  const es = lang !== 'en';
-  const inner = es
-    ? `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 4px">Hola <strong>${esc(r.nombre)}</strong> 😊</p>
-       <p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 18px">
-         Recibimos tu solicitud en <strong>${esc(businessName)}</strong>. Revisamos disponibilidad y te confirmamos muy pronto.
-       </p>
-       <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">
-         ${fila('Servicio', r.servicio, color)}
-         ${fila('Fecha',    r.fecha,    color)}
-         ${fila('Hora',     r.hora,     color)}
-         ${fila('Personas', r.personas, color)}
-       </table>
-       <p style="font-size:15px;color:#333;margin:20px 0 0">Te esperamos ✨</p>`
-    : `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 4px">Hi <strong>${esc(r.nombre)}</strong> 😊</p>
-       <p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 18px">
-         We received your request at <strong>${esc(businessName)}</strong>. We'll check availability and confirm shortly.
-       </p>
-       <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">
-         ${fila('Service',  r.servicio, color)}
-         ${fila('Date',     r.fecha,    color)}
-         ${fila('Time',     r.hora,     color)}
-         ${fila('People',   r.personas, color)}
-       </table>
-       <p style="font-size:15px;color:#333;margin:20px 0 0">See you soon ✨</p>`;
-  return shell(inner, es ? 'Solicitud recibida ✨' : 'Request received ✨', color, businessName);
-}
 
 // Validación de reservas. Vive en el servidor a propósito: la del navegador
 // es cortesía (para responder bonito), pero cualquiera puede saltársela con
@@ -279,6 +224,11 @@ function solapan(aIni, aDur, bIni, bDur) {
   const bFin = bIni + (bDur || 0);
   if (aDur === 0 || bDur === 0) return aIni === bIni;   // sin duración: solo choque exacto
   return aIni < bFin && bIni < aFin;
+}
+
+// Una cita "viva" es la que aún ocupa un cupo: ni cancelada ni rechazada.
+function activa(r) {
+  return r && r.estado !== 'cancelada' && r.estado !== 'rechazada';
 }
 
 // Cuántas citas vivas se solapan con la que se pide.
@@ -394,7 +344,7 @@ function proximoHueco(client, fechaISO, desde, dur, rango, reservas) {
   return null;                                            // hoy no queda hueco
 }
 
-// ── Plantillas del proceso diario ───────────────────────────────────────────
+// ── Plantilla del resumen (fija, sin DeepSeek: más barata y predecible) ──────
 const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -415,172 +365,96 @@ function shell(inner, titulo, color, kicker) {
 </body></html>`;
 }
 
-function citaCard(r, color) {
-  return `<div style="border:1px solid #eaecef;border-radius:12px;padding:14px 16px;margin-bottom:10px">
-    <div style="font-size:17px;font-weight:700;color:${esc(color)}">${esc(r.hora)}</div>
-    <div style="font-size:15px;font-weight:600;color:#16181d;margin-top:2px">${esc(r.nombre)}</div>
-    ${r.servicio ? `<div style="font-size:13px;color:#6b6f76;margin-top:2px">${esc(r.servicio)}</div>` : ''}
-    ${r.personas ? `<div style="font-size:13px;color:#6b6f76;margin-top:2px">${esc(r.personas)} persona${r.personas > 1 ? 's' : ''}</div>` : ''}
-    ${r.telefono ? `<div style="font-size:12px;color:#a8acb3;margin-top:6px">${esc(r.telefono)}</div>` : ''}
-  </div>`;
+const DIGEST_LABEL = { created: 'NUEVA', rescheduled: 'REPROGRAMADA', cancelled: 'CANCELADA' };
+const DIGEST_ACCENT = { created: '#1a7a3e', rescheduled: '#8a5a00', cancelled: '#b23b3b' };
+
+function digestBloque(ev) {
+  const tipo = ev.type || 'created';
+  const cabecera = `<div style="font-size:11px;font-weight:700;letter-spacing:.06em;color:${DIGEST_ACCENT[tipo] || '#555'}">${DIGEST_LABEL[tipo] || 'CAMBIO'}</div>`;
+  let cuerpo = `<div style="font-size:15px;font-weight:600;color:#16181d;margin-top:3px">${esc(ev.nombre || '')}</div>`;
+  if (ev.servicio) cuerpo += `<div style="font-size:13px;color:#6b6f76">${esc(ev.servicio)}</div>`;
+  if (tipo === 'rescheduled') {
+    cuerpo += `<div style="font-size:13px;color:#6b6f76;margin-top:2px">Antes: ${esc(ev.prevFecha || '')} ${esc(ev.prevHora || '')}</div>`;
+    cuerpo += `<div style="font-size:13px;color:#16181d;font-weight:600">Ahora: ${esc(ev.fecha || '')} ${esc(ev.hora || '')}</div>`;
+  } else {
+    if (ev.fecha || ev.hora) cuerpo += `<div style="font-size:13px;color:#6b6f76;margin-top:2px">${esc(ev.fecha || '')}${ev.hora ? ' · ' + esc(ev.hora) : ''}</div>`;
+  }
+  if (tipo === 'created' && ev.telefono) cuerpo += `<div style="font-size:12px;color:#a8acb3;margin-top:4px">Tel: ${esc(ev.telefono)}</div>`;
+  return `<div style="border:1px solid #eaecef;border-radius:12px;padding:13px 15px;margin-bottom:10px">${cabecera}${cuerpo}</div>`;
 }
 
-function dailySummaryHtml(citas, negocio, color) {
-  // Ordenadas por hora para que se lean como una agenda, no como una lista.
-  const ord = citas.slice().sort((a, b) => String(a.hora).localeCompare(String(b.hora), 'es', { numeric: true }));
+function digestHtml(negocio, color, eventos, panelUrl) {
   const inner = `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 16px">
-      Estas son tus citas de hoy en <strong>${esc(negocio)}</strong>:
+      Estos son los cambios en tus citas de ${esc(negocio)}:
     </p>
-    ${ord.map((r) => citaCard(r, color)).join('')}
-    <p style="font-size:12.5px;color:#8a8f96;margin:14px 0 0">
-      ${ord.length} cita${ord.length > 1 ? 's' : ''} en total.
-    </p>`;
-  return shell(inner, 'Buenos días ☀️', color, negocio);
+    ${eventos.map(digestBloque).join('')}
+    ${panelUrl ? `<div style="margin:18px 0 0">
+      <a href="${esc(panelUrl)}" style="display:inline-block;background:${esc(color)};color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 20px;border-radius:10px">Ver hoja completa de citas →</a>
+    </div>` : ''}`;
+  return shell(inner, `${eventos.length} cambio${eventos.length > 1 ? 's' : ''} en tus citas`, color, negocio);
 }
 
-function fila(label, val, color) {
-  if (!val) return '';
-  return `<tr>
-    <td style="padding:8px 0;color:#8a8f96;font-size:13px;width:110px;vertical-align:top">${esc(label)}</td>
-    <td style="padding:8px 0;color:#16181d;font-size:14px;font-weight:600">${esc(val)}</td>
-  </tr>`;
-}
-
-function reminderClientHtml(r, negocio, color) {
-  const inner = `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 4px">Hola <strong>${esc(r.nombre)}</strong> 👋</p>
-    <p style="font-size:15px;color:#333;line-height:1.6;margin:0 0 18px">
-      Te recordamos que <strong>mañana</strong> tienes tu cita en ${esc(negocio)}.
-    </p>
-    <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">
-      ${fila('Servicio', r.servicio, color)}
-      ${fila('Fecha',    r.fecha,    color)}
-      ${fila('Hora',     r.hora,     color)}
-      ${fila('Personas', r.personas, color)}
-    </table>
-    <p style="font-size:15px;color:#333;margin:20px 0 0">Te esperamos ✨</p>`;
-  return shell(inner, 'Recordatorio de tu cita 😊', color, negocio);
-}
-
-function reminderOwnerHtml(r, negocio, color) {
-  const inner = `<p style="font-size:15px;color:#16181d;line-height:1.6;margin:0 0 18px">
-      Mañana tienes esta cita agendada:
-    </p>
-    <table style="width:100%;border-collapse:collapse;border-top:1px solid #eee">
-      ${fila('Cliente',  r.nombre,   color)}
-      ${fila('Servicio', r.servicio, color)}
-      ${fila('Fecha',    r.fecha,    color)}
-      ${fila('Hora',     r.hora,     color)}
-      ${fila('Personas', r.personas, color)}
-      ${fila('Contacto', r.email || r.telefono, color)}
-    </table>`;
-  return shell(inner, 'Cita próxima', color, negocio);
-}
-
-// ── Proceso diario: resumen al dueño + recordatorios de mañana ───────────────
-// Una sola pasada al día (límite del plan Hobby), así que el recordatorio de
-// "24 horas antes" es en realidad "el día antes": suficiente para que no se
-// pierda una cita, y honesto sobre lo que hace.
-
-function isoEnZona(tz, days) {
-  const base = nowEnZona(tz);
-  base.setUTCDate(base.getUTCDate() + days);
-  return base.toISOString().slice(0, 10);
-}
-
-function activa(r) {
-  return r && r.estado !== 'cancelada' && r.estado !== 'rechazada';
-}
-
-async function runDailyJob() {
+// ── Resumen diario agrupado ──────────────────────────────────────────────────
+// Un solo proceso global. Mira SOLO los negocios con cambios pendientes
+// (digest:pending), nunca escanea todas las reservas. Un correo por negocio,
+// solo si hubo cambios. Si Resend falla, los eventos quedan y se reintenta.
+async function runDigest(dry, testDeps) {
+  // testDeps permite inyectar redis/resend falsos en las pruebas unitarias.
+  // En producción es undefined y se usan los clientes reales del módulo.
+  const R = (testDeps && testDeps.redis) || redis;
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return { ok: false, reason: 'RESEND_API_KEY not configured' };
-  const resend = new Resend(apiKey);
+  const resend = (testDeps && testDeps.resend) || (apiKey && !dry ? new Resend(apiKey) : null);
 
-  const keys = await redis.keys('reservations:*');
-  if (!keys.length) return { ok: true, resumenes: 0, recordatorios: 0, reservas: 0 };
+  const pendientes = await R.smembers('digest:pending');
+  if (!pendientes || !pendientes.length) return { ok: true, negocios: 0, enviados: 0, fallidos: 0, dry: !!dry };
 
-  const items = keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys);
-  const rows = [];
-  keys.forEach((k, i) => { if (items[i]) rows.push({ key: k, r: items[i] }); });
+  let enviados = 0, fallidos = 0, sinDestinatario = 0;
+  const detalle = [];
 
-  // Agrupar por cliente para mandar un solo correo por negocio.
-  const porCliente = {};
-  rows.forEach(({ key, r }) => {
-    const cid = r.clientId;
-    if (!cid) return;
-    (porCliente[cid] = porCliente[cid] || []).push({ key, r });
-  });
+  for (const cid of pendientes) {
+    const raw = await R.lrange(`changes:${cid}`, 0, -1);
+    const eventos = (raw || []).map((x) => { try { return typeof x === 'string' ? JSON.parse(x) : x; } catch (e) { return null; } }).filter(Boolean);
+    if (!eventos.length) { await R.srem('digest:pending', cid); continue; }
 
-  let resumenes = 0, recordatorios = 0;
-  const dias = {};
-
-  for (const cid of Object.keys(porCliente)) {
-    const client = await redis.get(`client:${cid}`);
-    if (!client || !client.active) continue;              // impagos fuera
-
-    // "Hoy" y "mañana" son los del negocio, no los del servidor: si el cron
-    // corre a las 13:00 UTC, en Tokio ya es de noche y en México aún es de
-    // madrugada. Con UTC, medio mundo recibía el resumen del día equivocado.
-    const hoy    = isoEnZona(client.timezone, 0);
-    const manana = isoEnZona(client.timezone, 1);
-    dias[cid] = { hoy, manana, tz: client.timezone || 'UTC' };
-    const notifica = !client.features || client.features.emailNotifications !== false;
-    const nombreNegocio = client.businessName || 'tu negocio';
-    const color = client.color || '#1a4a2e';
-
-    const deHoy    = porCliente[cid].filter(x => x.r.fechaISO === hoy    && activa(x.r)).map(x => x.r);
-    const deManana = porCliente[cid].filter(x => x.r.fechaISO === manana && activa(x.r));
-
-    // 1) Resumen de hoy al dueño. Si no hay citas no se manda nada: un correo
-    //    vacío cada mañana es ruido y acaba en la papelera.
-    if (notifica && client.ownerEmail && deHoy.length) {
-      try {
-        await resend.emails.send({
-          from: FROM, to: client.ownerEmail,
-          subject: `Buenos días ☀️ Tus citas de hoy (${deHoy.length})`,
-          html: dailySummaryHtml(deHoy, nombreNegocio, color),
-        });
-        resumenes++;
-      } catch (e) { console.error('[cron] resumen', cid, e.message); }
+    const client = await R.get(`client:${cid}`);
+    if (!client) { await R.del(`changes:${cid}`); await R.srem('digest:pending', cid); continue; }
+    // Si el dueño apagó el aviso por correo (feature de su plan) o no hay a
+    // quién enviar, se limpia la cola para no acumular ni reintentar en vano.
+    const avisaPorCorreo = !client.features || client.features.emailNotifications !== false;
+    const recipients = avisaPorCorreo ? destinatariosAviso(client) : [];
+    if (!recipients.length) {
+      await R.del(`changes:${cid}`); await R.srem('digest:pending', cid);
+      sinDestinatario++; continue;
     }
 
-    // 2) Recordatorios de mañana.
-    for (const { key, r } of deManana) {
-      if (r.recordatorioEnviado === manana) continue;      // ya avisado: no repetir
-      let enviado = false;
+    const negocio = client.businessName || cid;
+    const color = client.color || '#1a4a2e';
+    const panelUrl = client.panelToken ? `https://jbstudio.app/reservas/${encodeURIComponent(cid)}#t=${encodeURIComponent(client.panelToken)}` : null;
 
-      if (r.email) {
-        try {
-          await resend.emails.send({
-            from: FROM, to: r.email,
-            subject: 'Recordatorio de tu cita 😊',
-            html: reminderClientHtml(r, nombreNegocio, color),
-          });
-          enviado = true;
-        } catch (e) { console.error('[cron] recordatorio cliente', key, e.message); }
-      }
+    if (dry) { detalle.push({ cid, recipients: recipients.length, cambios: eventos.length }); continue; }
 
-      if (notifica && client.ownerEmail) {
-        try {
-          await resend.emails.send({
-            from: FROM, to: client.ownerEmail,
-            subject: `Cita próxima: ${r.nombre} — ${r.hora}`,
-            html: reminderOwnerHtml(r, nombreNegocio, color),
-          });
-          enviado = true;
-        } catch (e) { console.error('[cron] recordatorio dueño', key, e.message); }
-      }
-
-      if (enviado) {
-        try {
-          await redis.set(key, Object.assign({}, r, { recordatorioEnviado: manana }));
-          recordatorios++;
-        } catch (e) { console.error('[cron] marcar', key, e.message); }
-      }
+    try {
+      const r = await resend.emails.send({
+        from: FROM,
+        to: recipients,                         // un solo correo a toda la lista
+        subject: `${negocio} — ${eventos.length} cambio${eventos.length > 1 ? 's' : ''} en tus citas`,
+        html: digestHtml(negocio, color, eventos, panelUrl),
+      });
+      if (r && r.error) throw new Error(r.error.message || 'resend error');
+      // Éxito: se limpian SOLO los eventos incluidos y se quita de la cola.
+      await R.del(`changes:${cid}`);
+      await R.srem('digest:pending', cid);
+      await R.set(`digest:sentAt:${cid}`, Date.now());
+      enviados++;
+    } catch (e) {
+      // Falla: no se toca nada. Los eventos siguen en cola, se reintenta el
+      // próximo ciclo. Sin duplicar (cada cambio se encoló una sola vez).
+      console.error('[digest]', cid, e.message);
+      fallidos++;
     }
   }
 
-  return { ok: true, resumenes, recordatorios, reservas: rows.length, porNegocio: dias };
+  return { ok: true, negocios: pendientes.length, enviados, fallidos, sinDestinatario, dry: !!dry, detalle: dry ? detalle : undefined };
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -591,7 +465,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
-  // Proceso diario (Vercel Cron). Vive aquí y no en api/cron.js porque el
+  // Resumen diario (Vercel Cron). Vive aquí y no en api/cron.js porque el
   // proyecto está en el límite de 12 funciones del plan Hobby.
   // Auditoría de clientes. Protegida con el mismo secreto del cron y de solo
   // lectura: no toca ningún dato. Sirve para ver de un vistazo qué negocios no
@@ -641,18 +515,19 @@ export default async function handler(req, res) {
     }
   }
 
-  if (req.method === 'GET' && req.query?.cron === 'daily') {
+  if (req.method === 'GET' && req.query?.cron === 'digest') {
     const secret = process.env.CRON_SECRET;
     const auth = req.headers.authorization || '';
     if (!secret || auth !== `Bearer ${secret}`) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     try {
-      const result = await runDailyJob();
+      // ?dry=1 inspecciona la cola sin enviar ni borrar nada (para pruebas).
+      const result = await runDigest(req.query?.dry === '1' || req.query?.dry === 'true');
       return res.status(200).json(result);
     } catch (err) {
-      console.error('[api/reservations] cron:', err.message);
-      return res.status(500).json({ error: 'Cron failed' });
+      console.error('[api/reservations] digest:', err.message);
+      return res.status(500).json({ error: 'Digest failed' });
     }
   }
 
@@ -767,3 +642,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Database error' });
   }
 }
+
+// Solo para pruebas unitarias (no se usa en producción).
+export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso };
