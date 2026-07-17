@@ -951,7 +951,7 @@ function extractBooking(text, menu) {
       if (resolverHoraPendiente(t, lang)) return;
       if (intentarCorreccion(t, lang)) return;     // "me equivoqué, somos 3"
       var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours);
-      if (!CORE.CORE.valorValido(step.field, t)) {
+      if (!CORE.valorValido(step.field, t)) {
         // No sirve para este campo. Si aun así traía datos útiles se guardan,
         // y se repregunta solo este, sin regañar.
         var aplicados = Object.keys(yaVisto).filter(function (k) { return !bookingData[k]; });
