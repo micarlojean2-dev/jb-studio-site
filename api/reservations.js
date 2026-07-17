@@ -248,6 +248,21 @@ function rangosDelDia(businessHours, fechaISO) {
   return out.length ? out : [];
 }
 
+// Destinatarios de los avisos de reserva del negocio. Prefiere la lista
+// notificationEmails (Fase 3); si no existe, cae en ownerEmail (compatibilidad
+// con los clientes antiguos). Normaliza y quita duplicados.
+function destinatariosAviso(client) {
+  const lista = Array.isArray(client && client.notificationEmails) ? client.notificationEmails : null;
+  const raw = (lista && lista.length) ? lista : (client && client.ownerEmail ? [client.ownerEmail] : []);
+  const vistos = {};
+  const out = [];
+  raw.forEach((e) => {
+    const v = String(e || '').trim().toLowerCase();
+    if (v && !vistos[v]) { vistos[v] = 1; out.push(v); }
+  });
+  return out.slice(0, 10);
+}
+
 // Dos citas chocan si sus intervalos se pisan. Comparar solo la hora de inicio
 // no basta: un corte de 60 min a las 16:00 y otro a las 16:30 se solapan media
 // hora, y con un solo barbero eso es imposible.
@@ -716,60 +731,84 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── Save to KV (primary operation) ──────────────────────────────────
+    // ── Guardar en Redis (operación primaria: la reserva no se pierde
+    //    aunque falle un correo) ──────────────────────────────────────────
     await redis.set(key, reservation);
     console.log(`[api/reservations] Saved ${key}`);
 
-    // ── Send emails (secondary — non-blocking, never breaks the response) ──
+    // ── Avisos por correo: se ESPERAN antes de responder, para que la
+    //    respuesta refleje lo que de verdad pasó (no fire-and-forget, que en
+    //    Vercel puede congelarse tras responder y no enviarse nunca) ───────
+    const businessName = client.businessName || clientId;
+    const lang         = client.language || 'es';
+    const notifyOwner  = !client.features || client.features.emailNotifications !== false;
+    const ownerRecipients = notifyOwner ? destinatariosAviso(client) : [];
+
+    const notifications = {
+      owner:    { attempted: false, sent: false, count: 0 },
+      customer: { attempted: false, sent: false },
+    };
+    let notificationRecipients = [];   // se guarda en la reserva (server-side)
+    let notificationFailures   = [];
+
     const apiKey = process.env.RESEND_API_KEY;
-    if (apiKey) {
-      const resend       = new Resend(apiKey);
-      const businessName = client.businessName || clientId;
-      const lang         = client.language || 'es';
-      const emails       = [];
-      // Legacy clients (no features object) keep the old always-on behavior.
-      const notifyOwner  = !client.features || client.features.emailNotifications !== false;
+    if (apiKey && (ownerRecipients.length || reservation.email)) {
+      const resend = new Resend(apiKey);
+      const jobs = [];   // { tipo, to, promise }
 
-      if (notifyOwner && client.ownerEmail) {
-        emails.push(
-          resend.emails.send({
-            from:    FROM,
-            to:      client.ownerEmail,
-            subject: `Nueva solicitud de reserva — ${reservation.nombre}`,
-            html:    ownerHtml(reservation, businessName, client.color || '#1a4a2e'),
-          })
-        );
-      }
-
+      ownerRecipients.forEach((to) => {
+        notifications.owner.attempted = true;
+        jobs.push({ tipo: 'owner', to, p: resend.emails.send({
+          from: FROM, to,
+          subject: `Nueva solicitud de reserva — ${reservation.nombre}`,
+          html: ownerHtml(reservation, businessName, client.color || '#1a4a2e'),
+        }) });
+      });
       if (reservation.email) {
+        notifications.customer.attempted = true;
         const es = lang !== 'en';
-        emails.push(
-          resend.emails.send({
-            from:    FROM,
-            to:      reservation.email,
-            subject: es
-              ? `Tu solicitud fue recibida — ${businessName}`
-              : `Your request was received — ${businessName}`,
-            html: clientHtml(reservation, businessName, lang, client.color || '#1a4a2e'),
-          })
-        );
+        jobs.push({ tipo: 'customer', to: reservation.email, p: resend.emails.send({
+          from: FROM, to: reservation.email,
+          subject: es ? `Tu solicitud fue recibida — ${businessName}` : `Your request was received — ${businessName}`,
+          html: clientHtml(reservation, businessName, lang, client.color || '#1a4a2e'),
+        }) });
       }
 
-      if (emails.length) {
-        Promise.allSettled(emails).then(results => {
-          results.forEach((r, i) => {
-            if (r.status === 'rejected')
-              console.error(`[api/reservations] Email ${i} failed:`, r.reason?.message);
-            else
-              console.log(`[api/reservations] Email ${i} sent:`, r.value?.data?.id);
-          });
-        });
-      }
-    } else {
+      const results = await Promise.allSettled(jobs.map((j) => j.p));
+      let ownerOk = 0, ownerTot = 0, customerOk = true;
+      results.forEach((r, i) => {
+        const j = jobs[i];
+        // Resend resuelve incluso con error en el cuerpo; "enviado" = cumplido y sin error.
+        const ok = r.status === 'fulfilled' && !(r.value && r.value.error);
+        const err = r.status === 'rejected' ? (r.reason && r.reason.message)
+                  : (r.value && r.value.error && r.value.error.message) || null;
+        if (ok) notificationRecipients.push(j.to);
+        else    notificationFailures.push({ to: j.to, tipo: j.tipo, error: err || 'unknown' });
+        if (j.tipo === 'owner') { ownerTot++; if (ok) ownerOk++; }
+        if (j.tipo === 'customer') customerOk = ok;
+        console[ok ? 'log' : 'error'](`[api/reservations] Email ${j.tipo} ${ok ? 'sent' : 'FAILED'}${ok ? '' : ': ' + (err || '')}`);
+      });
+      notifications.owner.count = ownerOk;
+      notifications.owner.sent  = notifications.owner.attempted && ownerOk > 0;
+      notifications.customer.sent = notifications.customer.attempted && customerOk;
+
+      // Registrar el resultado en la reserva (los correos completos quedan
+      // solo aquí, en el servidor; nunca se devuelven al navegador).
+      reservation.notificationSentAt      = new Date().toISOString();
+      reservation.notificationRecipients  = notificationRecipients;
+      reservation.notificationFailures    = notificationFailures;
+      try { await redis.set(key, reservation); } catch (e) { console.error('[api/reservations] update notif:', e.message); }
+    } else if (!apiKey) {
       console.warn('[api/reservations] RESEND_API_KEY not set — skipping emails');
     }
 
-    return res.status(201).json({ ok: true, key });
+    return res.status(201).json({
+      ok: true,
+      reservationCreated: true,
+      reservationId: key,
+      status: reservation.estado,   // 'pendiente'
+      notifications,                // solo booleanos/contadores, sin direcciones
+    });
 
   } catch (err) {
     console.error('[api/reservations]', err.message);
