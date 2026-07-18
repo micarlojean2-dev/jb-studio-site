@@ -63,6 +63,18 @@ console.log('6. No inventa: sin marcador, aunque el cliente insinúe algo, notas
   ok(nx.notas.length === 0, 'sin marcador no hay nota (no se deduce)');
 }
 
+console.log('7. "soy <preferencia>" NO se toma como nombre (no pisa el nombre real)');
+{
+  const a = CORE.extractBooking('Soy alérgico a los aceites y prefiero una habitación silenciosa', [], null);
+  ok(!a.nombre, 'no captura nombre de "soy alérgico a los aceites"');
+  const b = CORE.extractBooking('Soy vegetariano', [], null);
+  ok(!b.nombre, 'no captura nombre de "soy vegetariano"');
+  const c = CORE.extractBooking('Soy NotaTest', [], null);
+  ok(c.nombre === 'NotaTest', '"Soy NotaTest" sí captura el nombre');
+  const d = CORE.extractBooking('soy Ana', [], null);
+  ok(d.nombre === 'Ana', '"soy Ana" sí captura el nombre');
+}
+
 console.log('');
 if (fallos) { console.error(`❌ ${fallos} aserción(es) fallaron`); process.exit(1); }
 console.log('✅ Captura de notas verificada');

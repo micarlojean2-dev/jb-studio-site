@@ -176,10 +176,19 @@ window.JBChatCore = (function () {
 
     // El nombre solo se toma si la persona lo marca ("soy Ana", "me llamo…").
     // Sin marcador, en texto libre se confunde con cualquier palabra.
+    // "soy X" es ambiguo: "soy Ana" es un nombre, pero "soy alérgico a los
+    // aceites" o "soy vegetariano" es un estado, no un nombre. Sin este filtro,
+    // una preferencia dicha con "soy…" pisaba el nombre ya capturado. "me llamo"
+    // y "mi nombre es" no son ambiguos y no necesitan el filtro.
     var nm = t.match(/\b(?:soy|me\s+llamo|mi\s+nombre\s+es)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}(?:\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,})?)/i);
     if (nm) {
       var cand = nm[1].trim();
-      if (!/^(que|quien|el|la|un|una|para|de|del)$/i.test(cand.split(/\s+/)[0])) out.nombre = cand;
+      var primera = cand.split(/\s+/)[0].toLowerCase();
+      var noNombre = /^(que|quien|el|la|un|una|para|de|del|al[eé]rgic[oa]|vegetarian[oa]|vegan[oa]|celiac[oa]|diab[eé]tic[oa]|intolerante|nuev[oa]|client[ea]|puntual|flexible|mayor|menor|estudiante|jubilad[oa]|sensible|zurd[oa])$/i.test(primera);
+      // "soy alérgico A los aceites", "soy vegetariano DE toda la vida": tras el
+      // candidato viene un complemento -> es una descripción, no un nombre.
+      var complemento = new RegExp('\\bsoy\\s+' + primera.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+(a|al|de|con|sin|muy|desde|por)\\b', 'i').test(t);
+      if (!noNombre && !complemento) out.nombre = cand;
     }
 
     var e = t.match(EMAIL_RE2);
