@@ -3142,11 +3142,6 @@ LÍMITES ESTRICTOS:
       });
       return out.slice(0, 10);
     }
-    document.getElementById('setup-add-email').addEventListener('click', function () {
-      var cont = document.getElementById('setup-emails');
-      if (cont.querySelectorAll('.setup-email-row').length < 10) cont.appendChild(setupEmailRow(''));
-    });
-
     let setupClient = null;
     let setupCloseRegistered = false;
 
@@ -3204,8 +3199,16 @@ LÍMITES ESTRICTOS:
       document.getElementById('setup-overlay').classList.remove('hidden');
 
       // Register modal event listeners lazily (elements exist after full page parse)
+      // El modal #setup-overlay vive al final del <body>, después de este script,
+      // así que sus nodos NO existen cuando la IIFE corre. Registrar aquí (en el
+      // primer abrirSetup) garantiza que ya están en el DOM. El guard evita
+      // listeners duplicados en aperturas posteriores.
       if (!setupCloseRegistered) {
         setupCloseRegistered = true;
+        document.getElementById('setup-add-email').addEventListener('click', function () {
+          var cont = document.getElementById('setup-emails');
+          if (cont.querySelectorAll('.setup-email-row').length < 10) cont.appendChild(setupEmailRow(''));
+        });
         document.getElementById('setup-close').addEventListener('click', function () {
           document.getElementById('setup-overlay').classList.add('hidden');
         });
