@@ -423,6 +423,9 @@ async function runDigest(dry, testDeps) {
     const avisaPorCorreo = !client.features || client.features.emailNotifications !== false;
     const recipients = avisaPorCorreo ? destinatariosAviso(client) : [];
     if (!recipients.length) {
+      // En dry NO se toca nada (solo lectura): se reporta y se sigue. Fuera de
+      // dry sí se limpia para no acumular ni reintentar en vano.
+      if (dry) { detalle.push({ cid, recipients: 0, cambios: eventos.length, nota: 'sin destinatario' }); continue; }
       await R.del(`changes:${cid}`); await R.srem('digest:pending', cid);
       sinDestinatario++; continue;
     }
@@ -531,6 +534,50 @@ export default async function handler(req, res) {
     }
   }
 
+  // Recuperación puntual de la cola (mantenimiento, protegida con CRON_SECRET).
+  // Idempotente: si ya hay eventos en changes:{clientId}, solo reasegura que el
+  // negocio esté en digest:pending (SET, sin duplicar). Si no hay eventos,
+  // reconstruye UN evento 'created' de la reserva activa más reciente. Sirve
+  // para reencolar avisos que se perdieron por un fallo anterior, sin tocar
+  // reservas ni enviar correos.
+  if (req.method === 'GET' && req.query?.cron === 'backfill') {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || (req.headers.authorization || '') !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const cid = req.query?.clientId;
+    if (!cid || !/^[a-z0-9-]+$/.test(cid)) return res.status(400).json({ error: 'Invalid clientId' });
+    try {
+      const existentes = await redis.lrange(`changes:${cid}`, 0, -1);
+      if (existentes && existentes.length) {
+        await redis.sadd('digest:pending', cid);   // idempotente: no duplica
+        return res.status(200).json({ ok: true, action: 're-added', clientId: cid, eventos: existentes.length });
+      }
+      // changes vacío: reconstruir un único evento de la reserva viva más reciente.
+      const keys = await redis.keys(`reservations:${cid}:*`);
+      const items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+      let mejor = null, mejorKey = null, mejorTs = 0;
+      keys.forEach((k, i) => {
+        const r = items[i];
+        if (!r || r.estado === 'cancelada' || r.estado === 'rechazada') return;
+        const ts = parseInt(String(k).split(':').pop(), 10) || 0;
+        if (ts > mejorTs) { mejor = r; mejorKey = k; mejorTs = ts; }
+      });
+      if (!mejor) return res.status(200).json({ ok: true, action: 'none', clientId: cid, reason: 'no active reservation' });
+      const q = await registrarCambio(cid, {
+        type: 'created', reservationId: mejorKey,
+        nombre: mejor.nombre, servicio: mejor.servicio, fecha: mejor.fecha, hora: mejor.hora, telefono: mejor.telefono,
+      });
+      return res.status(q.ok ? 200 : 500).json({
+        ok: q.ok, action: 'created-event', clientId: cid, queued: q.ok,
+        reservation: { nombre: mejor.nombre, servicio: mejor.servicio, fecha: mejor.fecha, hora: mejor.hora },
+      });
+    } catch (err) {
+      console.error('[api/reservations] backfill:', err.message);
+      return res.status(500).json({ error: 'Backfill failed' });
+    }
+  }
+
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
@@ -622,17 +669,22 @@ export default async function handler(req, res) {
     // ── Sin correos inmediatos (Fase D). La cita ya está en la hoja del
     //    dueño al instante; el aviso va en el resumen diario agrupado, y solo
     //    si hubo cambios. Aquí solo se encola un evento diminuto (Fase B). ──
-    await registrarCambio(clientId, {
+    const aviso = await registrarCambio(clientId, {
       type: 'created', reservationId: key,
       nombre: reservation.nombre, servicio: reservation.servicio,
       fecha: reservation.fecha, hora: reservation.hora, telefono: reservation.telefono,
     });
+    // La reserva ya está guardada; si el aviso no se encoló, se registra sin
+    // ocultarlo y el backend lo reporta abajo (sin confirmación falsa).
+    if (!aviso.ok) console.error(`[api/reservations] reserva ${key} guardada pero el aviso NO quedó en cola:`, aviso.error);
 
     return res.status(201).json({
       ok: true,
       reservationCreated: true,
       reservationId: key,
       status: reservation.estado,   // 'pendiente'
+      // Estado real del encolado del aviso: true = irá en el próximo resumen.
+      aviso: { encolado: aviso.ok },
       // No hay envío inmediato: el aviso al dueño va en el resumen diario.
       notifications: { owner: { attempted: false, sent: false, count: 0 }, customer: { attempted: false, sent: false } },
     });

@@ -94,12 +94,13 @@ export default async function handler(req, res) {
 
     // ── Sin correos inmediatos (Fase D). La cancelación aparece al instante
     //    en la hoja del dueño; el aviso va en el resumen diario agrupado. ──
-    await registrarCambio(clientId, {
+    const aviso = await registrarCambio(clientId, {
       type: 'cancelled', reservationId: matchKey,
       nombre: match.nombre, servicio: match.servicio, fecha: match.fecha, hora: match.hora,
     });
+    if (!aviso.ok) console.error(`[api/cancel-reservation] cancelación ${matchKey} guardada pero el aviso NO quedó en cola:`, aviso.error);
 
-    return res.status(200).json({ found: true, key: matchKey });
+    return res.status(200).json({ found: true, key: matchKey, aviso: { encolado: aviso.ok } });
 
   } catch (err) {
     console.error('[api/cancel-reservation]', err.message);

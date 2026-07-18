@@ -200,6 +200,23 @@ const clienteBase = (extra = {}) => Object.assign({
   ok(!redis._store.has('changes:bella') && !redis._pending.has('bella'), 'limpia la cola igualmente');
 }
 
+// ── 8c. dry NO borra la cola aunque no haya destinatario (solo lectura) ──────
+{
+  console.log('8c. dry no destruye la cola sin destinatario');
+  const redis = fakeRedis({
+    pending: ['bella'],
+    keys: {
+      'client:bella': { businessName: 'X' },   // sin correo
+      'changes:bella': [ev({ type: 'created', nombre: 'Mike' })],
+    },
+  });
+  const resend = fakeResend();
+  const r = await runDigest(true, { redis, resend });   // dry
+  ok(redis._store.has('changes:bella') && redis._pending.has('bella'), 'en dry NO borra changes ni digest:pending');
+  ok(r.detalle && r.detalle.some((d) => d.cid === 'bella' && d.recipients === 0), 'reporta el negocio con recipients: 0');
+  ok(resend.calls.length === 0, 'no envía nada');
+}
+
 // ── 9. Plantilla: escapa HTML y pone el enlace al panel ──────────────────────
 {
   console.log('9. Plantilla y escape');
