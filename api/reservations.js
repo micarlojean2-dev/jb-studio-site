@@ -380,6 +380,10 @@ function digestBloque(ev) {
     if (ev.fecha || ev.hora) cuerpo += `<div style="font-size:13px;color:#6b6f76;margin-top:2px">${esc(ev.fecha || '')}${ev.hora ? ' · ' + esc(ev.hora) : ''}</div>`;
   }
   if (tipo === 'created' && ev.telefono) cuerpo += `<div style="font-size:12px;color:#a8acb3;margin-top:4px">Tel: ${esc(ev.telefono)}</div>`;
+  // Notas del cliente: solo si existen. Si no, no se muestra absolutamente nada.
+  if (ev.notes && String(ev.notes).trim()) {
+    cuerpo += `<div style="font-size:13px;color:#16181d;margin-top:8px;padding-top:8px;border-top:1px solid #f0f0f0">📝 <strong>Notas:</strong> ${esc(ev.notes)}</div>`;
+  }
   return `<div style="border:1px solid #eaecef;border-radius:12px;padding:13px 15px;margin-bottom:10px">${cabecera}${cuerpo}</div>`;
 }
 
@@ -567,6 +571,7 @@ export default async function handler(req, res) {
       const q = await registrarCambio(cid, {
         type: 'created', reservationId: mejorKey,
         nombre: mejor.nombre, servicio: mejor.servicio, fecha: mejor.fecha, hora: mejor.hora, telefono: mejor.telefono,
+        notes: mejor.notes,
       });
       return res.status(q.ok ? 200 : 500).json({
         ok: q.ok, action: 'created-event', clientId: cid, queued: q.ok,
@@ -584,7 +589,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, nombre, telefono, email, fecha, hora, servicio, personas, nota } = req.body || {};
+  const { clientId, nombre, telefono, email, fecha, hora, servicio, personas, nota, notes } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -614,6 +619,9 @@ export default async function handler(req, res) {
       servicio:       String(servicio || '').slice(0, 200),
       personas:       normalizePersonas(personas),
       nota:           /^no$/i.test(String(nota || '').trim()) ? '' : String(nota || '').slice(0, 500),
+      // Notas del cliente detectadas en la conversación (preferencias, avisos,
+      // peticiones). Texto libre, opcional; vacío si el cliente no dijo nada.
+      notes:          String(notes || '').slice(0, 800),
       estado:         'pendiente',
       fechaSolicitud: new Date(ts).toISOString(),
     };
@@ -673,6 +681,7 @@ export default async function handler(req, res) {
       type: 'created', reservationId: key,
       nombre: reservation.nombre, servicio: reservation.servicio,
       fecha: reservation.fecha, hora: reservation.hora, telefono: reservation.telefono,
+      notes: reservation.notes,
     });
     // La reserva ya está guardada; si el aviso no se encoló, se registra sin
     // ocultarlo y el backend lo reporta abajo (sin confirmación falsa).

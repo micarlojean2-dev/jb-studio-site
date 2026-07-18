@@ -228,6 +228,17 @@ const clienteBase = (extra = {}) => Object.assign({
   ok(bloque.includes('CANCELADA'), 'etiqueta correcta por tipo');
 }
 
+// ── 10. Notas en el correo: se muestran solo si existen ──────────────────────
+{
+  console.log('10. Notas en el digest');
+  const con = digestBloque({ type: 'created', nombre: 'Ana', servicio: 'Masaje', fecha: '2026-07-20', hora: '10:00', notes: 'alérgica a los aceites' });
+  ok(con.includes('📝') && con.includes('alérgica a los aceites'), 'muestra las notas cuando existen');
+  const sin = digestBloque({ type: 'created', nombre: 'Ana', servicio: 'Masaje', fecha: '2026-07-20', hora: '10:00' });
+  ok(!sin.includes('📝') && !sin.includes('Notas'), 'oculta por completo la sección si no hay notas');
+  const vacio = digestBloque({ type: 'created', nombre: 'Ana', fecha: '2026-07-20', hora: '10:00', notes: '   ' });
+  ok(!vacio.includes('📝'), 'notas solo con espacios se tratan como vacías');
+}
+
 console.log('');
 if (fallos) { console.error(`❌ ${fallos} aserción(es) fallaron`); process.exit(1); }
 console.log('✅ Todas las pruebas del resumen pasaron');

@@ -273,7 +273,9 @@ Cómo responder:
 - Si ya no falta nada, di que le muestras el resumen para confirmar (no lo confirmes tú).
 - NUNCA digas que la cita quedó agendada o confirmada. NUNCA inventes horarios libres ni disponibilidad: eso lo revisa el negocio al confirmar.
 - PROHIBIDO afirmar cualquiera de estas cosas (aún no han ocurrido y no las controlas): "ya notificamos al equipo/negocio", "avisamos al negocio", "tu cita está confirmada", "el correo fue enviado", "te enviamos la confirmación", "la reserva fue creada/guardada". El sistema envía esos avisos por su cuenta y te lo confirmará; tú no.
-- Frase breve, sin markdown.`;
+- Frase breve, sin markdown.
+
+CAPTURA DE NOTAS (silenciosa, no la menciones al cliente): si el cliente dice espontáneamente una preferencia, aviso o petición importante para su cita —por ejemplo alergias, "prefiero una persona en concreto", "voy acompañado/a", necesita estacionamiento, es un regalo, no puede cierta postura, no quiere música, quiere sala privada, "si me retraso avísame"— añade AL FINAL de tu respuesta, en su propia línea, un marcador EXACTO con esta forma: [NOTA: la frase del cliente con sus propias palabras]. Reglas estrictas: solo lo que el cliente dijo de forma explícita; nunca inventes ni deduzcas nada; una nota por marcador (varias notas = varios marcadores); si el cliente no dijo nada importante, NO escribas ningún marcador; nunca expliques ni menciones el marcador.`;
     }
 
     if (necesitaSetup(client)) {

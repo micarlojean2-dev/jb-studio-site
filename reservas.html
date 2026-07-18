@@ -54,41 +54,26 @@
     }
     .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-    /* ── Tabla (escritorio) ── */
-    .sheet { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; }
-    thead th {
-      text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: .03em;
-      text-transform: uppercase; color: var(--muted);
-      padding: 12px 14px; border-bottom: 1px solid var(--line); white-space: nowrap;
-    }
-    tbody td { padding: 13px 14px; font-size: 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
-    tbody tr:last-child td { border-bottom: none; }
-    .cel-nom { font-weight: 600; }
-    .cel-muted { color: var(--muted); }
-    .estado { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
-    .estado.nueva { background: #e7f2ea; color: var(--accent); }
-    .estado.reprogramada { background: #fff4e2; color: #8a5a00; }
-    .estado.cancelada { background: #fbe9e9; color: var(--cancel); }
+    /* ── Tarjetas de citas (una por reserva, fáciles de leer) ── */
+    .sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(288px, 1fr)); gap: 14px; }
+    .rcard { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 16px 13px; }
+    .rrow { display: flex; align-items: baseline; gap: 9px; font-size: 14px; padding: 3px 0; }
+    .rrow .ic { flex: none; width: 18px; text-align: center; }
+    .rrow .rlbl { flex: none; color: var(--muted); font-size: 12.5px; width: 66px; }
+    .rrow .rval { color: var(--ink); word-break: break-word; }
+    .rname { font-size: 17px; font-weight: 650; }
+    .rnotes { margin-top: 11px; padding: 10px 12px; background: #faf8f2; border: 1px solid var(--line); border-radius: 10px; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
+    .rnotes-t { color: var(--muted); font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    .rfoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line); }
+    .rcreated { font-size: 11.5px; color: var(--muted); text-align: right; }
+    .estado { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 11px; border-radius: 20px; white-space: nowrap; }
+    .estado.nueva        { background: #e7f2ea; color: #1a7a3e; }   /* verde */
+    .estado.reprogramada { background: #e6effb; color: #1f5fae; }   /* azul */
+    .estado.cancelada    { background: #fbe9e9; color: #b23b3b; }   /* rojo */
+    .estado.pendiente    { background: #fdf0e0; color: #b5721a; }   /* naranja */
 
-    .empty { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 14px; }
-    .updated { font-size: 12px; color: var(--muted); margin-top: 12px; text-align: right; }
-
-    /* ── Móvil: cada cita como tarjeta, sin tabla ancha ── */
-    @media (max-width: 620px) {
-      .sheet { background: transparent; border: none; }
-      table, thead, tbody, th, td, tr { display: block; }
-      thead { display: none; }
-      tbody tr {
-        background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-        padding: 14px; margin-bottom: 12px;
-      }
-      tbody td { border: none; padding: 2px 0; font-size: 14px; }
-      tbody td.cel-nom { font-size: 16px; margin-bottom: 2px; }
-      tbody td[data-lbl]::before { content: attr(data-lbl) ": "; color: var(--muted); font-weight: 500; }
-      tbody td.cel-nom::before, tbody td.cel-estado::before { content: none; }
-      tbody td.cel-estado { margin-top: 8px; }
-    }
+    .empty { grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: var(--muted); font-size: 14px; }
+    .updated { font-size: 12px; color: var(--muted); margin-top: 14px; text-align: right; }
 
     /* ── Login ── */
     #login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -269,6 +254,49 @@
     return allData.filter(function (r) { return r.estado !== 'cancelada' && r.estado !== 'rechazada'; });
   }
 
+  // "Creada hace 12 minutos" si es reciente; si no, fecha real almacenada.
+  function fechaCreacion(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var min = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (min < 1)  return 'Creada hace unos segundos';
+    if (min < 60) return 'Creada hace ' + min + (min === 1 ? ' minuto' : ' minutos');
+    var h = Math.floor(min / 60);
+    if (h < 24)   return 'Creada hace ' + h + (h === 1 ? ' hora' : ' horas');
+    var meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    var fecha = d.getDate() + ' ' + meses[d.getMonth()] + ' ' + d.getFullYear();
+    return 'Creada el ' + fecha + ' · ' + d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function fila(icon, label, val) {
+    if (!val) return '';
+    return '<div class="rrow"><span class="ic">' + icon + '</span>' +
+      '<span class="rlbl">' + label + '</span><span class="rval">' + esc(val) + '</span></div>';
+  }
+
+  function cardHTML(r) {
+    var e = estadoInfo(r);
+    var notes = String(r.notes == null ? '' : r.notes).trim();
+    // Notas: solo si existen. Si no, no se muestra absolutamente nada.
+    var notesHTML = notes
+      ? '<div class="rnotes"><div class="rnotes-t">📝 Notas</div>' + esc(notes) + '</div>'
+      : '';
+    var creada = fechaCreacion(r.fechaSolicitud);
+    return '<div class="rcard">' +
+        '<div class="rrow"><span class="ic">👤</span><span class="rname">' + esc(r.nombre || '—') + '</span></div>' +
+        fila('💆', 'Servicio', r.servicio) +
+        fila('📅', 'Fecha', r.fecha) +
+        fila('🕒', 'Hora', r.hora) +
+        fila('📞', 'Teléfono', r.telefono) +
+        fila('✉️', 'Correo', r.email) +
+        notesHTML +
+        '<div class="rfoot"><span class="estado ' + e.cls + '">' + e.txt + '</span>' +
+          (creada ? '<span class="rcreated">' + esc(creada) + '</span>' : '') +
+        '</div>' +
+      '</div>';
+  }
+
   function render() {
     var data = filtered().slice().sort(function (a, b) {
       return String(a.fechaISO || '').localeCompare(String(b.fechaISO || '')) ||
@@ -281,21 +309,7 @@
     if (!data.length) {
       sheet.innerHTML = '<div class="empty">No hay citas ' + (activeFilter === 'canceladas' ? 'canceladas' : 'próximas') + '.</div>';
     } else {
-      var rows = data.map(function (r) {
-        var e = estadoInfo(r);
-        return '<tr>' +
-          '<td class="cel-nom">' + esc(r.nombre) + '</td>' +
-          '<td data-lbl="Servicio" class="cel-muted">' + esc(r.servicio || '—') + '</td>' +
-          '<td data-lbl="Fecha">' + esc(r.fecha || '—') + '</td>' +
-          '<td data-lbl="Hora">' + esc(r.hora || '—') + '</td>' +
-          '<td data-lbl="Teléfono" class="cel-muted">' + esc(r.telefono || '—') + '</td>' +
-          '<td data-lbl="Correo" class="cel-muted">' + esc(r.email || '—') + '</td>' +
-          '<td class="cel-estado"><span class="estado ' + e.cls + '">' + e.txt + '</span></td>' +
-          '</tr>';
-      }).join('');
-      sheet.innerHTML = '<table><thead><tr>' +
-        '<th>Cliente</th><th>Servicio</th><th>Fecha</th><th>Hora</th><th>Teléfono</th><th>Correo</th><th>Estado</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table>';
+      sheet.innerHTML = data.map(cardHTML).join('');
     }
     var now = new Date();
     document.getElementById('updated').textContent = 'Actualizado ' + now.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });

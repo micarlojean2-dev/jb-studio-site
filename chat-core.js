@@ -215,6 +215,32 @@ window.JBChatCore = (function () {
         .trim();
     }
 
+  // Notas del cliente: DeepSeek, durante el flujo de reserva, marca las frases
+  // importantes que el cliente dice espontáneamente con [NOTA: ...]. Aquí se
+  // extraen (sin llamada extra al modelo) y se quitan del texto visible. Solo se
+  // conserva lo que el cliente dijo; el modelo tiene prohibido inventar.
+  var NOTA_RE = /\[NOTA:\s*([^\]]{1,300})\]/gi;
+
+  function extractNotas(text) {
+      var t = String(text || '');
+      var notas = [];
+      var m;
+      NOTA_RE.lastIndex = 0;
+      while ((m = NOTA_RE.exec(t)) !== null) {
+        var v = m[1].trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
+        if (v && notas.indexOf(v) === -1) notas.push(v);
+      }
+      var limpio = t.replace(NOTA_RE, '').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+      return { notas: notas, limpio: limpio };
+    }
+
+  // Acumula notas nuevas en la nota existente, sin duplicar, como un solo texto.
+  function fusionarNotas(prev, nuevas) {
+      var base = String(prev || '').split(/\s+·\s+/).map(function (s) { return s.trim(); }).filter(Boolean);
+      (nuevas || []).forEach(function (n) { var v = String(n || '').trim(); if (v && base.indexOf(v) === -1) base.push(v); });
+      return base.join(' · ');
+    }
+
   function valorValido(field, t) {
       if (field === 'email')    return EMAIL_RE2.test(t) || /^(no|ninguno|skip|omitir)$/i.test(t.trim());
       if (field === 'telefono') return t.replace(/\D/g, '').length >= 7;
@@ -354,6 +380,8 @@ window.JBChatCore = (function () {
     horasAbiertas: horasAbiertas,
     limpiarMarcadores: limpiarMarcadores,
     limpiarMarkdown: limpiarMarkdown,
+    extractNotas: extractNotas,
+    fusionarNotas: fusionarNotas,
     valorValido: valorValido,
     pareceReserva: pareceReserva,
     isPopular: isPopular,

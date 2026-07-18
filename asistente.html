@@ -804,12 +804,18 @@ function extractBooking(text, menu) {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         hideTyping();
-        var txt = (d && d.text) ? CORE.limpiarMarcadores(d.text) : '';
+        var raw = (d && d.text) || '';
+        // Notas: el modelo marca lo importante con [NOTA: ...] en esta misma
+        // respuesta. Se acumula en bookingData.notes y se quita del texto (y del
+        // historial) para que ni el cliente ni el modelo vuelvan a verlo.
+        var nx = CORE.extractNotas(raw);
+        if (nx.notas.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, nx.notas);
+        var txt = raw ? CORE.limpiarMarcadores(nx.limpio) : '';
         if (!txt) txt = completo
           ? (lang === 'en' ? 'Great, I have everything 😊' : 'Genial, ya tengo todo 😊')
           : (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + faltan[0] + '?';
         addMsg('bot', txt);
-        if (d && d.text) msgs.push({ role: 'assistant', content: d.text });
+        if (raw) msgs.push({ role: 'assistant', content: nx.limpio });
         save();
         // El resumen (local y fiable) se muestra tras el mensaje natural.
         if (completo) showBookingSummary();
@@ -932,32 +938,15 @@ function extractBooking(text, menu) {
   function mensajeReservaGuardada(d, lang) {
     var en = lang === 'en';
     var nombre = bookingData.nombre ? String(bookingData.nombre).split(/\s+/)[0] : '';
-    var hola = nombre ? (en ? 'Done, ' + nombre + '. ' : 'Listo, ' + nombre + '. ') : (en ? 'Done. ' : 'Listo. ');
     var negocio = cfg.businessName || (en ? 'the business' : 'el negocio');
-    var n = (d && d.notifications) || {};
-    var ownerSent = n.owner && n.owner.sent;
-    var ownerTried = n.owner && n.owner.attempted;
-    var custTried = n.customer && n.customer.attempted;
-    var custSent = n.customer && n.customer.sent;
-
-    // Caso C: no se pudo avisar al negocio.
-    if (ownerTried && !ownerSent) {
-      return hola + (en
-        ? 'Your request has been registered, but we couldn\'t notify ' + negocio + ' by email. You can try again or contact them directly. It is still pending confirmation.'
-        : 'Tu solicitud quedó registrada, pero no pudimos avisar a ' + negocio + ' por correo. Puedes intentarlo de nuevo o contactar directamente al negocio. Sigue pendiente de confirmación.');
+    // Mensaje cálido y humano. La cita nace pendiente: el negocio ya tiene toda
+    // la información y contactará si necesita confirmar o ajustar algo.
+    if (en) {
+      return 'Perfect' + (nombre ? ', ' + nombre : '') + '! 😊 Your request has been registered.\n\n' +
+             negocio + ' now has all your details and will reach out if they need to confirm or adjust anything.\n\nThank you! 🙌';
     }
-
-    // Aviso al negocio enviado (o no había a quién avisar). Copia al cliente:
-    var avisamos = ownerSent
-      ? (en ? 'Your request has been registered and we notified ' + negocio + '.' : 'Tu solicitud quedó registrada y avisamos a ' + negocio + '.')
-      : (en ? 'Your request has been registered.' : 'Tu solicitud quedó registrada.');
-
-    var copia = '';
-    if (custTried && custSent) copia = en ? ' We also sent a copy to your email.' : ' También enviamos una copia a tu correo.';
-    else if (custTried && !custSent) copia = en ? ' We couldn\'t send the copy to your email, but your request was saved.' : ' No pudimos enviar la copia a tu correo, pero tu solicitud sí fue guardada.';
-
-    var pendiente = en ? ' It is still pending confirmation.' : ' Sigue pendiente de confirmación.';
-    return hola + avisamos + copia + pendiente;
+    return '¡Perfecto' + (nombre ? ', ' + nombre : '') + '! 😊 Tu solicitud quedó registrada correctamente.\n\n' +
+           negocio + ' ya recibió toda tu información y podrá contactarte si necesita confirmar o hacer algún ajuste.\n\n¡Gracias! 🙌';
   }
 
   function submitCancellation() {
