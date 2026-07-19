@@ -583,44 +583,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── TEMPORAL: limpieza puntual de las reservas de prueba NotaTest. ──────────
-  // Se añade solo para borrar dos claves verificadas y limpiar su evento del
-  // digest; se ejecuta una vez y se ELIMINA en el deploy siguiente. Protegido
-  // con CRON_SECRET. La allowlist es fija y además comprueba que cada clave sea
-  // de NotaTest antes de borrar: no puede tocar ninguna otra reserva.
-  if (req.method === 'GET' && req.query?.cron === 'cleanup-notatest') {
-    const secret = process.env.CRON_SECRET;
-    if (!secret || (req.headers.authorization || '') !== `Bearer ${secret}`) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const PERMITIDAS = [
-      'reservations:bella-luna-spa:1784389100164',
-      'reservations:bella-luna-spa:1784389016205',
-    ];
-    try {
-      const borradas = [], omitidas = [];
-      for (const k of PERMITIDAS) {
-        const r = await redis.get(k);
-        if (r && String(r.nombre || '').trim().toLowerCase() === 'notatest') {
-          await redis.del(k);
-          borradas.push(k);
-        } else {
-          omitidas.push({ key: k, motivo: r ? `no es NotaTest (${r.nombre})` : 'no existe' });
-        }
-      }
-      // Evento del digest de prueba: la cola solo tenía el de NotaTest.
-      await redis.del('changes:bella-luna-spa');
-      await redis.srem('digest:pending', 'bella-luna-spa');
-      return res.status(200).json({
-        ok: true, action: 'cleanup-notatest', borradas, omitidas,
-        changes: 'changes:bella-luna-spa deleted', digestPending: 'bella-luna-spa removed',
-      });
-    } catch (err) {
-      console.error('[api/reservations] cleanup-notatest:', err.message);
-      return res.status(500).json({ error: 'Cleanup failed' });
-    }
-  }
-
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
