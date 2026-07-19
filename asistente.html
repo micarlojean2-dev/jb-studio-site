@@ -1020,7 +1020,7 @@ function extractBooking(text, menu) {
 
       // Extracción determinista: mete en el estado lo que el mensaje traiga,
       // esté o no en el orden esperado.
-      var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours);
+      var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language);
       var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
       var traidos = Object.keys(yaVisto);
       traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
@@ -1055,7 +1055,7 @@ function extractBooking(text, menu) {
       return;
     }
 
-    var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours) : {};
+    var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language) : {};
     if (featureOn('reservations') && CORE.pareceReserva(t, preExtraido)) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });

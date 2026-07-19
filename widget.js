@@ -943,7 +943,7 @@ function extractBooking(text, menu) {
       msgs.push({ role: 'user', content: t });
       if (resolverHoraPendiente(t, lang)) return;
 
-      var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours);
+      var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language);
       var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
       var traidos = Object.keys(yaVisto);
       traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
@@ -974,7 +974,7 @@ function extractBooking(text, menu) {
     }
 
     // ── Booking intent detected: start flow ──────────────────────────────
-    var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours) : {};
+    var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language) : {};
     if (featureOn('reservations') && CORE.pareceReserva(t, preExtraido)) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });

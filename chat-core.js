@@ -16,13 +16,48 @@
 window.JBChatCore = (function () {
   'use strict';
 
-  var FECHA_RE = new RegExp(
-    '(pasado\\s+ma(ñ|n)ana|ma(ñ|n)ana|hoy|' +
-    '(este|el|pr(ó|o)ximo)\\s+(lunes|martes|mi(é|e)rcoles|jueves|viernes|s(á|a)bado|domingo)|' +
-    '(lunes|martes|mi(é|e)rcoles|jueves|viernes|s(á|a)bado|domingo)|' +
-    '\\d{1,2}\\s+de\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)|' +
-    '\\d{1,2}[\\/\\-]\\d{1,2}(?:[\\/\\-]\\d{2,4})?|' +
-    '\\d{4}-\\d{2}-\\d{2})', 'i');
+  // ── Fechas ───────────────────────────────────────────────────────────────
+  // Antes había un solo patrón que mezclaba fechas en palabras y numéricas, y
+  // el trozo numérico (\d{1,2}[\/-]\d{1,2}) no llevaba \b ni validación: dentro
+  // del teléfono "202-555-0147" encontraba "02-55" y lo guardaba como fecha,
+  // pisando el "24 de julio" que el cliente había dicho antes.
+  //
+  // Ahora van separados: las fechas en palabras nunca son ambiguas; las
+  // numéricas se anclan con \b, se validan por rango y se desambigua día/mes
+  // con el idioma del negocio (07/08 es 7 de agosto en España y 8 de julio en
+  // EE.UU.). Lo que se guarda sigue siendo el texto literal del cliente, así
+  // que "mañana" y las reservas antiguas siguen funcionando igual.
+  var MES_NOM = 'enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre';
+
+  var MESES = { enero:1, febrero:2, marzo:3, abril:4, mayo:5, junio:6, julio:7,
+                agosto:8, septiembre:9, setiembre:9, octubre:10, noviembre:11, diciembre:12 };
+
+  var FECHA_TEXTO_RE = new RegExp(
+    '(pasado\\s+ma(?:ñ|n)ana|ma(?:ñ|n)ana|hoy|' +
+    '(?:este|el|pr(?:ó|o)ximo)\\s+(?:lunes|martes|mi(?:é|e)rcoles|jueves|viernes|s(?:á|a)bado|domingo)|' +
+    '(?:lunes|martes|mi(?:é|e)rcoles|jueves|viernes|s(?:á|a)bado|domingo)|' +
+    '\\d{1,2}\\s+de\\s+(?:' + MES_NOM + ')(?:\\s+de\\s+\\d{4})?|' +
+    '(?:' + MES_NOM + ')\\s+\\d{1,2}\\b)', 'i');
+
+  var FECHA_ISO_RE = /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/;
+
+  var FECHA_NUM_RE = /\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/;
+
+  // Una fecha numérica que ocupa todo el fragmento: sirve para no confundir
+  // "24-07-2026" con un teléfono al enmascarar.
+  var FECHA_NUM_SOLA_RE = /^(?:\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?|\d{4}-\d{1,2}-\d{1,2})$/;
+
+  var DIAS_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+  function diaValido(d, m) {
+    return m >= 1 && m <= 12 && d >= 1 && d <= DIAS_MES[m - 1];
+  }
+
+  // Una cita se pide para ahora, no para 1998 ni para el siglo que viene.
+  function anioRazonable(y) {
+    var actual = new Date().getFullYear();
+    return y >= actual - 1 && y <= actual + 10;
+  }
 
   var HORA_RE = /(?:a\s+las\s+)?\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b/i;
 
@@ -35,6 +70,71 @@ window.JBChatCore = (function () {
   var EMAIL_RE2 = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
 
   var TEL_RE = /(\+?\d[\d\s().-]{6,}\d)/;
+
+  // Borra del texto todo lo que ya sabemos que NO es una fecha antes de
+  // buscarla: correos, horas y secuencias largas de dígitos (teléfonos, IDs).
+  // Sin esto, cualquier número de contacto puede aportar un falso día/mes.
+  function enmascararNoFecha(s) {
+    return String(s)
+      .replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, ' ')                       // correos
+      .replace(/\b\d{1,2}:\d{2}\s*(?:a\.?m\.?|p\.?m\.?)?/gi, ' ')         // horas 4:00 PM
+      .replace(/\b\d{5,}\b/g, ' ')                                        // IDs largos
+      .replace(/\+?\d[\d\s().-]{6,}\d/g, function (m) {
+        // "24-07-2026" también encaja en la forma de un teléfono: si el
+        // fragmento entero es una fecha numérica, se conserva.
+        return FECHA_NUM_SOLA_RE.test(m.trim()) ? m : ' ';
+      });
+  }
+
+  // Devuelve el texto literal de la fecha que dijo el cliente, o '' si lo que
+  // hay no es una fecha válida. Nunca convierte ni normaliza: guardar "24 de
+  // julio" tal cual es lo que mantiene compatibles las reservas antiguas.
+  function extraerFecha(texto, lang) {
+    var t = enmascararNoFecha(texto);
+
+    var iso = t.match(FECHA_ISO_RE);
+    if (iso) {
+      var y = +iso[1], im = +iso[2], id = +iso[3];
+      return (anioRazonable(y) && diaValido(id, im)) ? iso[0] : '';
+    }
+
+    var tx = t.match(FECHA_TEXTO_RE);
+    if (tx) {
+      var bruto = tx[0].trim();
+      // "24 de julio" / "julio 24": el día tiene que existir en ese mes.
+      var dm = bruto.match(/^(\d{1,2})\s+de\s+/i) || bruto.match(/\s+(\d{1,2})$/);
+      if (dm) {
+        var nomMes = (bruto.toLowerCase().match(new RegExp(MES_NOM, 'i')) || [])[0];
+        var mes = MESES[nomMes];
+        if (mes && !diaValido(+dm[1], mes)) return '';
+      }
+      return bruto;
+    }
+
+    var nu = t.match(FECHA_NUM_RE);
+    if (nu) {
+      var a = +nu[1], b = +nu[2], anio = nu[3] ? +nu[3] : null;
+      if (anio !== null) {
+        if (anio < 100) anio += 2000;
+        if (!anioRazonable(anio)) return '';
+      }
+      var dia = null, m = null;
+      if (a > 12 && b <= 12)      { dia = a; m = b; }   // 24/07 -> solo cabe día primero
+      else if (b > 12 && a <= 12) { dia = b; m = a; }   // 07/24 -> solo cabe mes primero
+      else if (a <= 12 && b <= 12) {
+        // Genuinamente ambiguo (07/08). Se resuelve con el idioma del negocio;
+        // si no hay ninguno configurado no adivinamos: al no capturar fecha, el
+        // flujo la vuelve a preguntar en vez de inventar un día.
+        if (lang === 'en')  { m = a; dia = b; }
+        else if (lang)      { dia = a; m = b; }
+        else return '';
+      }
+      if (dia === null || !diaValido(dia, m)) return '';
+      return nu[0].trim();
+    }
+
+    return '';
+  }
 
   var ICON_RULES = [
       [/masaj|spa|relaj|facial|belle|est[eé]t/i, '💆'],
@@ -126,7 +226,7 @@ window.JBChatCore = (function () {
     return { ambigua: n, mm: mm };                    // ambas o ninguna: preguntar
   }
 
-  function extractBooking(text, menu, businessHours) {
+  function extractBooking(text, menu, businessHours, lang) {
     var t = String(text || '');
     var out = {};
 
@@ -152,8 +252,8 @@ window.JBChatCore = (function () {
       if (elegido) out.servicio = elegido;
     }
 
-    var f = t.match(FECHA_RE);
-    if (f) out.fecha = f[0].trim();
+    var f = extraerFecha(t, lang);
+    if (f) out.fecha = f;
 
     if (HORA_CTX.test(t)) {
       var h = t.match(HORA_RE);
@@ -196,7 +296,10 @@ window.JBChatCore = (function () {
 
     // Buscar el teléfono fuera del email: si no, los dígitos de "x1@y.com"
     // se colaban como número, o el email hacía perder el teléfono entero.
+    // La fecha se excluye por lo mismo: "24-07-2026" tiene forma de teléfono
+    // (8 dígitos y guiones) y si no se saca acaba guardada como número.
     var sinEmail = out.email ? t.replace(out.email, ' ') : t;
+    if (out.fecha) sinEmail = sinEmail.replace(out.fecha, ' ');
     var tel = sinEmail.match(TEL_RE);
     if (tel && tel[0].replace(/\D/g, '').length >= 7) out.telefono = tel[0].trim();
 
