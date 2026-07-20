@@ -655,9 +655,11 @@ export default async function handler(req, res) {
         }
         const uk = await redis.keys(`usage:${QA_ID}:*`);
         for (const k of uk) { await redis.del(k); borradas.push(k); }
+        // changes:* es una LIST y digest:sentAt un valor: del es agnóstico al
+        // tipo (get sobre una list lanza WRONGTYPE), así que se borra directo.
         for (const k of [`changes:${QA_ID}`, `digest:sentAt:${QA_ID}`]) {
-          const v = await redis.get(k);
-          if (v !== null && v !== undefined) { await redis.del(k); borradas.push(k); }
+          const removed = await redis.del(k);
+          if (removed) borradas.push(k);
         }
         await redis.srem('digest:pending', QA_ID);
         // El cliente solo se borra si no quedó ninguna reserva de otro runId.
@@ -690,11 +692,11 @@ export default async function handler(req, res) {
         const rk = await redis.keys(`reservations:${QA_ID}:*`);
         const uk = await redis.keys(`usage:${QA_ID}:*`);
         const cli = await redis.get(`client:${QA_ID}`);
-        const ch  = await redis.get(`changes:${QA_ID}`);
+        const ch  = await redis.exists(`changes:${QA_ID}`);   // exists: agnóstico al tipo
         const inPending = await redis.sismember('digest:pending', QA_ID);
         return res.status(200).json({ ok: true, action: 'verify',
           reservations: rk.length, usage: uk.length, clientExists: !!cli,
-          changesExists: ch !== null && ch !== undefined, inDigestPending: !!inPending, keys: rk });
+          changesExists: !!ch, inDigestPending: !!inPending, keys: rk });
       }
 
       return res.status(400).json({ error: 'acción QA desconocida' });
