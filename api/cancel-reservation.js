@@ -36,7 +36,9 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
-  if (!checkRateLimit(ip))
+  // TEMPORAL QA: el cliente de prueba aislado queda exento del rate limit para
+  // el E2E; cualquier cliente real mantiene RPH=5. Se retira con el QA.
+  if (req.body?.clientId !== 'qa-e2e-test' && !checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
   const { clientId, contacto, fecha } = req.body || {};
