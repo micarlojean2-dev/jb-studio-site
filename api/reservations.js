@@ -583,6 +583,84 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── TEMPORAL: limpieza puntual del 4º artefacto de prueba (María 5PM, ────────
+  // rechazada por horario). Allowlist de UNA sola clave literal. No acepta
+  // parámetros. Antes de borrar verifica nombre, correo, fecha, hora Y que el
+  // estado sea 'rechazada'; si cualquiera no coincide, NO borra. Protegido con
+  // CRON_SECRET. Se ejecuta una vez y se ELIMINA en el deploy siguiente.
+  if (req.method === 'GET' && req.query?.cron === 'cleanup-playwright-rejected') {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || (req.headers.authorization || '') !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const CLAVE = 'reservations:bella-luna-spa:1784528528778';
+    const ESPERADO = {
+      nombre: 'María José de la Cruz',
+      email:  'maria-prueba@example.com',
+      fecha:  '25 de julio',
+      hora:   '5:00 PM',
+      estado: 'rechazada',
+    };
+    const norm = (s) => String(s == null ? '' : s).trim().toLowerCase();
+    try {
+      const r = await redis.get(CLAVE);
+      if (!r) {
+        return res.status(200).json({ ok: true, action: 'cleanup-playwright-rejected', borrada: null, motivo: 'no existe' });
+      }
+      const checks = {
+        nombre: norm(r.nombre) === norm(ESPERADO.nombre),
+        email:  norm(r.email)  === norm(ESPERADO.email),
+        fecha:  norm(r.fecha)  === norm(ESPERADO.fecha),
+        hora:   norm(r.hora)   === norm(ESPERADO.hora),
+        estado: norm(r.estado) === norm(ESPERADO.estado),
+      };
+      if (!Object.values(checks).every(Boolean)) {
+        return res.status(200).json({
+          ok: false, action: 'cleanup-playwright-rejected', borrada: null,
+          motivo: 'datos no coinciden', checks,
+          real: { nombre: r.nombre, email: r.email, fecha: r.fecha, hora: r.hora, estado: r.estado },
+        });
+      }
+      await redis.del(CLAVE);
+
+      // Cola del digest: quitar SOLO eventos cuyo reservationId sea esta clave.
+      // Una reserva rechazada normalmente no encola ninguno (registrarCambio
+      // solo corre en el alta con éxito), pero se verifica igualmente.
+      const raw = (await redis.lrange('changes:bella-luna-spa', 0, -1)) || [];
+      const keep = [], eliminados = [];
+      for (const x of raw) {
+        let ev = null;
+        try { ev = typeof x === 'string' ? JSON.parse(x) : x; } catch (e) { ev = null; }
+        if (ev && ev.reservationId === CLAVE) eliminados.push({ reservationId: ev.reservationId, type: ev.type || null });
+        else keep.push(typeof x === 'string' ? x : JSON.stringify(x));
+      }
+      if (eliminados.length) {
+        const m = redis.multi();
+        m.del('changes:bella-luna-spa');
+        for (const s of keep) m.rpush('changes:bella-luna-spa', s);
+        await m.exec();
+      }
+      let digestPending;
+      if (eliminados.length && keep.length === 0) {
+        await redis.srem('digest:pending', 'bella-luna-spa');
+        digestPending = 'bella-luna-spa eliminado de digest:pending (sin eventos restantes)';
+      } else if (keep.length > 0) {
+        digestPending = `conservado: ${keep.length} evento(s) legítimo(s)`;
+      } else {
+        digestPending = 'sin cambios (no había evento de esta reserva en la cola)';
+      }
+
+      return res.status(200).json({
+        ok: true, action: 'cleanup-playwright-rejected',
+        borrada: CLAVE, checks,
+        changes: { eliminados, quedan: keep.length }, digestPending,
+      });
+    } catch (err) {
+      console.error('[api/reservations] cleanup-playwright-rejected:', err.message);
+      return res.status(500).json({ error: 'Cleanup failed' });
+    }
+  }
+
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
