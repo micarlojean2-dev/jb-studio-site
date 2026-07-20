@@ -194,7 +194,10 @@ export default async function handler(req, res) {
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
   maybeCleanup();
-  if (!checkRateLimit(ip))
+  // TEMPORAL QA: el cliente de prueba aislado queda exento del rate limit para
+  // el E2E de conversaciones; cualquier cliente real mantiene RPH=30. Se retira
+  // con el resto del andamiaje QA.
+  if (req.body?.clientId !== 'qa-e2e-test' && !checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
 
   const { clientId, messages, previewToken, booking } = req.body || {};
