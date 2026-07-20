@@ -42,11 +42,22 @@ test.describe('Contrato de API @critical', () => {
     expect(r.status()).toBe(401);
   });
 
-  test('endpoints temporales de limpieza NO existen en producción → 405', async ({ request }) => {
+  test('endpoints temporales NO existen en producción → 405', async ({ request }) => {
+    // Guardas permanentes: ningún andamiaje temporal (limpiezas ni QA) debe
+    // reaparecer nunca en producción.
     for (const action of ['cleanup-playwright-tests', 'cleanup-playwright-rejected', 'cleanup-notatest']) {
       const r = await request.get(`${BASE}/api/reservations?cron=${action}`);
       expect(r.status(), `acción ${action} no debe ejecutar nada`).toBe(405);
     }
+    for (const qa of ['seed', 'verify', 'teardown', 'reset']) {
+      const r = await request.get(`${BASE}/api/reservations?qa=${qa}&runId=QA-E2E-guard`);
+      expect(r.status(), `qa=${qa} no debe existir`).toBe(405);
+    }
+  });
+
+  test('el cliente de prueba qa-e2e-test NO existe en producción', async ({ request }) => {
+    const r = await request.get(`${BASE}/api/client-config?id=qa-e2e-test`);
+    expect(r.status()).toBe(404);
   });
 });
 
