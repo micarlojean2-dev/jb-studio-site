@@ -163,6 +163,89 @@ window.JBChatCore = (function () {
       [/nombre/i, 'nombre']
     ];
 
+  // ── Nombre completo ────────────────────────────────────────────────────────
+  // Partículas que van EN medio de un nombre ("de la Cruz", "del Valle"): se
+  // conservan solo si van seguidas de otra palabra de nombre, nunca al final.
+  var NOMBRE_PARTICULA = /^(?:de|del|la|las|los|y|e|da|do|dos|van|von|di|van der)$/i;
+
+  // Una palabra de nombre: letras (con tildes/ñ), apóstrofos y guiones internos.
+  var NOMBRE_PALABRA = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ'’.\-]*$/;
+
+  // Palabras que cortan el nombre: verbos y conectores que abren otra idea. Sin
+  // esto, "me llamo Ana y prefiero silencio" capturaría "Ana y prefiero".
+  var NOMBRE_STOP = /^(?:prefiero|prefieres|necesito|necesita|soy|somos|tengo|tienes|quiero|quieres|quisiera|deseo|pero|porque|para|con|sin|mi|me|te|se|es|son|gracias|hola|buenas|el|un|una|que|y|además|tambi[eé]n|luego|despu[eé]s|ahora)$/i;
+
+  // Reconstruye el nombre a partir del texto que sigue a "me llamo/soy/mi
+  // nombre es". Camina palabra a palabra: acepta nombres y partículas, y se
+  // detiene en la primera palabra que no forma parte de un nombre. Devuelve ''
+  // si no queda nada válido.
+  function limpiarNombre(cadena) {
+    var toks = String(cadena || '').trim().split(/\s+/);
+    var out = [];
+    for (var i = 0; i < toks.length && out.length < 7; i++) {
+      var w = toks[i].replace(/[.,;:!?]+$/, '');
+      if (!w) break;
+      var low = w.toLowerCase();
+      if (NOMBRE_PARTICULA.test(low)) {
+        var sig = (toks[i + 1] || '').replace(/[.,;:!?]+$/, '');
+        // Partícula solo si tras ella viene otra palabra de nombre "de verdad".
+        if (sig && NOMBRE_PALABRA.test(sig) && !NOMBRE_STOP.test(sig.toLowerCase())) {
+          out.push(low);
+          continue;
+        }
+        break;
+      }
+      if (NOMBRE_STOP.test(low) || !NOMBRE_PALABRA.test(w) || w.length < 2) break;
+      out.push(w);
+    }
+    while (out.length && NOMBRE_PARTICULA.test(out[out.length - 1])) out.pop();
+    return out.join(' ');
+  }
+
+  // ── Notas del cliente extraídas de SUS propios mensajes ────────────────────
+  // Respaldo de [NOTA:]: si DeepSeek responde en prosa sin emitir el marcador,
+  // la preferencia se perdía. Aquí se captura de forma conservadora desde lo que
+  // el cliente escribe, sin ninguna llamada extra al modelo. Solo se toman
+  // frases con una intención clara de preferencia/restricción; nunca datos
+  // estructurados ni cortesías.
+  var NOTA_USER_TRIGGER = /(soy\s+al[eé]rgic|tengo\s+alergia|al[eé]rgic[oa]\s+a|prefiero|prefer[ií]a|quisiera\s+(?:una?\s+)?(?:habitaci[oó]n|sala|cuarto)|necesito\s+(?:una?\s+)?(?:habitaci[oó]n|sala|cuarto|silencio|silla|ayuda|espacio|ambiente)|evit[ea]n?\b|sin\s+fragancia|con\s+poca\s+luz|poca\s+luz|habitaci[oó]n\s+silenciosa|ambiente\s+(?:silencioso|tranquilo)|movilidad\s+reducida|silla\s+de\s+ruedas|es\s+mi\s+cumplea[nñ]os|(?:voy|estoy)\s+embarazad|no\s+puedo\s+con|me\s+molesta)/i;
+
+  // Cortesías/genéricos que NUNCA son nota, aunque cuelen por casualidad.
+  var NOTA_USER_GENERICO = /^(?:s[ií]|no|ok(?:ay)?|vale|gracias|perfecto|genial|est[aá]\s+bien|de\s+acuerdo|correcto|listo|claro|buenas?|hola|adi[oó]s)[\s.!]*$/i;
+
+  function limpiarFraseNota(frag) {
+    return String(frag || '')
+      // Sin datos estructurados dentro de la nota (req.: nada de correo/tel/id).
+      .replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, ' ')
+      .replace(/\+?\d[\d\s().-]{6,}\d/g, ' ')
+      .replace(/\b\d{5,}\b/g, ' ')
+      // Muletillas de arranque que no aportan a la preferencia.
+      .replace(/^(?:y|e|ah+|oye|pues|mira|bueno|adem[aá]s|tambi[eé]n|por\s+cierto|una\s+cosa|otra\s+cosa|eh+)[,\s]+/i, '')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/^[\s,;.]+|[\s,;.]+$/g, '')
+      .trim();
+  }
+
+  function extractNotasUsuario(text) {
+    var t = String(text || '');
+    // Trocear en cláusulas por puntuación fuerte, saltos y la conjunción " y ",
+    // para separar "mi correo es x@y.com Y prefiero silencio" en dos ideas.
+    var clausulas = t.split(/[.;\n]+|\s+\by\b\s+/i);
+    var notas = [];
+    clausulas.forEach(function (c) {
+      var frag = c.trim();
+      if (!frag) return;
+      if (!NOTA_USER_TRIGGER.test(frag)) return;
+      // "necesito reservar", "quiero una cita": intención de reserva, no nota.
+      if (BOOKING_TRIGGERS.test(frag)) return;
+      var nota = limpiarFraseNota(frag);
+      if (nota.length < 3) return;
+      if (NOTA_USER_GENERICO.test(nota)) return;
+      if (notas.indexOf(nota) === -1) notas.push(nota);
+    });
+    return notas;
+  }
+
   var RESUMEN_ICONOS = {
       nombre: '👤', servicio: '✂️', fecha: '📅', hora: '⏰',
       personas: '👥', telefono: '📞', email: '✉️', nota: '📝'
@@ -280,15 +363,21 @@ window.JBChatCore = (function () {
     // aceites" o "soy vegetariano" es un estado, no un nombre. Sin este filtro,
     // una preferencia dicha con "soy…" pisaba el nombre ya capturado. "me llamo"
     // y "mi nombre es" no son ambiguos y no necesitan el filtro.
-    var nm = t.match(/\b(?:soy|me\s+llamo|mi\s+nombre\s+es)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ]{2,}(?:\s+[A-Za-zÁÉÍÓÚÑáéíóúñ]{2,})?)/i);
+    // Antes solo se capturaban dos palabras, así que "Prueba Fecha Playwright" o
+    // "María José de la Cruz" se guardaban a medias. Ahora se toma la secuencia
+    // completa de palabras de nombre, conservando partículas (de, del, la, y…) y
+    // cortando en cuanto aparece algo que no es nombre (un verbo, una nota…).
+    var nm = t.match(/\b(?:soy|me\s+llamo|mi\s+nombre\s+es)\s+(.+)/i);
     if (nm) {
-      var cand = nm[1].trim();
-      var primera = cand.split(/\s+/)[0].toLowerCase();
+      var primera = nm[1].trim().split(/\s+/)[0].toLowerCase().replace(/[.,;:]+$/, '');
       var noNombre = /^(que|quien|el|la|un|una|para|de|del|al[eé]rgic[oa]|vegetarian[oa]|vegan[oa]|celiac[oa]|diab[eé]tic[oa]|intolerante|nuev[oa]|client[ea]|puntual|flexible|mayor|menor|estudiante|jubilad[oa]|sensible|zurd[oa])$/i.test(primera);
       // "soy alérgico A los aceites", "soy vegetariano DE toda la vida": tras el
       // candidato viene un complemento -> es una descripción, no un nombre.
       var complemento = new RegExp('\\bsoy\\s+' + primera.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+(a|al|de|con|sin|muy|desde|por)\\b', 'i').test(t);
-      if (!noNombre && !complemento) out.nombre = cand;
+      if (!noNombre && !complemento) {
+        var nombre = limpiarNombre(nm[1]);
+        if (nombre) out.nombre = nombre;
+      }
     }
 
     var e = t.match(EMAIL_RE2);
@@ -319,8 +408,16 @@ window.JBChatCore = (function () {
         .replace(/^\s*>\s?/gm, '');             // citas
     }
 
+  // Saneado central del texto del asistente. Es la ÚNICA función que decide qué
+  // se ve: se usa antes de renderizar, antes de persistir en sessionStorage y al
+  // restaurar historial viejo. Quita markdown y TODOS los marcadores internos
+  // ([MOSTRAR_MENU], [RESERVA_CONFIRMADA]…) y también [NOTA: ...], que lleva
+  // minúsculas y dos puntos y por eso no encajaba en MARCADOR_RE. Los corchetes
+  // normales en minúscula ("[opcional]") no se tocan: MARCADOR_RE exige MAYÚS y
+  // NOTA_RE exige el prefijo "NOTA:".
   function limpiarMarcadores(txt) {
       return limpiarMarkdown(String(txt || ''))
+        .replace(NOTA_RE, '')
         .replace(MARCADOR_RE, '')
         .replace(/[ \t]{2,}/g, ' ')
         .replace(/\n{3,}/g, '\n\n')
@@ -493,6 +590,7 @@ window.JBChatCore = (function () {
     limpiarMarcadores: limpiarMarcadores,
     limpiarMarkdown: limpiarMarkdown,
     extractNotas: extractNotas,
+    extractNotasUsuario: extractNotasUsuario,
     fusionarNotas: fusionarNotas,
     valorValido: valorValido,
     pareceReserva: pareceReserva,

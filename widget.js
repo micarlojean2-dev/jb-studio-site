@@ -422,8 +422,12 @@
     if (el) el.remove();
   }
 
-  // Render any saved messages from this session
-  msgs.forEach(function (m) { addMsg(m.role === 'user' ? 'user' : 'bot', m.content); });
+  // Render any saved messages from this session. Historial viejo puede tener
+  // marcadores crudos guardados antes de este fix: se sanea al restaurar.
+  msgs.forEach(function (m) {
+    var esBot = m.role !== 'user';
+    addMsg(esBot ? 'bot' : 'user', esBot ? CORE.limpiarMarcadores(m.content) : m.content);
+  });
 
   // El icono lo elige el motor; aquí solo se pinta con las clases del widget.
   function buildIcon(nombre) {
@@ -770,7 +774,9 @@ function extractBooking(text, menu) {
           ? (lang === 'en' ? 'Great, I have everything 😊' : 'Genial, ya tengo todo 😊')
           : (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + faltan[0] + '?';
         addMsg('bot', txt);
-        if (raw) msgs.push({ role: 'assistant', content: nx.limpio });
+        // Se persiste el texto ya saneado (lo mismo que se mostró): así ni el
+        // cliente ni DeepSeek vuelven a ver marcadores al recargar el historial.
+        msgs.push({ role: 'assistant', content: txt });
         save();
         if (completo) showBookingSummary();
       })
@@ -948,6 +954,11 @@ function extractBooking(text, menu) {
       var traidos = Object.keys(yaVisto);
       traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
 
+      // Preferencias que el cliente dice en su propio mensaje ("prefiero una
+      // habitación silenciosa"), sin depender de que DeepSeek emita [NOTA:].
+      var notasU = CORE.extractNotasUsuario(t);
+      if (notasU.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasU);
+
       if (!traidos.length && CORRECCION_RE.test(t)) {
         for (var ci = 0; ci < CAMPO_MENCIONADO.length; ci++) {
           if (CAMPO_MENCIONADO[ci][0].test(t)) { delete bookingData[CAMPO_MENCIONADO[ci][1]]; break; }
@@ -986,6 +997,9 @@ function extractBooking(text, menu) {
       delete preExtraido.__horaAmbigua;
       Object.keys(preExtraido).forEach(function (k) { bookingData[k] = preExtraido[k]; });
 
+      var notasIni = CORE.extractNotasUsuario(t);
+      if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
+
       if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
       askBookingTurn(lang);
       return;
@@ -1020,7 +1034,9 @@ function extractBooking(text, menu) {
           var cleanText  = CORE.limpiarMarcadores(d.text);
           if (cleanText) addMsg('bot', cleanText);
           if (showMenu)  renderMenu();
-          msgs.push({ role: 'assistant', content: d.text });
+          // La acción interna (mostrar menú) ya se extrajo de d.text; al
+          // historial va solo el texto limpio, nunca el marcador crudo.
+          msgs.push({ role: 'assistant', content: cleanText });
           save();
         } else {
           addMsg('bot', cfg.language === 'en'
