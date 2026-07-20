@@ -22,10 +22,17 @@ module.exports = defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'desktop-firefox',  use: { ...devices['Desktop Firefox'] } },
-    { name: 'desktop-webkit',   use: { ...devices['Desktop Safari'] } },
-    { name: 'mobile-android',   use: { ...devices['Pixel 5'] } },
-    { name: 'mobile-ios',       use: { ...devices['iPhone 13'] } },
+    // Los contratos de API no dependen del motor. Ejecutarlos una vez evita que
+    // sus POST inválidos consuman varias veces el rate limit de producción.
+    {
+      name: 'api-contract',
+      testMatch: /api-contract\.spec\.js/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    { name: 'desktop-chromium', testIgnore: /api-contract\.spec\.js/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'desktop-firefox',  testIgnore: /api-contract\.spec\.js/, use: { ...devices['Desktop Firefox'] } },
+    { name: 'desktop-webkit',   testIgnore: /api-contract\.spec\.js/, use: { ...devices['Desktop Safari'] } },
+    { name: 'mobile-android',   testIgnore: /api-contract\.spec\.js/, use: { ...devices['Pixel 5'] } },
+    { name: 'mobile-ios',       testIgnore: /api-contract\.spec\.js/, use: { ...devices['iPhone 13'] } },
   ],
 });

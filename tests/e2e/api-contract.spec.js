@@ -6,6 +6,10 @@ const { test, expect, request } = require('@playwright/test');
 const BASE = process.env.BASE_URL || 'https://jbstudio.app';
 
 test.describe('Contrato de API @critical', () => {
+  // Los dos POST de contrato comparten el cupo de producción: mantener este
+  // bloque secuencial evita que compitan entre sí bajo fullyParallel.
+  test.describe.configure({ mode: 'serial' });
+
   test('POST /api/reservations sin campos obligatorios → 400', async ({ request }) => {
     const r = await request.post(`${BASE}/api/reservations`, { data: { clientId: 'bella-luna-spa' } });
     expect(r.status()).toBe(400);
