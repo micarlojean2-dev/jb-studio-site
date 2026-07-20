@@ -24,3 +24,9 @@ node_modules/
 # Son evidencia temporal de cada sesión, no código del sitio.
 .playwright-mcp/
 /*.png
+
+# Playwright
+playwright-report/
+test-results/
+/blob-report/
+.playwright/
