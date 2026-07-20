@@ -1968,6 +1968,105 @@
     .auto-textarea { min-height: 130px; font-size: 13px; }
   }
 
+  /* ── Phase 2: SaaS control surface ─────────────────────────────────────── */
+  :root {
+    --studio-forest: #153d2a;
+    --studio-forest-2: #0f2e20;
+    --studio-cream: #f4f1e9;
+    --studio-paper: #fffdf9;
+    --studio-line: #d8ddd5;
+    --studio-ink: #1d2a23;
+    --studio-fog: #647168;
+    --studio-radius: 14px;
+    --studio-shadow: 0 16px 36px rgba(24, 49, 35, 0.08);
+  }
+
+  body { background: var(--studio-cream); color: var(--studio-ink); }
+  body::before {
+    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(circle at 85% -10%, rgba(196, 222, 202, .48), transparent 30%);
+  }
+  .admin-header {
+    min-height: 68px; padding: 0 28px; background: var(--studio-forest);
+    border-bottom: 1px solid rgba(255,255,255,.13); box-shadow: 0 8px 24px rgba(15,46,32,.16);
+  }
+  .admin-brand { display: flex; align-items: center; gap: 10px; padding: 0; letter-spacing: 0; }
+  .brand-monogram {
+    display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
+    background: #d9eddd; color: var(--studio-forest); font-family: var(--mono); font-size: 12px; font-weight: 700;
+  }
+  .brand-name { display: flex; flex-direction: column; color: #fff; font-size: 14px; line-height: 1.05; }
+  .brand-name small { margin-top: 4px; color: rgba(255,255,255,.58); font-size: 10px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+  .admin-tabs { gap: 2px; padding: 0 22px; align-self: stretch; align-items: center; }
+  .tab-btn {
+    height: 100%; border-radius: 0; padding: 0 14px; background: transparent;
+    border-bottom: 2px solid transparent; color: rgba(255,255,255,.67); font-size: 12px; letter-spacing: .03em;
+  }
+  .tab-btn:hover { background: rgba(255,255,255,.08); color: #fff; }
+  .tab-btn.is-active { background: transparent; color: #fff; border-bottom-color: #ccebd4; }
+  .admin-future-nav { display: flex; gap: 14px; align-items: center; margin-left: auto; }
+  .admin-future-nav span { color: rgba(255,255,255,.38); font-size: 11px; white-space: nowrap; }
+  .admin-future-nav span::after { content: ' Proximamente'; margin-left: 5px; color: rgba(255,255,255,.22); font-size: 9px; text-transform: uppercase; }
+  .admin-logout { border-radius: 8px; border-color: rgba(255,255,255,.24); padding: 8px 12px; font-size: 12px; }
+  .admin-body { max-width: 1240px; padding: 36px 28px 56px; }
+  .control-hero { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 26px; }
+  .control-eyebrow { color: var(--studio-forest); font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+  .control-hero h1 { margin-top: 8px; color: var(--studio-ink); font-size: clamp(28px, 4vw, 40px); line-height: 1.05; letter-spacing: -.045em; }
+  .control-hero p { max-width: 590px; margin-top: 10px; color: var(--studio-fog); font-size: 14px; }
+  .control-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .control-actions .action-btn { margin: 0 !important; }
+  .control-actions .action-btn:last-child { background: var(--studio-forest-2) !important; }
+  .control-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 34px; }
+  .control-metric {
+    min-height: 116px; padding: 17px; background: var(--studio-paper); border: 1px solid var(--studio-line);
+    border-radius: var(--studio-radius); box-shadow: 0 2px 0 rgba(24,49,35,.02);
+  }
+  .control-metric.is-status { background: var(--studio-forest); border-color: var(--studio-forest); color: #fff; }
+  .control-metric-label { color: var(--studio-fog); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+  .is-status .control-metric-label { color: rgba(255,255,255,.58); }
+  .control-metric-value { margin-top: 15px; color: var(--studio-ink); font-size: 24px; font-weight: 700; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .is-status .control-metric-value { color: #fff; font-size: 17px; letter-spacing: -.02em; }
+  .control-metric-note { margin-top: 8px; color: var(--studio-fog); font-size: 11px; line-height: 1.35; }
+  .is-status .control-metric-note { color: rgba(255,255,255,.68); }
+  .assistants-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
+  .assistants-heading .section-title { margin: 0; color: var(--studio-ink); font-size: 18px; letter-spacing: -.02em; }
+  .assistants-heading p { color: var(--studio-fog); font-size: 12px; }
+  .clients-table-wrap { border: 1px solid var(--studio-line); border-radius: var(--studio-radius); box-shadow: var(--studio-shadow); overflow: hidden; }
+  .clients-table { background: var(--studio-paper); }
+  .clients-table th { padding: 12px 14px; background: #edf0ea; color: #647168; font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  .clients-table td { padding: 15px 14px; border-color: #e7eae4; color: #36443b; font-size: 12px; vertical-align: middle; }
+  .clients-table tr:nth-child(even) td { background: #fbfcf9; }
+  .clients-table tbody tr { transition: background 160ms ease, box-shadow 160ms ease; }
+  @media (hover: hover) and (pointer: fine) { .clients-table tbody tr:hover td { background: #f0f7f1; } }
+  .ct-business { gap: 9px; font-size: 13px; }
+  .ct-subline { display: block; margin-top: 4px; color: var(--studio-fog); font-size: 11px; font-weight: 400; }
+  .ct-category { color: var(--studio-fog); font-size: 12px; }
+  .ct-health { display: inline-flex; align-items: center; gap: 6px; color: var(--studio-fog); font-size: 11px; }
+  .ct-health::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #b5beb6; }
+  .ct-link { color: var(--studio-forest); font-weight: 600; }
+  .st-badge { border-radius: 999px; padding: 4px 8px; font-size: 10px; letter-spacing: .02em; }
+  .manage-btn, .cc-btn-primary { border-radius: 8px; background: var(--studio-forest); color: #fff; border-color: var(--studio-forest); }
+  .manage-btn:hover, .cc-btn-primary:hover { background: var(--studio-forest-2); }
+  .action-btn { border-radius: 9px; box-shadow: 0 3px 0 rgba(11,46,31,.16); transition: background 160ms ease-out, transform 160ms ease-out, box-shadow 160ms ease-out; }
+  .action-btn:active, .manage-btn:active, .cc-btn-primary:active, .cc-btn-secondary:active, .admin-logout:active { transform: scale(.98); }
+  .client-card { padding: 18px; border: 1px solid var(--studio-line); border-radius: var(--studio-radius); background: var(--studio-paper); box-shadow: var(--studio-shadow); }
+  .cc-meta { color: var(--studio-fog); }
+  .cc-health { display: flex; justify-content: space-between; padding-top: 11px; color: var(--studio-fog); font-size: 11px; }
+  .cc-health strong { color: var(--studio-ink); font-weight: 600; }
+  .admin-input:focus, .login-input:focus { border-color: var(--studio-forest); box-shadow: 0 0 0 3px rgba(21,61,42,.12); }
+  .action-btn:focus-visible, .tab-btn:focus-visible, .manage-btn:focus-visible, .cc-btn-primary:focus-visible, .cc-btn-secondary:focus-visible, .admin-logout:focus-visible { outline: 3px solid #a6d8b1; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { .clients-table tbody tr, .action-btn, .manage-btn, .cc-btn-primary, .cc-btn-secondary { transition: none; } }
+  @media (max-width: 1000px) { .control-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } .admin-future-nav { display: none; } }
+  @media (max-width: 720px) {
+    .admin-header { padding: 0 16px; min-height: 60px; } .brand-name small { display: none; }
+    .admin-tabs { overflow-x: auto; padding: 0 8px; } .tab-btn { padding: 0 10px; font-size: 11px; }
+    .admin-logout { padding: 7px 9px; font-size: 0; } .admin-logout::after { content: 'Salir'; font-size: 11px; }
+    .admin-body { padding: 26px 16px 42px; } .control-hero { align-items: flex-start; flex-direction: column; }
+    .control-actions { width: 100%; } .control-actions .action-btn { flex: 1; min-height: 44px; }
+    .control-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .control-metric { min-height: 100px; padding: 14px; }
+    .control-metric.is-status { grid-column: span 2; min-height: auto; } .assistants-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
+  }
+
   </style>
 </head>
 <body>
@@ -1987,23 +2086,44 @@
   <!-- ── Admin Panel ── -->
   <div id="admin-panel">
     <header class="admin-header">
-      <div class="admin-brand">JB <span>ADMIN</span></div>
+      <div class="admin-brand">
+        <span class="brand-monogram">JB</span>
+        <span class="brand-name">JB Studio<small>Centro de control</small></span>
+      </div>
       <nav class="admin-tabs">
-        <button class="tab-btn is-active" data-tab="clients">CLIENTES</button>
+        <button class="tab-btn is-active" data-tab="clients">ASISTENTES</button>
         <button class="tab-btn" data-tab="pagos">PAGOS</button>
         <!-- Modo técnico: pestaña Plantillas oculta por defecto (no se borra, ver JB_TECH_MODE). -->
         <button class="tab-btn tech-mode-hidden" data-tab="templates">PLANTILLAS</button>
       </nav>
-      <button class="admin-logout" id="logout-btn">Log out</button>
+      <div class="admin-future-nav" aria-label="Próximas areas de la plataforma">
+        <span>Monitoreo</span><span>Configuracion</span>
+      </div>
+      <button class="admin-logout" id="logout-btn">Cerrar sesion</button>
     </header>
 
     <!-- ── Tab: Clients ── -->
     <div id="tab-clients" class="admin-body">
 
-      <div class="section-title">Clientes</div>
-      <div style="margin-bottom:24px;">
+      <section class="control-hero" aria-labelledby="control-title">
+        <div>
+          <div class="control-eyebrow">JB Studio / Operaciones</div>
+          <h1 id="control-title">Centro de control de asistentes</h1>
+          <p>Crea, supervisa y administra cada asistente sin alterar los flujos operativos que ya estan activos.</p>
+        </div>
+        <div class="control-actions">
         <button id="open-wizard-btn" class="action-btn wizard-open-btn" type="button">+ Crear chatbot</button>
-        <button id="open-auto-btn" class="action-btn" type="button" style="margin-left:8px;background:#1565c0;">+ Crear auto</button>
+        <button id="open-auto-btn" class="action-btn" type="button" style="background:#1565c0;">+ Crear auto</button>
+        </div>
+      </section>
+
+      <div id="control-summary" class="control-summary" aria-live="polite">
+        <div class="control-metric"><div class="control-metric-label">Asistentes activos</div><div class="control-metric-value">--</div><div class="control-metric-note">Cargando datos operativos</div></div>
+      </div>
+
+      <div class="assistants-heading">
+        <div class="section-title">Asistentes</div>
+        <p>Estado, plan y configuracion de cada negocio</p>
       </div>
 
       <!-- Modo técnico: formulario manual oculto por defecto (no se borra, ver JB_TECH_MODE). -->
@@ -3061,6 +3181,19 @@ LÍMITES ESTRICTOS:
       return c.active ? { label: 'Activo', cls: 'st-green' } : { label: 'Pausado', cls: 'st-gray' };
     }
 
+    function renderControlSummary(clients) {
+      const activos = clients.filter(c => c.active).length;
+      // Es precio de lista, no ingreso cobrado: Stripe es la fuente de verdad de pagos.
+      const mrrLista = clients.filter(c => c.active).reduce((total, c) => total + (Number(c.monthlyPrice) || PLAN_PRICES[c.plan] || 0), 0);
+      const money = mrrLista ? '$' + mrrLista : '--';
+      document.getElementById('control-summary').innerHTML = `
+        <div class="control-metric"><div class="control-metric-label">Asistentes activos</div><div class="control-metric-value">${activos}</div><div class="control-metric-note">De ${clients.length} negocios creados</div></div>
+        <div class="control-metric"><div class="control-metric-label">Conversaciones</div><div class="control-metric-value">--</div><div class="control-metric-note">Telemetria disponible en Fase 6</div></div>
+        <div class="control-metric"><div class="control-metric-label">Reservas</div><div class="control-metric-value">--</div><div class="control-metric-note">Sin agregado operativo aun</div></div>
+        <div class="control-metric"><div class="control-metric-label">MRR de lista</div><div class="control-metric-value">${money}</div><div class="control-metric-note">Planes activos, no cobros confirmados</div></div>
+        <div class="control-metric is-status"><div class="control-metric-label">Estado del sistema</div><div class="control-metric-value">Sin monitor activo</div><div class="control-metric-note">El chequeo de salud se incorpora en Fase 6</div></div>`;
+    }
+
     // Antes esto abría un about:blank y le escribía el snippet dentro. Esa
     // página no tenía ?preview= en la URL, así que widget.js no encontraba
     // token, no lo enviaba, y un cliente sin pagar respondía "no disponible"
@@ -3304,31 +3437,34 @@ LÍMITES ESTRICTOS:
 
     function renderClients(clients) {
       clientsCache = clients;
+      renderControlSummary(clients);
       if (!clients.length) {
-        clientsListEl.innerHTML = '<div class="admin-empty">Todavía no hay clientes. Crea el primero con "+ Crear chatbot".</div>';
+        clientsListEl.innerHTML = '<div class="admin-empty">Todavia no hay asistentes. Crea el primero con "+ Crear chatbot".</div>';
         return;
       }
       const rows = clients.map(c => {
         const pay = paymentStatusInfo(c);
         const bot = chatbotStatusInfo(c);
+        const categoria = c.businessType || 'Asistente de negocio';
+        const servicios = Array.isArray(c.menu) ? c.menu.length : 0;
         return `
         <tr data-id="${escHTML(c.id)}">
           <td>
             <div class="ct-business">
               <span class="client-color-dot" style="background:${escHTML(c.color || '#1a4a2e')}"></span>
-              ${escHTML(c.businessName)}
+              <span>${escHTML(c.businessName)}<span class="ct-subline">${servicios ? servicios + ' servicios configurados' : 'Sin catalogo configurado'}</span></span>
             </div>
           </td>
-          <td>${escHTML(PLAN_LABELS[c.plan] || c.plan)}</td>
-          <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver</button>${
+          <td><span class="ct-category">${escHTML(categoria)}</span></td>
+          <td>${escHTML(PLAN_LABELS[c.plan] || c.plan)}<span class="ct-subline">${planPriceLabelPerMonth(c.plan)}</span></td>
+          <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>${
             faltaConfigCliente(c).length
               ? `<button type="button" class="ct-link ct-setup" data-cid="${escHTML(c.id)}" title="Faltan: ${escHTML(faltaConfigCliente(c).join(', '))}" style="color:#a01b1b;display:block;margin-top:4px">⚠️ Completar</button>`
               : ''
           }</td>
-          <td>${planPriceLabelPerMonth(c.plan)}</td>
-          <td>${escHTML(c.nextPaymentAt || c.paidUntil || 'Sin fecha')}</td>
-          <td><span class="st-badge ${pay.cls}">${pay.label}</span></td>
+          <td><span class="st-badge ${pay.cls}">${pay.label}</span><span class="ct-subline">${escHTML(c.nextPaymentAt || c.paidUntil || 'Sin fecha')}</span></td>
           <td><span class="st-badge ${bot.cls}">${bot.label}</span></td>
+          <td><span class="ct-health">Sin monitoreo</span></td>
           <td><button type="button" class="manage-btn ct-manage" data-cid="${escHTML(c.id)}">Administrar</button></td>
         </tr>`;
       }).join('');
@@ -3337,18 +3473,21 @@ LÍMITES ESTRICTOS:
       const cards = clients.map(c => {
         const pay = paymentStatusInfo(c);
         const bot = chatbotStatusInfo(c);
+        const categoria = c.businessType || 'Asistente de negocio';
+        const servicios = Array.isArray(c.menu) ? c.menu.length : 0;
         return `
         <div class="client-card" data-id="${escHTML(c.id)}">
           <div class="cc-top">
             <span class="client-color-dot" style="background:${escHTML(c.color || '#1a4a2e')}"></span>
             <div class="cc-name">${escHTML(c.businessName)}</div>
           </div>
-          <div class="cc-meta">${escHTML(PLAN_LABELS[c.plan] || c.plan)} · ${planPriceLabelPerMonth(c.plan)}</div>
+          <div class="cc-meta">${escHTML(categoria)} · ${escHTML(PLAN_LABELS[c.plan] || c.plan)} · ${planPriceLabelPerMonth(c.plan)}</div>
           <div class="cc-rows">
             <div class="cc-row"><span>Chatbot</span><span class="st-badge ${bot.cls}">${bot.label}</span></div>
             <div class="cc-row"><span>Pago</span><span class="st-badge ${pay.cls}">${pay.label}</span></div>
-            <div class="cc-row"><span>Próximo pago</span><span>${escHTML(c.nextPaymentAt || c.paidUntil || 'Sin fecha')}</span></div>
+            <div class="cc-row"><span>Servicios</span><span>${servicios || 'Sin catalogo'}</span></div>
           </div>
+          <div class="cc-health"><span>Salud del asistente</span><strong>Sin monitoreo</strong></div>
           <div class="cc-actions">
             <button type="button" class="cc-btn-secondary ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>
             <button type="button" class="cc-btn-primary ct-manage" data-cid="${escHTML(c.id)}">Administrar</button>
@@ -3360,8 +3499,8 @@ LÍMITES ESTRICTOS:
         <div class="clients-table-wrap">
           <table class="clients-table">
             <thead><tr>
-              <th>Negocio</th><th>Plan</th><th>Chatbot</th><th>Mensualidad</th>
-              <th>Próximo pago</th><th>Pago</th><th>Estado</th><th>Acciones</th>
+              <th>Asistente</th><th>Categoría</th><th>Plan</th><th>Vista</th>
+              <th>Facturación</th><th>Estado</th><th>Salud</th><th>Acciones</th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>
