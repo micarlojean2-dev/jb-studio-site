@@ -669,6 +669,23 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true, action: 'teardown', runId, borradas, conservadas, clienteBorrado });
       }
 
+      if (action === 'reset') {
+        // Borra SOLO reservas y eventos de este runId; conserva el cliente para
+        // la siguiente ronda. No toca nada fuera de qa-e2e-test.
+        if (!RUNID_OK) return res.status(400).json({ error: 'runId inválido (QA-E2E-...)' });
+        let n = 0;
+        const rk = await redis.keys(`reservations:${QA_ID}:*`);
+        for (const k of rk) {
+          const r = await redis.get(k);
+          const belongs = r && (r.qaRunId === runId ||
+            [r.nombre, r.notes, r.nota, r.email].some((v) => String(v || '').includes(runId)));
+          if (belongs) { await redis.del(k); n++; }
+        }
+        await redis.del(`changes:${QA_ID}`);
+        await redis.srem('digest:pending', QA_ID);
+        return res.status(200).json({ ok: true, action: 'reset', runId, borradas: n });
+      }
+
       if (action === 'verify') {
         const rk = await redis.keys(`reservations:${QA_ID}:*`);
         const uk = await redis.keys(`usage:${QA_ID}:*`);
@@ -690,7 +707,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
-  if (!checkRateLimit(ip))
+  // TEMPORAL QA: el cliente de prueba aislado queda exento del rate limit para
+  // poder correr el E2E en volumen. Cualquier cliente real mantiene RPH=5. Se
+  // retira junto con el endpoint QA.
+  if (req.body?.clientId !== 'qa-e2e-test' && !checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
   const { clientId, nombre, telefono, email, fecha, hora, servicio, personas, nota, notes } = req.body || {};
