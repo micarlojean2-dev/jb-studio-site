@@ -2,7 +2,13 @@
   "name": "jb-studio-site",
   "version": "1.0.0",
   "scripts": {
-    "test": "node test/digest.test.mjs && node test/changes.test.mjs && node test/notes.test.mjs && node test/panel.test.mjs && node test/admin-login.test.mjs && node test/fecha.test.mjs && node test/fallos-e2e.test.mjs"
+    "test": "node test/digest.test.mjs && node test/changes.test.mjs && node test/notes.test.mjs && node test/panel.test.mjs && node test/admin-login.test.mjs && node test/fecha.test.mjs && node test/fallos-e2e.test.mjs",
+    "test:unit": "npm test && node test/qa-fechas.test.mjs && node test/qa-horas.test.mjs && node test/qa-confirmacion.test.mjs && node test/qa-seguridad.test.mjs",
+    "test:unit:critical": "node test/qa-fechas.test.mjs && node test/qa-horas.test.mjs && node test/qa-confirmacion.test.mjs && node test/qa-seguridad.test.mjs && node test/fecha.test.mjs && node test/fallos-e2e.test.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:critical": "playwright test --grep @critical",
+    "test:critical": "npm run test:unit:critical && npm run test:e2e:critical",
+    "test:production-readiness": "npm run test:unit && npm run test:e2e"
   },
   "dependencies": {
     "@upstash/redis": "^1.20.0",
@@ -10,6 +16,7 @@
     "stripe": "^22.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "jsdom": "^29.1.1"
   }
 }

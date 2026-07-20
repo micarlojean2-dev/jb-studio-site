@@ -107,10 +107,18 @@ function parseFechaISO(raw, now) {
   if (iso) return iso[0];
   const dmy = txt.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
   if (dmy) {
-    const day = +dmy[1], mon = +dmy[2] - 1;
+    const a = +dmy[1], b = +dmy[2];
     let y = dmy[3] ? +dmy[3] : base.getUTCFullYear();
     if (y < 100) y += 2000;
-    if (day >= 1 && day <= 31 && mon >= 0 && mon <= 11) {
+    // Desambiguación día/mes coherente con el frontend (chat-core/extraerFecha):
+    // un número > 12 fija su papel; si ambos son ≤ 12 se asume DD/MM (es). Sin
+    // esto, "07/24/2026" (US, día en 2ª posición) no se normalizaba: fechaISO
+    // quedaba '' y la reserva saltaba la validación de horario. [QA-01]
+    let day = null, mon = null;
+    if (a > 12 && b <= 12)       { day = a; mon = b - 1; }   // DD/MM
+    else if (b > 12 && a <= 12)  { day = b; mon = a - 1; }   // MM/DD
+    else if (a <= 12 && b <= 12) { day = a; mon = b - 1; }   // ambiguo → DD/MM
+    if (day !== null && day >= 1 && day <= 31 && mon >= 0 && mon <= 11) {
       const d = new Date(Date.UTC(y, mon, day));
       if (d.getUTCDate() === day) return mk(d);
     }
@@ -705,4 +713,5 @@ export default async function handler(req, res) {
 }
 
 // Solo para pruebas unitarias (no se usa en producción).
-export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso };
+export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
+  parseFechaISO, normalizeHora, normalizePersonas, validarReserva };
