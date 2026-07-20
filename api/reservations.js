@@ -646,7 +646,11 @@ export default async function handler(req, res) {
         const rk = await redis.keys(`reservations:${QA_ID}:*`);
         for (const k of rk) {
           const r = await redis.get(k);
-          if (r && r.qaRunId === runId) { await redis.del(k); borradas.push(k); }
+          // Pertenece a este run si lleva el runId en cualquier campo de texto
+          // (el alta lo embebe en el nombre "QA-E2E-<runId> ...") o en qaRunId.
+          const belongs = r && (r.qaRunId === runId ||
+            [r.nombre, r.notes, r.nota, r.email].some((v) => String(v || '').includes(runId)));
+          if (belongs) { await redis.del(k); borradas.push(k); }
           else conservadas.push(k);
         }
         const uk = await redis.keys(`usage:${QA_ID}:*`);
