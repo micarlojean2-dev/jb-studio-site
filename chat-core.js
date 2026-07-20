@@ -444,9 +444,22 @@ window.JBChatCore = (function () {
     }
 
   // Acumula notas nuevas en la nota existente, sin duplicar, como un solo texto.
+  // El de-dup compara en forma normalizada (minúsculas, espacios colapsados, sin
+  // puntuación final): así "prefiero una habitación silenciosa" (del cliente) y
+  // "Prefiero una habitación silenciosa." (reescrita por DeepSeek en [NOTA:]) no
+  // entran las dos. Se conserva la primera aparición, con su texto original.
+  function normNota(s) {
+      return String(s || '').toLowerCase().replace(/\s+/g, ' ').replace(/[.,;:!?¿¡]+$/, '').trim();
+    }
   function fusionarNotas(prev, nuevas) {
       var base = String(prev || '').split(/\s+·\s+/).map(function (s) { return s.trim(); }).filter(Boolean);
-      (nuevas || []).forEach(function (n) { var v = String(n || '').trim(); if (v && base.indexOf(v) === -1) base.push(v); });
+      var vistos = {};
+      base.forEach(function (b) { vistos[normNota(b)] = true; });
+      (nuevas || []).forEach(function (n) {
+        var v = String(n || '').trim();
+        var k = normNota(v);
+        if (v && k && !vistos[k]) { vistos[k] = true; base.push(v); }
+      });
       return base.join(' · ');
     }
 

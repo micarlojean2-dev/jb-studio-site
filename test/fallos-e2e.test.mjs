@@ -68,6 +68,17 @@ console.log(' 5. Duplicado entre mensaje del usuario y [NOTA:]');
   ok(acum === 'prefiero una habitación silenciosa', 'no se duplica la misma nota de ambas fuentes');
 }
 
+console.log(' 5b. Duplicado que solo difiere en mayúsculas/puntuación');
+{
+  // Caso real de la E2E: el cliente escribe minúscula, DeepSeek reescribe con
+  // mayúscula inicial y punto final en [NOTA:]. No deben coexistir.
+  let acum = CORE.fusionarNotas(undefined, notasU('prefiero una habitación silenciosa'));
+  acum = CORE.fusionarNotas(acum, CORE.extractNotas('😊 [NOTA: Prefiero una habitación silenciosa.]').notas);
+  ok(acum === 'prefiero una habitación silenciosa',
+     'colapsa "prefiero…" y "Prefiero….", conservando la primera');
+  ok(acum.split(' · ').length === 1, 'queda una sola nota, sin duplicado');
+}
+
 console.log(' 6. Cortesías y genéricos no son nota');
 ['gracias', 'sí', 'perfecto', 'está bien', 'ok', 'quiero reservar un masaje', 'hola buenas']
   .forEach((t) => ok(notasU(t).length === 0, `"${t}" no se guarda como nota`));
