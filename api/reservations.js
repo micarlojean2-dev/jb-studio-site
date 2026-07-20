@@ -591,6 +591,98 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── TEMPORAL QA: preparar/limpiar EXCLUSIVAMENTE el cliente aislado ──────────
+  // qa-e2e-test. Protegido con QA_E2E_SECRET (secreto propio de QA, NUNCA
+  // ADMIN_TOKEN ni CRON_SECRET). Solo puede: crear qa-e2e-test, consultar y
+  // borrar datos de qa-e2e-test del runId indicado, y borrar el cliente. El id
+  // está HARDCODEADO: cualquier otro clientId se rechaza. No puede tocar
+  // bella-luna ni ningún negocio real. Se ELIMINA en el deploy de retirada.
+  if (typeof req.query?.qa === 'string') {
+    const secret = process.env.QA_E2E_SECRET;
+    if (!secret || (req.headers.authorization || '') !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const QA_ID = 'qa-e2e-test';                       // ÚNICO cliente permitido
+    // Blindaje extra: si viene clientId, debe ser exactamente qa-e2e-test.
+    if (req.query.clientId !== undefined && req.query.clientId !== QA_ID) {
+      return res.status(403).json({ error: 'Solo se permite qa-e2e-test' });
+    }
+    const action = req.query.qa;
+    const runId  = String(req.query.runId || '');
+    const RUNID_OK = /^QA-E2E-[A-Za-z0-9-]{4,}$/.test(runId);
+    const rid = () => (globalThis.crypto && globalThis.crypto.randomUUID
+      ? globalThis.crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2));
+    try {
+      if (action === 'seed') {
+        if (!RUNID_OK) return res.status(400).json({ error: 'runId inválido (QA-E2E-...)' });
+        const prev = await redis.get(`client:${QA_ID}`);
+        if (prev && !prev.qaClient) return res.status(409).json({ error: 'existe un cliente no-QA con ese id; abortado' });
+        const rangos = { enabled: true, ranges: [{ start: '09:00', end: '20:00' }] };
+        const client = {
+          qaClient: true, qaRunId: runId,
+          businessName: `QA-E2E ${runId}`,
+          active: true, language: 'es', timezone: 'America/New_York',
+          minNoticeHours: 0, capacityPerSlot: 1,
+          businessHours: { monday: rangos, tuesday: rangos, wednesday: rangos,
+            thursday: rangos, friday: rangos, saturday: rangos, sunday: { enabled: false, ranges: [] } },
+          menu: [
+            { nombre: 'Masaje Relajante', duracion: '60 min', precio: '$45' },
+            { nombre: 'Limpieza Facial',  duracion: '45 min', precio: '$50' },
+          ],
+          prompt: 'Eres la recepción de QA-E2E Test Spa. Servicios: Masaje Relajante ($45, 60 minutos) y Limpieza Facial ($50, 45 minutos). Horario: lunes a sábado de 9:00 a 20:00. Puedes tomar reservas. No inventes servicios ni precios que no estén aquí.',
+          features: { reservations: true, catalog: true },
+          notificationEmails: ['qa-e2e-owner@example.com'],
+          panelToken: rid(),
+        };
+        await redis.set(`client:${QA_ID}`, client);
+        return res.status(200).json({ ok: true, action: 'seed', clientKey: `client:${QA_ID}`,
+          panelToken: client.panelToken, runId });
+      }
+
+      if (action === 'teardown') {
+        if (!RUNID_OK) return res.status(400).json({ error: 'runId inválido (QA-E2E-...)' });
+        const borradas = [], conservadas = [];
+        // Reservas: borrar SOLO las de este runId; reportar cualquier otra.
+        const rk = await redis.keys(`reservations:${QA_ID}:*`);
+        for (const k of rk) {
+          const r = await redis.get(k);
+          if (r && r.qaRunId === runId) { await redis.del(k); borradas.push(k); }
+          else conservadas.push(k);
+        }
+        const uk = await redis.keys(`usage:${QA_ID}:*`);
+        for (const k of uk) { await redis.del(k); borradas.push(k); }
+        for (const k of [`changes:${QA_ID}`, `digest:sentAt:${QA_ID}`]) {
+          const v = await redis.get(k);
+          if (v !== null && v !== undefined) { await redis.del(k); borradas.push(k); }
+        }
+        await redis.srem('digest:pending', QA_ID);
+        // El cliente solo se borra si no quedó ninguna reserva de otro runId.
+        let clienteBorrado = false;
+        if (!conservadas.length) {
+          const c = await redis.get(`client:${QA_ID}`);
+          if (c && c.qaClient) { await redis.del(`client:${QA_ID}`); clienteBorrado = true; }
+        }
+        return res.status(200).json({ ok: true, action: 'teardown', runId, borradas, conservadas, clienteBorrado });
+      }
+
+      if (action === 'verify') {
+        const rk = await redis.keys(`reservations:${QA_ID}:*`);
+        const uk = await redis.keys(`usage:${QA_ID}:*`);
+        const cli = await redis.get(`client:${QA_ID}`);
+        const ch  = await redis.get(`changes:${QA_ID}`);
+        const inPending = await redis.sismember('digest:pending', QA_ID);
+        return res.status(200).json({ ok: true, action: 'verify',
+          reservations: rk.length, usage: uk.length, clientExists: !!cli,
+          changesExists: ch !== null && ch !== undefined, inDigestPending: !!inPending, keys: rk });
+      }
+
+      return res.status(400).json({ error: 'acción QA desconocida' });
+    } catch (err) {
+      console.error('[api/reservations] qa endpoint:', err.message);
+      return res.status(500).json({ error: 'QA op failed' });
+    }
+  }
+
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
