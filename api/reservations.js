@@ -583,6 +583,90 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── TEMPORAL: limpieza puntual de las tres reservas de prueba de Playwright. ─
+  // Se añade SOLO para borrar tres claves verificadas y limpiar sus eventos del
+  // digest; se ejecuta UNA vez y se ELIMINA en el deploy siguiente. Protegido
+  // con CRON_SECRET. La allowlist es fija y literal: no acepta IDs, nombres ni
+  // claves por parámetros. Cada clave se verifica por nombre Y correo esperados
+  // antes de borrar; si no coincide, se omite. No puede tocar ninguna otra
+  // reserva. La cola del digest se filtra por reservationId: se quitan solo los
+  // eventos de estas tres claves y se conserva cualquier otro evento legítimo.
+  if (req.method === 'GET' && req.query?.cron === 'cleanup-playwright-tests') {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || (req.headers.authorization || '') !== `Bearer ${secret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const PERMITIDAS = [
+      { key: 'reservations:bella-luna-spa:1784477444793', nombre: 'Prueba Playwright',    email: 'prueba-playwright@example.com' },
+      { key: 'reservations:bella-luna-spa:1784479299193', nombre: 'Prueba Fecha',          email: 'prueba-fecha-playwright@example.com' },
+      { key: 'reservations:bella-luna-spa:1784528845024', nombre: 'María José de la Cruz', email: 'maria-prueba@example.com' },
+    ];
+    const norm = (s) => String(s == null ? '' : s).trim().toLowerCase();
+    try {
+      const borradas = [], omitidas = [];
+      for (const it of PERMITIDAS) {
+        const r = await redis.get(it.key);
+        if (!r) { omitidas.push({ key: it.key, motivo: 'no existe' }); continue; }
+        const nombreOk = norm(r.nombre) === norm(it.nombre);
+        const emailOk  = norm(r.email)  === norm(it.email);
+        if (nombreOk && emailOk) {
+          await redis.del(it.key);
+          borradas.push(it.key);
+        } else {
+          omitidas.push({ key: it.key, motivo: `no coincide (nombreOk:${nombreOk} correoOk:${emailOk}, nombre real:${r.nombre})` });
+        }
+      }
+
+      // Cola del digest: se quitan SOLO los eventos cuyo reservationId sea una de
+      // las tres claves autorizadas. Todo lo demás (o lo ilegible) se conserva.
+      // Nunca se borra la cola entera a ciegas.
+      const PERMITIDAS_KEYS = PERMITIDAS.map((x) => x.key);
+      const raw = (await redis.lrange('changes:bella-luna-spa', 0, -1)) || [];
+      const keep = [], changesEliminados = [], changesConservados = [];
+      for (const x of raw) {
+        let ev = null;
+        try { ev = typeof x === 'string' ? JSON.parse(x) : x; } catch (e) { ev = null; }
+        const rid = ev && ev.reservationId;
+        if (rid && PERMITIDAS_KEYS.includes(rid)) {
+          changesEliminados.push({ reservationId: rid, type: ev.type || null });
+        } else {
+          keep.push(typeof x === 'string' ? x : JSON.stringify(x));
+          changesConservados.push({ reservationId: rid || null, type: ev ? (ev.type || null) : 'ilegible' });
+        }
+      }
+      // Reescritura atómica solo si hay eventos de prueba que quitar: se borra la
+      // lista y se reinsertan únicamente los eventos conservados, en su orden.
+      if (changesEliminados.length) {
+        const m = redis.multi();
+        m.del('changes:bella-luna-spa');
+        for (const s of keep) m.rpush('changes:bella-luna-spa', s);
+        await m.exec();
+      }
+
+      // digest:pending: quitar bella-luna-spa SOLO si ya no queda ningún evento
+      // legítimo pendiente. Si quedan, se conserva para que su resumen se envíe.
+      let digestPending;
+      if (changesEliminados.length && keep.length === 0) {
+        await redis.srem('digest:pending', 'bella-luna-spa');
+        digestPending = 'bella-luna-spa eliminado de digest:pending (sin eventos restantes)';
+      } else if (keep.length > 0) {
+        digestPending = `conservado: ${keep.length} evento(s) legítimo(s) siguen pendientes`;
+      } else {
+        digestPending = 'sin cambios (no había eventos de las tres reservas en la cola)';
+      }
+
+      return res.status(200).json({
+        ok: true, action: 'cleanup-playwright-tests',
+        borradas, omitidas,
+        changes: { eliminados: changesEliminados, conservados: changesConservados, quedan: keep.length },
+        digestPending,
+      });
+    } catch (err) {
+      console.error('[api/reservations] cleanup-playwright-tests:', err.message);
+      return res.status(500).json({ error: 'Cleanup failed' });
+    }
+  }
+
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
