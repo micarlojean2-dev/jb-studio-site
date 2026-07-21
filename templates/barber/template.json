@@ -1,0 +1,29 @@
+{
+  "id": "barber",
+  "name": "Barberia",
+  "version": "1.0",
+  "status": "official",
+  "description": "Asistente para barberias con servicios, reservas y notificaciones.",
+  "requiredFields": [
+    "businessName",
+    "address",
+    "phone",
+    "ownerEmail",
+    "timezone",
+    "businessHours",
+    "services",
+    "bookingEnabled",
+    "notificationEmails"
+  ],
+  "capabilities": [
+    "booking",
+    "faq",
+    "emailNotifications",
+    "catalog"
+  ],
+  "files": {
+    "questions": "questions.json",
+    "features": "features.json",
+    "promptBase": "prompt-base.txt"
+  }
+}

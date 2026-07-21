@@ -67,7 +67,8 @@ function parseFechaISO(raw, now) {
   const MESES = { enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5, julio:6, agosto:7,
                   septiembre:8, setiembre:8, octubre:9, noviembre:10, diciembre:11,
                   january:0, february:1, march:2, april:3, may:4, june:5, july:6, august:7,
-                  september:8, october:9, november:10, december:11 };
+                   september:8, october:9, november:10, december:11,
+                   jan:0, feb:1, mar:2, apr:3, jun:5, jul:6, aug:7, sep:8, sept:8, oct:9, nov:10, dec:11 };
 
   // "15 de julio" / "july 15" / "18 julio"
   const dm = txt.match(/\b(\d{1,2})\s*(?:de\s+)?([a-záéíóú]+)/);
@@ -160,6 +161,45 @@ function normalizePersonas(v) {
   return '';
 }
 
+function reservationTemplate(client) {
+  const id = client && (client.templateId || (client.config && client.config.templateId));
+  return id === 'restaurant' || id === 'barber' ? id : '';
+}
+
+function configuredStaff(client) {
+  const config = (client && client.config) || {};
+  // `staff` is canonical for newly-created barber clients. Older records may
+  // still use barbers or a nested config, so retain those only as fallbacks.
+  const raw = Array.isArray(client?.staff) ? client.staff
+    : (Array.isArray(client?.barbers) ? client.barbers
+      : (Array.isArray(config.staff) ? config.staff : config.barbers));
+  return Array.isArray(raw) ? raw.map((entry) => {
+    if (typeof entry === 'string') return { name: entry };
+    return entry || {};
+  }).filter((entry) => entry.name || entry.id) : [];
+}
+
+function staffMatch(staff, preference) {
+  const wanted = String(preference || '').trim().toLowerCase();
+  if (!wanted) return null;
+  return staff.find((entry) => String(entry.id || '').toLowerCase() === wanted ||
+    String(entry.name || '').toLowerCase() === wanted) || null;
+}
+
+function contactMatches(a, b) {
+  const norm = (v) => String(v || '').toLowerCase().replace(/[\s\-().+]/g, '');
+  return !!a && !!b && norm(a) === norm(b);
+}
+
+function duplicateReservation(reservas, reservation) {
+  const sameDate = (r) => r.fechaISO && reservation.fechaISO
+    ? r.fechaISO === reservation.fechaISO
+    : String(r.fecha || '').trim().toLowerCase() === String(reservation.fecha || '').trim().toLowerCase();
+  return (reservas || []).some((r) => activa(r) && sameDate(r) &&
+    r.horaISO === reservation.horaISO &&
+    (contactMatches(r.telefono, reservation.telefono) || contactMatches(r.email, reservation.email)));
+}
+
 
 // Validación de reservas. Vive en el servidor a propósito: la del navegador
 // es cortesía (para responder bonito), pero cualquiera puede saltársela con
@@ -192,6 +232,13 @@ function duracionMin(txt) {
   if (m) return +m[1];
   const solo = t.match(/^(\d+)$/);
   return solo ? +solo[1] : 0;
+}
+
+function durationFor(client, servicio) {
+  const item = (client.menu || []).find(m => m.nombre && servicio &&
+    String(servicio).toLowerCase().indexOf(String(m.nombre).toLowerCase()) !== -1);
+  return duracionMin(item && item.duracion) || duracionMin(client.reservationDuration ||
+    ((client.config || {}).reservationDuration));
 }
 
 function rangosDelDia(businessHours, fechaISO) {
@@ -240,15 +287,13 @@ function activa(r) {
 }
 
 // Cuántas citas vivas se solapan con la que se pide.
-function contarSolapes(reservas, fechaISO, iniMin, durMin, menu) {
+function contarSolapes(reservas, fechaISO, iniMin, durMin, client) {
   let n = 0;
   for (const r of reservas) {
     if (!activa(r) || r.fechaISO !== fechaISO) continue;
     const ini = minutosDe(r.horaISO);
     if (ini === null) continue;                          // sin hora normalizada: no cuenta
-    const item = (menu || []).find(m => m.nombre && r.servicio &&
-      String(r.servicio).toLowerCase().indexOf(String(m.nombre).toLowerCase()) !== -1);
-    const dur = duracionMin(item && item.duracion);
+    const dur = Number.isFinite(r.duracion) ? r.duracion : durationFor(client || {}, r.servicio);
     if (solapan(iniMin, durMin, ini, dur)) n++;
   }
   return n;
@@ -262,8 +307,25 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
     return { ok: false, motivo: 'feriado', mensaje: 'Ese día no abrimos.' };
   }
 
+  // Un barbero elegido debe existir y estar disponible. Sin una lista/configuración
+  // de personal no se inventa una: la preferencia queda como dato para el dueño.
+  const template = reservationTemplate(client);
+  const preference = client.__reservationBarberPreference;
+  const staff = configuredStaff(client);
+  const selectedStaff = preference ? staffMatch(staff, preference) : null;
+  if (template === 'barber' && preference && staff.length && !selectedStaff) {
+    return { ok: false, motivo: 'barbero_no_disponible', mensaje: 'Ese barbero no está disponible.' };
+  }
+  const staffHours = selectedStaff && (selectedStaff.businessHours || selectedStaff.availability ||
+    ((client.config || {}).staffAvailability || {})[selectedStaff.id || selectedStaff.name]);
+  const staffRanges = rangosDelDia(staffHours, fechaISO);
+  if (staffRanges && !staffRanges.length) {
+    return { ok: false, motivo: 'barbero_no_disponible', mensaje: 'Ese barbero no trabaja ese día.' };
+  }
+
   const bh = client.businessHours;
-  const rangos = rangosDelDia(bh, fechaISO);
+  let rangos = rangosDelDia(bh, fechaISO);
+  if (rangos === null && staffRanges !== null) rangos = staffRanges;
   if (rangos === null) return { ok: true };              // sin horario fiable: no bloqueamos
 
   if (!rangos.length) {
@@ -274,9 +336,7 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
   if (pedido === null) return { ok: true };              // hora no normalizable: no bloqueamos
 
   // Duración: si el servicio no cabe antes del cierre, no vale.
-  const item = (client.menu || []).find(m => m.nombre && servicio &&
-    String(servicio).toLowerCase().indexOf(String(m.nombre).toLowerCase()) !== -1);
-  const dur = duracionMin(item && item.duracion);
+  const dur = durationFor(client, servicio);
 
   let dentro = null;
   for (const [a, b] of rangos) {
@@ -298,6 +358,18 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
       mensaje: 'Este servicio necesita más tiempo del que queda disponible ese día.',
       alternativa: dentro[1] - dur >= dentro[0] ? fmt(dentro[1] - dur) : null,
     };
+  }
+
+  if (staffRanges && staffRanges.length && !staffRanges.some(([a, b]) => pedido >= a && pedido + dur <= b)) {
+    return { ok: false, motivo: 'barbero_no_disponible', mensaje: 'Ese barbero no está disponible a esa hora.' };
+  }
+
+  if (template === 'barber' && selectedStaff && Array.isArray(reservas)) {
+    const ocupado = reservas.some((r) => activa(r) && r.fechaISO === fechaISO &&
+      String(r.barberPreference || '').toLowerCase() === String(selectedStaff.name || selectedStaff.id).toLowerCase() &&
+      solapan(pedido, dur, minutosDe(r.horaISO) || -1,
+        Number.isFinite(r.duracion) ? r.duracion : durationFor(client, r.servicio)));
+    if (ocupado) return { ok: false, motivo: 'barbero_no_disponible', mensaje: 'Ese barbero ya tiene una cita a esa hora.' };
   }
 
   // Anticipación mínima, medida en la zona del negocio.
@@ -324,7 +396,7 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
   // aparecen en la puerta.
   const cap = Number.isFinite(client.capacityPerSlot) ? client.capacityPerSlot : null;
   if (cap !== null && cap >= 1 && Array.isArray(reservas)) {
-    const ocupadas = contarSolapes(reservas, fechaISO, pedido, dur, client.menu);
+    const ocupadas = contarSolapes(reservas, fechaISO, pedido, dur, client);
     if (ocupadas >= cap) {
       return {
         ok: false,
@@ -347,7 +419,7 @@ function proximoHueco(client, fechaISO, desde, dur, rango, reservas) {
   const paso = 15;
   const limite = rango[1] - (dur || 0);
   for (let t = Math.ceil((desde + 1) / paso) * paso; t <= limite; t += paso) {
-    if (contarSolapes(reservas, fechaISO, t, dur, client.menu) < cap) return fmt(t);
+    if (contarSolapes(reservas, fechaISO, t, dur, client) < cap) return fmt(t);
   }
   return null;                                            // hoy no queda hueco
 }
@@ -597,17 +669,31 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, nombre, telefono, email, fecha, hora, servicio, personas, nota, notes } = req.body || {};
+  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
-  if (!nombre || !telefono || !fecha || !hora)
-    return res.status(400).json({ error: 'nombre, telefono, fecha and hora are required' });
+  if (!nombre || !fecha || !hora)
+    return res.status(400).json({ error: 'nombre, fecha and hora are required' });
 
   try {
     const client = await redis.get(`client:${clientId}`);
     if (!client)        return res.status(404).json({ error: 'Client not found' });
     if (!client.active) return res.status(403).json({ error: 'Client inactive' });
+
+    const template = reservationTemplate(client);
+    const phone = telefono || (contacto && !String(contacto).includes('@') ? contacto : '');
+    const mail = email || (contacto && String(contacto).includes('@') ? contacto : '');
+    if (template ? (!phone && !mail) : !phone) {
+      return res.status(400).json({ error: template ? 'contact is required' : 'telefono is required' });
+    }
+    const normalizedPartySize = normalizePersonas(partySize === undefined ? personas : partySize);
+    if (template === 'restaurant' && !normalizedPartySize) {
+      return res.status(400).json({ error: 'partySize is required for restaurant reservations' });
+    }
+    if (template === 'barber' && !servicio) {
+      return res.status(400).json({ error: 'servicio is required for barber reservations' });
+    }
 
     const ts  = Date.now();
     const key = `reservations:${clientId}:${ts}`;
@@ -615,8 +701,8 @@ export default async function handler(req, res) {
     const reservation = {
       clientId,
       nombre:         String(nombre).slice(0, 120),
-      telefono:       String(telefono).slice(0, 30),
-      email:          String(email || '').slice(0, 120),
+      telefono:       String(phone || '').slice(0, 30),
+      email:          String(mail || '').slice(0, 120),
       fecha:          String(fecha).slice(0, 60),
       // Copia normalizada para poder consultar por día (recordatorios,
       // resumen, filtros). '' cuando el texto no permite deducirla sin riesgo.
@@ -625,7 +711,11 @@ export default async function handler(req, res) {
       timezone:       client.timezone || 'UTC',
       hora:           String(hora).slice(0, 30),
       servicio:       String(servicio || '').slice(0, 200),
-      personas:       normalizePersonas(personas),
+      personas:       normalizedPartySize,
+      partySize:      template === 'restaurant' ? normalizedPartySize : undefined,
+      tablePreference: template === 'restaurant' ? String(tablePreference || '').slice(0, 200) : undefined,
+      barberPreference: template === 'barber' ? String(barberPreference || '').slice(0, 120) : undefined,
+      duracion:        durationFor(client, servicio),
       nota:           /^no$/i.test(String(nota || '').trim()) ? '' : String(nota || '').slice(0, 500),
       // Notas del cliente detectadas en la conversación (preferencias, avisos,
       // peticiones). Texto libre, opcional; vacío si el cliente no dijo nada.
@@ -647,24 +737,24 @@ export default async function handler(req, res) {
 
     // Validación autoritativa: el navegador ya avisa, pero esta es la que
     // decide. Una cita fuera de horario no se acepta ni por curl.
-    // Las reservas vivas del cliente hacen falta para contar solapes. Solo se
-    // leen si hay capacidad configurada: si no, es un viaje a Redis inútil.
+    // Las reservas vivas hacen falta para capacidad, duplicados y la agenda de
+    // un barbero elegido. Si Redis falla, conservamos el comportamiento previo:
+    // no rechazamos una reserva real por una consulta auxiliar caída.
     let existentes = null;
-    if (Number.isFinite(client.capacityPerSlot) && client.capacityPerSlot >= 1) {
-      try {
-        const ks = await redis.keys(`reservations:${clientId}:*`);
-        existentes = ks.length ? (ks.length === 1 ? [await redis.get(ks[0])] : await redis.mget(...ks)) : [];
-        existentes = existentes.filter(Boolean);
-      } catch (e) {
-        // Si no se pueden leer, no se inventa disponibilidad: se deja pasar y
-        // el dueño lo ve en el panel. Bloquear por un fallo de lectura sería
-        // rechazar clientes reales por un problema nuestro.
-        console.error('[api/reservations] capacidad, no se pudo leer:', e.message);
-        existentes = null;
-      }
+    try {
+      const ks = await redis.keys(`reservations:${clientId}:*`);
+      existentes = ks.length ? (ks.length === 1 ? [await redis.get(ks[0])] : await redis.mget(...ks)) : [];
+      existentes = existentes.filter(Boolean);
+    } catch (e) {
+      console.error('[api/reservations] disponibilidad, no se pudo leer:', e.message);
+      existentes = null;
     }
 
-    const v = validarReserva(client, reservation.fechaISO, reservation.horaISO, reservation.servicio, undefined, existentes);
+    if (existentes && duplicateReservation(existentes, reservation)) {
+      return res.status(200).json({ ok: false, motivo: 'duplicada', mensaje: 'Ya existe una reserva con estos datos.' });
+    }
+    const clientForValidation = { ...client, __reservationBarberPreference: reservation.barberPreference };
+    const v = validarReserva(clientForValidation, reservation.fechaISO, reservation.horaISO, reservation.servicio, undefined, existentes);
     if (!v.ok) {
       // Se guarda igualmente como rechazada, con el motivo: al dueño le
       // interesa ver la demanda que se le escapa, no perderla en silencio.
@@ -714,4 +804,5 @@ export default async function handler(req, res) {
 
 // Solo para pruebas unitarias (no se usa en producción).
 export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
-  parseFechaISO, normalizeHora, normalizePersonas, validarReserva };
+  parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
+  configuredStaff, duplicateReservation };

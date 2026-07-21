@@ -1,0 +1,31 @@
+{
+  "sections": [
+    {
+      "id": "business",
+      "label": "Informacion basica",
+      "questions": [
+        { "field": "businessName", "label": "Nombre de la barberia", "required": true },
+        { "field": "address", "label": "Direccion completa", "required": true },
+        { "field": "phone", "label": "Telefono de contacto", "required": true },
+        { "field": "ownerEmail", "label": "Email del responsable", "required": true }
+      ]
+    },
+    {
+      "id": "availability",
+      "label": "Horario y reservas",
+      "questions": [
+        { "field": "timezone", "label": "Zona horaria", "required": true },
+        { "field": "businessHours", "label": "Dias y horarios de atencion", "required": true },
+        { "field": "bookingEnabled", "label": "Acepta reservas", "required": true },
+        { "field": "notificationEmails", "label": "Emails para avisos de reserva", "required": true }
+      ]
+    },
+    {
+      "id": "services",
+      "label": "Servicios",
+      "questions": [
+        { "field": "services", "label": "Nombre, precio y duracion de cada servicio", "required": true }
+      ]
+    }
+  ]
+}

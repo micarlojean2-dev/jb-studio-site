@@ -1,9 +1,5 @@
-import { Redis } from '@upstash/redis';
-
-const redis = new Redis({
-  url:   process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+import { getOfficialTemplate } from '../lib/assistant-templates.js';
+import { CREATOR_DRAFT_SCHEMA, OPENAI_CREATOR_INSTRUCTIONS } from '../lib/creator-schema.js';
 
 const IP_STORE = new Map();
 const HOUR_MS = 60 * 60 * 1000;
@@ -24,6 +20,8 @@ const LANGUAGE_CODES = ['es', 'en', 'pt', 'fr'];
 const PHONE_COUNTRY_CODES = ['US', 'MX', 'CL', 'AR', 'CO', 'PE', 'BR', 'ES', 'GB', 'CA'];
 
 const VALID_PLANS = ['basic', 'pro'];
+
+const CREATOR_PROVIDERS = ['openai', 'anthropic'];
 
 const SYSTEM_PROMPT = `Eres un extractor de datos de negocios. Tu única tarea es analizar texto desordenado sobre un negocio y devolver un JSON válido.
 
@@ -110,6 +108,13 @@ No inventes colores si no se mencionan. Usa los valores por defecto.
 No inventes servicios si no se mencionan.
 No inventes horarios enteros. Si se menciona "lunes a viernes de 9 a 6", los sábados y domingos deben quedar como enabled: false.`;
 
+// Anthropic has no Responses JSON-schema mode. Give it the same factual draft
+// contract that OpenAI receives, while retaining its existing call and repair flow.
+const ANTHROPIC_CREATOR_INSTRUCTIONS = `${OPENAI_CREATOR_INSTRUCTIONS}
+
+El JSON debe cumplir exactamente este JSON Schema, sin campos adicionales:
+${JSON.stringify(CREATOR_DRAFT_SCHEMA)}`;
+
 function sanitizeText(value, maxLen) {
   return String(value || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').trim().slice(0, maxLen || 200);
 }
@@ -121,6 +126,10 @@ function sanitizeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function sanitizeModelInput(value, maxLen) {
+  return String(value || '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').trim().slice(0, maxLen);
 }
 
 function isValidHexColor(c) {
@@ -206,6 +215,30 @@ function sanitizeMissingInfo(missing) {
   return missing.map(s => sanitizeText(s, 60)).filter(Boolean).slice(0, 10);
 }
 
+function sanitizeTemplateData(data, template) {
+  const source = data && typeof data === 'object' ? data : {};
+  if (template?.id === 'restaurant') {
+    return {
+      menuMetadata: Array.isArray(source.menuMetadata) ? source.menuMetadata.slice(0, 40).map(item => ({
+        itemName: sanitizeText(item?.itemName, 80),
+        category: sanitizeText(item?.category, 60),
+        dietaryTags: Array.isArray(item?.dietaryTags) ? item.dietaryTags.map(tag => sanitizeText(tag, 40)).filter(Boolean).slice(0, 8) : [],
+        allergens: Array.isArray(item?.allergens) ? item.allergens.map(allergen => sanitizeText(allergen, 40)).filter(Boolean).slice(0, 12) : [],
+      })).filter(item => item.itemName) : [],
+    };
+  }
+  if (template?.id === 'barber') {
+    return {
+      barberStaff: Array.isArray(source.barberStaff) ? source.barberStaff.slice(0, 20).map(member => ({
+        name: sanitizeText(member?.name, 80),
+        specialties: Array.isArray(member?.specialties) ? member.specialties.map(specialty => sanitizeText(specialty, 60)).filter(Boolean).slice(0, 12) : [],
+      })).filter(member => member.name) : [],
+      barberPolicies: Array.isArray(source.barberPolicies) ? source.barberPolicies.map(policy => sanitizeText(policy, 200)).filter(Boolean).slice(0, 20) : [],
+    };
+  }
+  return {};
+}
+
 async function callAnthropic(messages, systemPrompt, maxRetries) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
@@ -266,6 +299,52 @@ async function callAnthropic(messages, systemPrompt, maxRetries) {
   }
 }
 
+async function callOpenAI(userMessage, maxRetries) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+  const model = process.env.OPENAI_CREATOR_MODEL || 'gpt-5.6-luna';
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
+      const upstream = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          max_output_tokens: 2200,
+          input: [
+            { role: 'developer', content: OPENAI_CREATOR_INSTRUCTIONS },
+            { role: 'user', content: userMessage },
+          ],
+          text: { format: { type: 'json_schema', name: 'business_draft', strict: true, schema: CREATOR_DRAFT_SCHEMA } },
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!upstream.ok) {
+        const errBody = await upstream.text().catch(() => '');
+        console.error(`[api/generate-client-config] OpenAI ${upstream.status}: ${errBody.slice(0, 500)}`);
+        throw new Error(`OpenAI API error: ${upstream.status}`);
+      }
+      const data = await upstream.json();
+      const text = data.output_text || data.output?.flatMap(item => item.content || [])
+        .find(item => item.type === 'output_text')?.text || '';
+      if (!text) throw new Error('OpenAI returned no structured output');
+      return JSON.parse(text);
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1500 * attempt));
+        continue;
+      }
+      throw lastError;
+    }
+  }
+}
+
 function extractJson(text) {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) return null;
@@ -276,17 +355,23 @@ function extractJson(text) {
   }
 }
 
-function normalizeConfig(raw, additionalInstructions) {
+function normalizeConfig(raw, additionalInstructions, serverOwned) {
   const b = raw.business || {};
   const d = raw.design || {};
   const h = sanitizeBusinessHours(raw.businessHours);
   const s = sanitizeServices(raw.services);
-  const f = sanitizeFeatures(raw.features, raw.planRecommendation?.plan || 'basic');
+  const bookingRequested = raw.bookingRequested === true;
+  const serverPlan = bookingRequested ? 'pro' : 'basic';
+  const f = serverOwned
+    ? sanitizeFeatures({ reservations: bookingRequested, leads: bookingRequested, emailNotifications: bookingRequested, cancellation: bookingRequested, rescheduling: bookingRequested }, serverPlan)
+    : sanitizeFeatures(raw.features, raw.planRecommendation?.plan || 'basic');
   const lang = sanitizeLanguages(b.languages);
   const primaryLang = lang && lang.length
     ? (lang.includes(String(b.primaryLanguage || '').toLowerCase()) ? String(b.primaryLanguage).toLowerCase() : lang[0])
     : 'es';
-  const plan = VALID_PLANS.includes(raw.planRecommendation?.plan) ? raw.planRecommendation.plan : 'basic';
+  const plan = serverOwned
+    ? serverPlan
+    : (VALID_PLANS.includes(raw.planRecommendation?.plan) ? raw.planRecommendation.plan : 'basic');
 
   return {
     business: {
@@ -307,7 +392,7 @@ function normalizeConfig(raw, additionalInstructions) {
       secondaryColor: isValidHexColor(d.secondaryColor) ? d.secondaryColor : '#f0f7f4',
       style: ['Moderno', 'Elegante', 'Amigable', 'Minimalista'].includes(d.style) ? d.style : 'Moderno',
     },
-    businessHours: h || {
+    businessHours: h || (serverOwned ? Object.fromEntries(DAYS.map(day => [day, { enabled: false, unknown: true, ranges: [] }])) : {
       monday: { enabled: true, ranges: [{ start: '09:00', end: '19:00' }] },
       tuesday: { enabled: true, ranges: [{ start: '09:00', end: '19:00' }] },
       wednesday: { enabled: true, ranges: [{ start: '09:00', end: '19:00' }] },
@@ -315,19 +400,66 @@ function normalizeConfig(raw, additionalInstructions) {
       friday: { enabled: true, ranges: [{ start: '09:00', end: '19:00' }] },
       saturday: { enabled: false, ranges: [] },
       sunday: { enabled: false, ranges: [] },
-    },
+    }),
     services: s,
     features: f,
     planRecommendation: {
       plan,
-      reason: sanitizeText(raw.planRecommendation?.reason || '', 200),
+      reason: serverOwned
+        ? (bookingRequested ? 'El dueño indicó que acepta reservas.' : 'No se indicaron reservas.')
+        : sanitizeText(raw.planRecommendation?.reason || '', 200),
     },
     additionalInstructions: sanitizeText(additionalInstructions || '', 500),
-    missingInformation: addUnknownDayInfo(sanitizeMissingInfo(raw.missingInformation), h),
-    systemPrompt: raw.systemPrompt
+    missingInformation: addUnknownDayInfo(sanitizeMissingInfo(serverOwned ? raw.missingFields : raw.missingInformation), h),
+    systemPrompt: !serverOwned && raw.systemPrompt
       ? sanitizeText(raw.systemPrompt, 6000)
       : '',
   };
+}
+
+function normalizeTemplateConfig(config, template, raw) {
+  if (!template) return config;
+
+  // The template, not the model response or browser request, decides runtime capabilities.
+  config.features = {
+    faq: !!template.features.faq,
+    prices: true,
+    // The current runtime uses catalog for both visual catalogs and restaurant menus.
+    catalog: !!(template.features.catalog || template.features.menu),
+    reservations: !!template.features.booking,
+    leads: !!template.features.booking,
+    emailNotifications: !!template.features.emailNotifications,
+    cancellation: !!template.features.cancellation,
+    rescheduling: !!template.features.rescheduling,
+  };
+  config.planRecommendation = {
+    plan: 'pro',
+    reason: `La plantilla ${template.name} incluye reservas y avisos por correo.`,
+  };
+  // The legacy generic flow supplies weekday defaults for a missing schedule.
+  // A booking template must instead surface the omission for human completion.
+  if (!raw.businessHours || typeof raw.businessHours !== 'object') {
+    config.businessHours = Object.fromEntries(DAYS.map(day => [day, { enabled: false, unknown: true, ranges: [] }]));
+  }
+  config.template = { id: template.id, version: template.version, requiredFields: template.requiredFields };
+  config.templateData = sanitizeTemplateData(raw.templateData, template);
+  config.systemPrompt = buildTemplatePrompt(config, template);
+  return config;
+}
+
+function buildTemplatePrompt(config, template) {
+  const b = config.business;
+  const services = config.services.map(service =>
+    `- ${service.nombre}${service.precio ? `: ${service.precio}` : ''}${service.duracion ? ` (${service.duracion})` : ''}`
+  ).join('\n') || '- No especificados';
+  const hours = DAYS.map(day => {
+    const value = config.businessHours[day];
+    if (!value || value.unknown) return '';
+    if (!value.enabled || !value.ranges.length) return `${day}: Cerrado`;
+    return `${day}: ${value.ranges.map(range => `${range.start}-${range.end}`).join(', ')}`;
+  }).filter(Boolean).join('\n') || 'No especificados';
+
+  return `${template.promptBase}\n\nDATOS VALIDADOS DEL NEGOCIO\nNombre: ${b.businessName || 'No especificado'}\nDirección: ${b.address || 'No especificada'}\nTeléfono: ${b.phoneCountryCode || ''}${b.phoneNumber || 'No especificado'}\n\nHORARIOS\n${hours}\n\nSERVICIOS\n${services}`.slice(0, 6000);
 }
 
 function addUnknownDayInfo(missing, hours) {
@@ -359,7 +491,21 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait.' });
 
-  const { businessInfo, additionalInstructions } = req.body || {};
+  const { businessInfo, additionalInstructions, templateId } = req.body || {};
+  const provider = String(process.env.CREATOR_PROVIDER || 'openai').toLowerCase();
+  if (!CREATOR_PROVIDERS.includes(provider)) {
+    return res.status(500).json({ error: 'Invalid creator provider configuration' });
+  }
+  let template = null;
+  if (templateId !== undefined && templateId !== '') {
+    try {
+      template = getOfficialTemplate(String(templateId));
+    } catch (err) {
+      console.error('[api/generate-client-config] template:', err.message);
+      return res.status(500).json({ error: 'No se pudo cargar la plantilla solicitada.' });
+    }
+    if (!template) return res.status(400).json({ error: 'Unknown or inactive template' });
+  }
 
   if (!businessInfo || typeof businessInfo !== 'string')
     return res.status(400).json({ error: 'businessInfo is required and must be a string' });
@@ -382,39 +528,50 @@ export default async function handler(req, res) {
   // supuestamente contienen.
   const sanitizedInfo = sanitizeHtml(infoSinUrls);
   const sanitizedExtra = sanitizeHtml(quitarUrls(String(additionalInstructions || '')).limpio);
+  const literalInfo = sanitizeModelInput(infoSinUrls, 8000);
+  const literalExtra = sanitizeModelInput(quitarUrls(String(additionalInstructions || '')).limpio, 1000);
 
   // Si había enlaces se avisa al modelo, para que lo pida en missingInformation
   // en vez de rellenarlo por su cuenta.
   const avisoUrls = urlsPegadas.length
-    ? `\n\nNOTA: el usuario pegó ${urlsPegadas.length} enlace(s). No se pueden abrir y se han eliminado. No inventes su contenido: si falta información, pídela en missingInformation.`
+    ? `\n\nNOTA: el usuario pegó ${urlsPegadas.length} enlace(s). No se pueden abrir y se han eliminado. No inventes su contenido: si falta información, indícala en missingFields.`
     : '';
 
-  const userMessage = (sanitizedExtra
-    ? `Información del negocio:\n\n${sanitizedInfo}\n\nInstrucciones adicionales:\n\n${sanitizedExtra}`
-    : `Información del negocio:\n\n${sanitizedInfo}`) + avisoUrls;
+  const templateContext = template
+    ? `\n\nPLANTILLA OFICIAL: ${template.name}. Extrae solo datos para sus campos requeridos: ${template.requiredFields.join(', ')}.${template.id === 'restaurant' ? ' Para restaurant, extrae menuMetadata factual por plato: categoría, etiquetas dietarias y alérgenos solo cuando estén explícitos.' : ''}${template.id === 'barber' ? ' Para barber, extrae barberStaff y barberPolicies solo cuando estén explícitos.' : ''} No decidas capacidades ni generes un systemPrompt; el servidor lo deriva de la plantilla.`
+    : '';
+  const modelInfo = provider === 'openai' ? literalInfo : sanitizedInfo;
+  const modelExtra = provider === 'openai' ? literalExtra : sanitizedExtra;
+  const userMessage = ((modelExtra
+    ? `Información del negocio:\n\n${modelInfo}\n\nInstrucciones adicionales:\n\n${modelExtra}`
+    : `Información del negocio:\n\n${modelInfo}`) + avisoUrls + templateContext);
 
   try {
-    const text = await callAnthropic(
-      [{ role: 'user', content: String(userMessage).slice(0, 8500) }],
-      SYSTEM_PROMPT,
-      2
-    );
-
-    let parsed = extractJson(text);
-    if (!parsed) {
-      const fixMessages = [
-        { role: 'user', content: String(userMessage).slice(0, 8500) },
-        { role: 'assistant', content: text },
-        { role: 'user', content: 'El JSON que devolviste no es válido. Devuelve ÚNICAMENTE un JSON válido con la estructura exacta especificada. No incluyas texto adicional.' },
-      ];
-      const fixedText = await callAnthropic(fixMessages, SYSTEM_PROMPT, 1);
-      parsed = extractJson(fixedText);
+    let parsed;
+    if (provider === 'openai') {
+      parsed = await callOpenAI(String(userMessage).slice(0, 8500), 2);
+    } else {
+      const text = await callAnthropic(
+        [{ role: 'user', content: String(userMessage).slice(0, 8500) }],
+        ANTHROPIC_CREATOR_INSTRUCTIONS,
+        2
+      );
+      parsed = extractJson(text);
       if (!parsed) {
-        return res.status(422).json({ error: 'No se pudo generar una configuración válida. Intenta con información más detallada.' });
+        const fixMessages = [
+          { role: 'user', content: String(userMessage).slice(0, 8500) },
+          { role: 'assistant', content: text },
+          { role: 'user', content: 'El JSON que devolviste no es válido. Devuelve ÚNICAMENTE un JSON válido con la estructura exacta especificada. No incluyas texto adicional.' },
+        ];
+        const fixedText = await callAnthropic(fixMessages, ANTHROPIC_CREATOR_INSTRUCTIONS, 1);
+        parsed = extractJson(fixedText);
+        if (!parsed) {
+          return res.status(422).json({ error: 'No se pudo generar una configuración válida. Intenta con información más detallada.' });
+        }
       }
     }
 
-    const config = normalizeConfig(parsed, sanitizedExtra);
+    const config = normalizeTemplateConfig(normalizeConfig(parsed, sanitizedExtra, true), template, parsed);
 
     if (!config.systemPrompt && config.business.businessName) {
       config.systemPrompt = generateFallbackPrompt(config);

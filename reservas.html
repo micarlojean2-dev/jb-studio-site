@@ -286,8 +286,11 @@
     return '<div class="rcard">' +
         '<div class="rrow"><span class="ic">👤</span><span class="rname">' + esc(r.nombre || '—') + '</span></div>' +
         fila('💆', 'Servicio', r.servicio) +
+        fila('👥', 'Personas', r.partySize || r.personas) +
         fila('📅', 'Fecha', r.fecha) +
         fila('🕒', 'Hora', r.hora) +
+        fila('🪑', 'Mesa', r.tablePreference) +
+        fila('✂️', 'Barbero', r.barberPreference) +
         fila('📞', 'Teléfono', r.telefono) +
         fila('✉️', 'Correo', r.email) +
         notesHTML +

@@ -5494,6 +5494,13 @@ LÍMITES ESTRICTOS:
       <!-- Step 1: Input -->
       <div id="auto-step-input" hidden>
         <div class="auto-info-text">Pega servicios, precios, horarios, ubicación, teléfono, políticas o cualquier información que tengas. No importa si está desordenada.</div>
+        <label class="auto-label" for="auto-template">Tipo de asistente</label>
+        <select id="auto-template" class="admin-input auto-owner-input">
+          <option value="">Asistente general</option>
+          <option value="spa">Spa y bienestar</option>
+          <option value="restaurant">Restaurante</option>
+          <option value="barber">Barbería</option>
+        </select>
         <label class="auto-label">Información del negocio</label>
         <textarea id="auto-info-input" class="auto-textarea" placeholder='Ej: "Barbería Mike queda en Santiago. Atiende lunes a sábado de 9 a 7. Corte normal 20 dólares, barba 12 y corte con barba 28. Quiero diseño negro y dorado. El dueño habla español e inglés. Quiero que responda preguntas, muestre precios y permita reservar. Correo owner@barberiamike.com, teléfono +56912345678."'></textarea>
         <label class="auto-label">Instrucciones adicionales (opcional)</label>
@@ -5698,6 +5705,7 @@ LÍMITES ESTRICTOS:
   var ownerError = document.getElementById('auto-owner-error');
   var tzSelect = document.getElementById('auto-tz');
   var minNoticeSelect = document.getElementById('auto-min-notice');
+  var templateSelect = document.getElementById('auto-template');
 
   // Zonas de los países que la IA sabe detectar (ver generate-client-config).
   var TZ_POR_PAIS = {
@@ -5837,6 +5845,7 @@ LÍMITES ESTRICTOS:
     displayMode = null;
     widgetPosition = 'bottom-right';
     if (ownerInput) ownerInput.value = '';
+    if (templateSelect) templateSelect.value = '';
     if (ownerError) ownerError.hidden = true;
     syncDisplayUI();
     setState('idle');
@@ -5892,6 +5901,7 @@ LÍMITES ESTRICTOS:
 
     var extra = extraInput.value.trim();
     var body = { businessInfo: info };
+    if (templateSelect && templateSelect.value) body.templateId = templateSelect.value;
     if (extra) body.additionalInstructions = extra;
 
     var aborted = false;
@@ -5939,10 +5949,24 @@ LÍMITES ESTRICTOS:
     var f = config.features;
     var plan = config.planRecommendation;
     var missing = config.missingInformation;
+    var template = config.template;
     var dayLabels = { monday:'Lunes', tuesday:'Martes', wednesday:'Miércoles', thursday:'Jueves', friday:'Viernes', saturday:'Sábado', sunday:'Domingo' };
     var days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
 
     var html = '';
+
+    if (template) {
+      var required = template.requiredFields || [];
+      var missingRequired = templateMissingFields(config);
+      var complete = required.length - missingRequired.length;
+      var percentage = required.length ? Math.round((complete / required.length) * 100) : 100;
+      html += '<div class="auto-summary-section"><h3>Plantilla: ' + esc(template.id === 'restaurant' ? 'Restaurante' : template.id === 'barber' ? 'Barbería' : 'Spa') + '</h3>';
+      html += '<p class="auto-owner-help">Requeridos: ' + complete + '/' + required.length + ' (' + percentage + '%).</p>';
+      html += missingRequired.length
+        ? '<div class="auto-missing-list"><ul>' + missingRequired.map(function (field) { return '<li>' + esc(templateFieldLabel(field)) + '</li>'; }).join('') + '</ul></div>'
+        : '<p class="auto-owner-help">Todos los campos requeridos están presentes.</p>';
+      html += '</div>';
+    }
 
     html += '<div class="auto-summary-section"><h3>Negocio</h3><div class="auto-summary-grid">';
     html += '<div class="item"><span class="label">Nombre:</span><span class="value">' + esc(b.businessName || '—') + '</span></div>';
@@ -5968,7 +5992,7 @@ LÍMITES ESTRICTOS:
     }
     html += '</div></div>';
 
-    html += '<div class="auto-summary-section"><h3>Servicios</h3>';
+    html += '<div class="auto-summary-section"><h3>' + (template && template.id === 'restaurant' ? 'Menú' : 'Servicios') + '</h3>';
     if (services && services.length) {
       for (var i = 0; i < services.length; i++) {
         var s = services[i];
@@ -6000,6 +6024,32 @@ LÍMITES ESTRICTOS:
     if (config.systemPrompt) { promptTextarea.value = config.systemPrompt; promptToggle.hidden = false; }
     else { promptToggle.hidden = true; }
     promptContent.classList.remove('open');
+  }
+
+  function templateFieldLabel(field) {
+    var labels = { businessName:'Nombre del negocio', address:'Dirección', phone:'Teléfono', ownerEmail:'Correo del dueño', timezone:'Zona horaria', businessHours:'Horario', services:'Servicios o menú', bookingEnabled:'Reservas activas', notificationEmails:'Correo para avisos' };
+    return labels[field] || field;
+  }
+
+  function templateMissingFields(config) {
+    if (!config.template) return [];
+    var b = config.business || {};
+    var f = config.features || {};
+    var services = config.services || [];
+    var hours = config.businessHours || {};
+    var fields = [];
+    if (!b.businessName) fields.push('businessName');
+    if (!b.address) fields.push('address');
+    if (!b.phoneCountryCode || !b.phoneNumber) fields.push('phone');
+    if (!EMAIL_RE.test(String(b.ownerEmail || ''))) fields.push('ownerEmail');
+    if (!tzSelect || !tzSelect.value) fields.push('timezone');
+    if (!Object.keys(hours).some(function (day) { return hours[day] && hours[day].enabled && hours[day].ranges && hours[day].ranges.length; })) fields.push('businessHours');
+    var requiresDuration = config.template.id !== 'restaurant';
+    if (!services.length || services.some(function (service) { return !service.precio || (requiresDuration && !service.duracion); })) fields.push('services');
+    if (!f.reservations) fields.push('bookingEnabled');
+    // The creator collects this from the owner email when necessary.
+    if (!b.ownerEmail) fields.push('notificationEmails');
+    return fields;
   }
 
   promptToggle.addEventListener('click', function () {
@@ -6081,6 +6131,13 @@ LÍMITES ESTRICTOS:
     var f = [];
     if (!generatedConfig) return f;
     var reservas = generatedConfig.features && generatedConfig.features.reservations === true;
+    var templated = generatedConfig.template;
+    if (templated) {
+      var negocio = generatedConfig.business || {};
+      if (!negocio.businessName) f.push('Nombre del negocio');
+      if (!negocio.address) f.push('Dirección');
+      if (!negocio.phoneCountryCode || !negocio.phoneNumber) f.push('Teléfono');
+    }
     if (!ownerEmailOk() && planNecesitaCorreo()) f.push('Correo del dueño');
     if (!tzSelect || !tzSelect.value) f.push('Zona horaria');
     if (!reservas) return f;                     // sin reservas, lo demás no aplica
@@ -6098,7 +6155,8 @@ LÍMITES ESTRICTOS:
 
     var svc = generatedConfig.services || [];
     if (!svc.length) f.push('Servicios');
-    else if (svc.some(function (x) { return !x.duracion; })) f.push('Duración de servicios');
+    else if ((!templated || templated.id !== 'restaurant') && svc.some(function (x) { return !x.duracion; })) f.push('Duración de servicios');
+    if (templated && svc.some(function (x) { return !x.precio; })) f.push(templated.id === 'restaurant' ? 'Precios del menú' : 'Precios de servicios');
     return f;
   }
 
@@ -6190,8 +6248,10 @@ LÍMITES ESTRICTOS:
       phoneCountry: b.phoneCountry || '',
       phoneCountryCode: b.phoneCountryCode || '',
       phoneNumber: b.phoneNumber || '',
-      businessType: b.businessType || '',
-      prompt: config.systemPrompt || '',
+       businessType: b.businessType || '',
+       ...(config.template ? { templateId: config.template.id, templateVersion: config.template.version } : {}),
+       ...(config.template ? { templateData: config.templateData || {} } : {}),
+       prompt: config.systemPrompt || '',
       services: config.services || [],
       features: config.features,
       displayMode: displayMode,

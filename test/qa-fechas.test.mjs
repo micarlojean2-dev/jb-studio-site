@@ -141,5 +141,12 @@ console.log('D9. Formato US MM/DD/AAAA coherente entre capas (regresión QA-01)'
   ok(parseFechaISO('07/08', NOW) === '2026-08-07', 'ambiguo 07/08 sigue siendo 7 de agosto (DD/MM)');
 }
 
+console.log('D10. Abreviaturas de mes inglesas coherentes entre capas (regresión auditoría)');
+{
+  const captura = capt('jul 30', 'es');
+  ok(captura === 'jul 30', 'frontend captura "jul 30"');
+  ok(parseFechaISO(captura, NOW) === '2026-07-30', 'backend normaliza jul 30 → 2026-07-30');
+}
+
 console.log(fallos === 0 ? '\n✅ QA fechas: todas las aserciones duras pasan' : `\n❌ QA fechas: ${fallos} fallo(s)`);
 process.exit(fallos === 0 ? 0 : 1);

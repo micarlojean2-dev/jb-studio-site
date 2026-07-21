@@ -1,0 +1,29 @@
+{
+  "id": "restaurant",
+  "name": "Restaurante",
+  "version": "1.0",
+  "status": "official",
+  "description": "Asistente para restaurantes con menu, reservas y notificaciones.",
+  "requiredFields": [
+    "businessName",
+    "address",
+    "phone",
+    "ownerEmail",
+    "timezone",
+    "businessHours",
+    "services",
+    "bookingEnabled",
+    "notificationEmails"
+  ],
+  "capabilities": [
+    "booking",
+    "faq",
+    "emailNotifications",
+    "menu"
+  ],
+  "files": {
+    "questions": "questions.json",
+    "features": "features.json",
+    "promptBase": "prompt-base.txt"
+  }
+}

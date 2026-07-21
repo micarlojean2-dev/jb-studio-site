@@ -27,10 +27,13 @@ window.JBChatCore = (function () {
   // con el idioma del negocio (07/08 es 7 de agosto en España y 8 de julio en
   // EE.UU.). Lo que se guarda sigue siendo el texto literal del cliente, así
   // que "mañana" y las reservas antiguas siguen funcionando igual.
-  var MES_NOM = 'enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre';
+  var MES_NOM = 'enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec';
 
   var MESES = { enero:1, febrero:2, marzo:3, abril:4, mayo:5, junio:6, julio:7,
-                agosto:8, septiembre:9, setiembre:9, octubre:10, noviembre:11, diciembre:12 };
+                agosto:8, septiembre:9, setiembre:9, octubre:10, noviembre:11, diciembre:12,
+                january:1, february:2, march:3, april:4, may:5, june:6, july:7, august:8,
+                september:9, october:10, november:11, december:12, jan:1, feb:2, mar:3,
+                apr:4, jun:6, jul:7, aug:8, sep:9, sept:9, oct:10, nov:11, dec:12 };
 
   var FECHA_TEXTO_RE = new RegExp(
     '(pasado\\s+ma(?:ñ|n)ana|ma(?:ñ|n)ana|hoy|' +
@@ -59,11 +62,13 @@ window.JBChatCore = (function () {
     return y >= actual - 1 && y <= actual + 10;
   }
 
-  var HORA_RE = /(?:a\s+las\s+)?\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b/i;
+  // A bare number may be a party size. Match it only when it carries AM/PM,
+  // unless it follows "a las", which is explicit time context.
+  var HORA_RE = /(?:a\s+las\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?|\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b)/i;
 
-  var HORA_CTX = /(a\s+las|hrs?|horas?|:\d{2}|\ba\.?m\.?\b|\bp\.?m\.?\b)/i;
+  var HORA_CTX = /(a\s+las|hrs?|horas?|:\d{2}|\b\d{1,2}\s*(?:a\.?m\.?|p\.?m\.?)\b)/i;
 
-  var PERSONAS_RE = /(?:para|somos|seríamos|serian|ser[ií]amos)\s+(\d{1,3}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b|\b(\d{1,3}|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+personas?\b/i;
+  var PERSONAS_RE = /(?:para|somos|seríamos|serian|ser[ií]amos)\s+(\d{1,3}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b|\b(\d{1,3}|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:personas?|ppl)\b/i;
 
   var NUM_PAL = { un:1, uno:1, una:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6, siete:7, ocho:8, nueve:9, diez:10 };
 
@@ -160,7 +165,8 @@ window.JBChatCore = (function () {
   var CAMPO_MENCIONADO = [
       [/hora|horario/i, 'hora'], [/fecha|d[ií]a/i, 'fecha'], [/personas?|somos/i, 'personas'],
       [/servicio/i, 'servicio'], [/correo|email/i, 'email'], [/tel[eé]fono|n[uú]mero/i, 'telefono'],
-      [/nombre/i, 'nombre']
+      [/nombre/i, 'nombre'], [/mesa|terraza|ventana/i, 'tablePreference'],
+      [/barbero|barbera|estilista/i, 'barberPreference']
     ];
 
   // ── Nombre completo ────────────────────────────────────────────────────────
@@ -173,7 +179,7 @@ window.JBChatCore = (function () {
 
   // Palabras que cortan el nombre: verbos y conectores que abren otra idea. Sin
   // esto, "me llamo Ana y prefiero silencio" capturaría "Ana y prefiero".
-  var NOMBRE_STOP = /^(?:prefiero|prefieres|necesito|necesita|soy|somos|tengo|tienes|quiero|quieres|quisiera|deseo|pero|porque|para|con|sin|mi|me|te|se|es|son|gracias|hola|buenas|el|un|una|que|y|además|tambi[eé]n|luego|despu[eé]s|ahora)$/i;
+  var NOMBRE_STOP = /^(?:prefiero|prefieres|necesito|necesita|soy|somos|tengo|tienes|quiero|quieres|quisiera|deseo|pero|porque|para|con|sin|mi|me|te|se|es|son|gracias|hola|buenas|el|un|una|que|y|además|tambi[eé]n|luego|despu[eé]s|ahora|tel|cel|whatsapp|email|correo|tel[eé]fono)$/i;
 
   // Reconstruye el nombre a partir del texto que sigue a "me llamo/soy/mi
   // nombre es". Camina palabra a palabra: acepta nombres y partículas, y se
@@ -248,14 +254,17 @@ window.JBChatCore = (function () {
 
   var RESUMEN_ICONOS = {
       nombre: '👤', servicio: '✂️', fecha: '📅', hora: '⏰',
-      personas: '👥', telefono: '📞', email: '✉️', nota: '📝'
+      personas: '👥', partySize: '👥', telefono: '📞', email: '✉️', contacto: '📞', nota: '📝',
+      tablePreference: '🪑', barberPreference: '✂️'
     };
 
   var RESUMEN_LABEL = {
       es: { nombre: 'Nombre', servicio: 'Servicio', fecha: 'Fecha', hora: 'Hora',
-            personas: 'Personas', telefono: 'Teléfono', email: 'Email', nota: 'Nota' },
+            personas: 'Personas', partySize: 'Personas', telefono: 'Teléfono', email: 'Email', contacto: 'Contacto', nota: 'Nota',
+            tablePreference: 'Mesa', barberPreference: 'Barbero' },
       en: { nombre: 'Name', servicio: 'Service', fecha: 'Date', hora: 'Time',
-            personas: 'People', telefono: 'Phone', email: 'Email', nota: 'Note' }
+            personas: 'People', partySize: 'People', telefono: 'Phone', email: 'Email', contacto: 'Contact', note: 'Note',
+            tablePreference: 'Table preference', barberPreference: 'Barber preference' }
     };
 
   var BOOKING_STEPS = [
@@ -309,7 +318,38 @@ window.JBChatCore = (function () {
     return { ambigua: n, mm: mm };                    // ambas o ninguna: preguntar
   }
 
-  function extractBooking(text, menu, businessHours, lang) {
+  function templateId(cfg) {
+    var id = cfg && (cfg.templateId || (cfg.config && cfg.config.templateId));
+    return id === 'restaurant' || id === 'barber' ? id : '';
+  }
+
+  function configuredStaff(cfg) {
+    var config = (cfg && cfg.config) || {};
+    var staff = cfg && (cfg.staff || cfg.barbers) || config.staff || config.barbers;
+    return Array.isArray(staff) ? staff : [];
+  }
+
+  function bookingRequirements(cfg, data) {
+    var template = templateId(cfg);
+    var required = template === 'restaurant'
+      ? ['nombre', 'contacto', 'fecha', 'hora', 'personas']
+      : template === 'barber'
+        ? ['nombre', 'contacto', 'fecha', 'hora', 'servicio']
+        : ['nombre', 'telefono', 'email', 'fecha', 'hora', 'servicio'];
+    return required.filter(function (field) {
+      if (field === 'contacto') return !(data.telefono || data.email || data.contacto);
+      return !data[field];
+    });
+  }
+
+  function summaryFields(cfg) {
+    var template = templateId(cfg);
+    if (template === 'restaurant') return ['nombre', 'personas', 'fecha', 'hora', 'tablePreference', 'telefono', 'email'];
+    if (template === 'barber') return ['nombre', 'servicio', 'fecha', 'hora', 'barberPreference', 'telefono', 'email'];
+    return ['nombre', 'servicio', 'fecha', 'hora', 'personas', 'telefono', 'email'];
+  }
+
+  function extractBooking(text, menu, businessHours, lang, cfg) {
     var t = String(text || '');
     var out = {};
 
@@ -341,9 +381,9 @@ window.JBChatCore = (function () {
     if (HORA_CTX.test(t)) {
       var h = t.match(HORA_RE);
       if (h) {
-        var hh = parseInt(h[1], 10);
+        var hh = parseInt(h[1] || h[4], 10);
         if (hh >= 0 && hh <= 23) {
-          var r = resolverHora(hh, h[2], h[3], businessHours);
+          var r = resolverHora(hh, h[2] || h[5], h[3] || h[6], businessHours);
           if (r && r.hora) out.hora = r.hora;
           else if (r && r.ambigua) out.__horaAmbigua = { n: r.ambigua, mm: r.mm };
         }
@@ -355,6 +395,24 @@ window.JBChatCore = (function () {
       var raw = (p[1] || p[2] || '').toLowerCase();
       var n = /^\d+$/.test(raw) ? parseInt(raw, 10) : NUM_PAL[raw];
       if (n >= 1 && n <= 200) out.personas = String(n);
+    }
+
+    if (templateId(cfg) === 'restaurant') {
+      var mesa = t.match(/\b(mesa\s+(?:junto|cerca|al lado|en|para)\s+[^,.;!?]{2,80}|terraza|ventana|interior|exterior)\b/i);
+      if (mesa) out.tablePreference = mesa[1].trim();
+    }
+    if (templateId(cfg) === 'barber') {
+      var lowText = t.toLowerCase();
+      configuredStaff(cfg).some(function (entry) {
+        var name = typeof entry === 'string' ? entry : (entry.name || entry.id || '');
+        if (!name) return false;
+        var escaped = String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (new RegExp('\\b(?:con|barbero|barbera|estilista)\\s+' + escaped + '\\b', 'i').test(lowText)) {
+          out.barberPreference = name;
+          return true;
+        }
+        return false;
+      });
     }
 
     // El nombre solo se toma si la persona lo marca ("soy Ana", "me llamo…").
@@ -466,6 +524,7 @@ window.JBChatCore = (function () {
   function valorValido(field, t) {
       if (field === 'email')    return EMAIL_RE2.test(t) || /^(no|ninguno|skip|omitir)$/i.test(t.trim());
       if (field === 'telefono') return t.replace(/\D/g, '').length >= 7;
+      if (field === 'contacto') return EMAIL_RE2.test(t) || t.replace(/\D/g, '').length >= 7;
       if (field === 'personas') return /\d|\b(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/i.test(t);
       return true;
     }
@@ -617,6 +676,9 @@ window.JBChatCore = (function () {
     greeting: greeting,
     accionesRapidas: accionesRapidas,
     featureOn: featureOn,
+    templateId: templateId,
+    bookingRequirements: bookingRequirements,
+    summaryFields: summaryFields,
     estaAlFondo: estaAlFondo,
     irAlFondo: irAlFondo,
   };

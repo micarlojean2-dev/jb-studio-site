@@ -315,7 +315,7 @@ async function callProvider(provider, messages, systemPrompt, client, clientId) 
 
   const catalogEnabled = !client.features || client.features.catalog !== false;
   if (catalogEnabled && text && !text.includes('[MOSTRAR_MENU]')) {
-    const MENU_KEYWORDS = /cat[áa]logo|im[áa]genes?|fotos?|servicios?|precios?|tratamientos?|productos?/i;
+    const MENU_KEYWORDS = /men[uú]|cat[áa]logo|im[áa]genes?|fotos?|servicios?|precios?|tratamientos?|productos?/i;
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
     if (MENU_KEYWORDS.test(lastUserMsg) || MENU_KEYWORDS.test(text)) {
       text = text + '\n[MOSTRAR_MENU]';

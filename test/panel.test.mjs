@@ -23,9 +23,10 @@ window.allData = [
   { nombre: 'Mike', servicio: 'Masaje Profundo', fecha: 'mañana', hora: '12:00 PM',
     telefono: '299982332', email: 'mike@x.com', estado: 'pendiente',
     notes: 'alérgico a los aceites', fechaSolicitud: new Date(Date.now() - 12 * 60000).toISOString() },
-  { nombre: 'Ana', servicio: 'Uñas', fecha: 'hoy', hora: '10:00 AM',
-    telefono: '555', email: 'ana@x.com', estado: 'pendiente',
-    fechaSolicitud: new Date(Date.now() - 3 * 3600000).toISOString() },  // sin notes
+   { nombre: 'Ana', servicio: 'Uñas', fecha: 'hoy', hora: '10:00 AM',
+     telefono: '555', email: 'ana@x.com', estado: 'pendiente',
+     partySize: 3, tablePreference: 'Terraza', barberPreference: 'Luis',
+     fechaSolicitud: new Date(Date.now() - 3 * 3600000).toISOString() },  // sin notes
 ];
 window.activeFilter = 'proximas';
 window.render();
@@ -51,7 +52,12 @@ console.log('4. Badge y fecha de creación');
 ok(conNotas && conNotas.querySelector('.estado.nueva'), 'badge Nueva (verde) para pendiente');
 ok(conNotas && /Creada hace 12 minutos/.test(conNotas.textContent), 'muestra "Creada hace 12 minutos" con la fecha real');
 
-console.log('5. Compatibilidad: reserva vieja sin campo notes no rompe');
+console.log('5. Campos de restaurante y barbería');
+ok(sinNotas && sinNotas.textContent.includes('Personas') && sinNotas.textContent.includes('3'), 'muestra personas/party size');
+ok(sinNotas && sinNotas.textContent.includes('Terraza'), 'muestra preferencia de mesa');
+ok(sinNotas && sinNotas.textContent.includes('Luis'), 'muestra preferencia de barbero');
+
+console.log('6. Compatibilidad: reserva vieja sin campo notes no rompe');
 {
   window.allData = [{ nombre: 'Viejo', servicio: 'X', fecha: 'ayer', hora: '9:00', estado: 'pendiente' }];
   window.render();

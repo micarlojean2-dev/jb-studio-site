@@ -92,5 +92,12 @@ console.log('E7. Cambio de hora durante la reserva (categoría G)');
   ok(acc.hora === '3:00 PM', 'cambiar de 5pm a 3pm → queda 3:00 PM');
 }
 
+console.log('E8. Hora explícita no se confunde con personas (regresión auditoría)');
+{
+  const r = CORE.extractBooking('Somos 4 para el 30 de julio a las 7 pm', MENU, BH, 'es');
+  ok(r.personas === '4' && r.hora === '7:00 PM', 'personas=4 y "a las 7 pm" conserva 7:00 PM');
+  ok(hora('7pm').hora === '7:00 PM', '"7pm" sin espacio se reconoce como hora explícita');
+}
+
 console.log(fallos === 0 ? '\n✅ QA horas: todas pasan' : `\n❌ QA horas: ${fallos} fallo(s)`);
 process.exit(fallos === 0 ? 0 : 1);

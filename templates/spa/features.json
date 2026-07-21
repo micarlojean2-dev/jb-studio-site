@@ -1,0 +1,9 @@
+{
+  "booking": true,
+  "faq": true,
+  "emailNotifications": true,
+  "catalog": true,
+  "menu": false,
+  "cancellation": true,
+  "rescheduling": true
+}

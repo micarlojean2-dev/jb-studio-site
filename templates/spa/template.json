@@ -1,0 +1,29 @@
+{
+  "id": "spa",
+  "name": "Spa",
+  "version": "1.0",
+  "status": "official",
+  "description": "Asistente para spas y centros de bienestar con servicios, reservas y notificaciones.",
+  "requiredFields": [
+    "businessName",
+    "address",
+    "phone",
+    "ownerEmail",
+    "timezone",
+    "businessHours",
+    "services",
+    "bookingEnabled",
+    "notificationEmails"
+  ],
+  "capabilities": [
+    "booking",
+    "faq",
+    "emailNotifications",
+    "catalog"
+  ],
+  "files": {
+    "questions": "questions.json",
+    "features": "features.json",
+    "promptBase": "prompt-base.txt"
+  }
+}

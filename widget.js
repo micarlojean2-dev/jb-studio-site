@@ -733,14 +733,13 @@ function extractBooking(text, menu) {
     return true;
   }
 
-  var BOOKING_REQUIRED = ['servicio', 'fecha', 'hora', 'nombre', 'telefono', 'email'];
-  var BARE_OK = { nombre: 1, telefono: 1, email: 1 };
+  var BARE_OK = { nombre: 1, telefono: 1, email: 1, contacto: 1 };
   function bookingFaltan() {
-    return BOOKING_REQUIRED.filter(function (k) { return !bookingData[k]; });
+    return CORE.bookingRequirements(cfg, bookingData);
   }
   function bookingCaptured() {
     var out = {};
-    ['servicio', 'fecha', 'hora', 'personas', 'nombre', 'telefono', 'email'].forEach(function (k) {
+    CORE.summaryFields(cfg).concat(['contacto']).forEach(function (k) {
       if (bookingData[k]) out[k] = bookingData[k];
     });
     return out;
@@ -795,7 +794,7 @@ function extractBooking(text, menu) {
   function showBookingSummary() {
     var lang = cfg.language === 'en' ? 'en' : 'es';
     var L = RESUMEN_LABEL[lang];
-    var lineas = ['nombre', 'servicio', 'fecha', 'hora', 'personas', 'telefono', 'email']
+    var lineas = CORE.summaryFields(cfg).concat(['contacto'])
       .filter(function (k) { return bookingData[k]; })
       .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + L[k] + ': ' + bookingData[k]; });
 
@@ -949,7 +948,7 @@ function extractBooking(text, menu) {
       msgs.push({ role: 'user', content: t });
       if (resolverHoraPendiente(t, lang)) return;
 
-      var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language);
+      var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
       var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
       var traidos = Object.keys(yaVisto);
       traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
@@ -985,7 +984,7 @@ function extractBooking(text, menu) {
     }
 
     // ── Booking intent detected: start flow ──────────────────────────────
-    var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language) : {};
+    var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg) : {};
     if (featureOn('reservations') && CORE.pareceReserva(t, preExtraido)) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });

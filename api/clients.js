@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import { getOfficialTemplate } from '../lib/assistant-templates.js';
 
 const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -186,6 +187,84 @@ function sanitizeFeatures(features, plan) {
   return out;
 }
 
+function isValidTimezone(timezone) {
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: String(timezone || '') });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function missingTemplateFields(template, values) {
+  if (!template) return [];
+  const missing = [];
+  if (!values.businessName) missing.push('businessName');
+  if (!values.address) missing.push('address');
+  if (!values.phoneCountryCode || !values.phoneNumber) missing.push('phone');
+  if (!EMAIL_RE.test(values.ownerEmail)) missing.push('ownerEmail');
+  if (!isValidTimezone(values.timezone)) missing.push('timezone');
+  if (!values.businessHours || !Object.values(values.businessHours).some(day => day.enabled && day.ranges.length)) missing.push('businessHours');
+  const requiresDuration = template?.id !== 'restaurant';
+  if (!values.services.length || values.services.some(service => !service.precio || (requiresDuration && !service.duracion))) missing.push('services');
+  if (!values.features.reservations) missing.push('bookingEnabled');
+  if (!values.notificationEmails.length) missing.push('notificationEmails');
+  return missing;
+}
+
+function templateRuntime(template) {
+  if (!template) return null;
+  return {
+    plan: 'pro',
+    features: {
+      faq: !!template.features.faq,
+      prices: true,
+      // The existing assistant runtime renders restaurant menus as catalogs.
+      catalog: !!(template.features.catalog || template.features.menu),
+      reservations: !!template.features.booking,
+      leads: !!template.features.booking,
+      emailNotifications: !!template.features.emailNotifications,
+      cancellation: !!template.features.cancellation,
+      rescheduling: !!template.features.rescheduling,
+    },
+  };
+}
+
+function sanitizeTemplateData(template, data) {
+  if (data === undefined) return { data: {}, error: null };
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { data: null, error: 'templateData must be an object' };
+  }
+  const source = data;
+  if (template?.id === 'restaurant') {
+    if (source.menuMetadata !== undefined && !Array.isArray(source.menuMetadata)) {
+      return { data: null, error: 'templateData.menuMetadata must be an array' };
+    }
+    return { data: {
+      menuMetadata: Array.isArray(source.menuMetadata) ? source.menuMetadata.slice(0, 40).map(item => ({
+        itemName: String(item?.itemName || '').slice(0, 80),
+        category: String(item?.category || '').slice(0, 60),
+        dietaryTags: Array.isArray(item?.dietaryTags) ? item.dietaryTags.map(tag => String(tag || '').slice(0, 40)).filter(Boolean).slice(0, 8) : [],
+        allergens: Array.isArray(item?.allergens) ? item.allergens.map(allergen => String(allergen || '').slice(0, 40)).filter(Boolean).slice(0, 12) : [],
+      })).filter(item => item.itemName) : [],
+    }, error: null };
+  }
+  if (template?.id === 'barber') {
+    if ((source.barberStaff !== undefined && !Array.isArray(source.barberStaff)) ||
+        (source.barberPolicies !== undefined && !Array.isArray(source.barberPolicies))) {
+      return { data: null, error: 'templateData barber fields must be arrays' };
+    }
+    return { data: {
+      barberStaff: Array.isArray(source.barberStaff) ? source.barberStaff.slice(0, 20).map(member => ({
+        name: String(member?.name || '').slice(0, 80),
+        specialties: Array.isArray(member?.specialties) ? member.specialties.map(specialty => String(specialty || '').slice(0, 60)).filter(Boolean).slice(0, 12) : [],
+      })).filter(member => member.name) : [],
+      barberPolicies: Array.isArray(source.barberPolicies) ? source.barberPolicies.map(policy => String(policy || '').slice(0, 200)).filter(Boolean).slice(0, 20) : [],
+    }, error: null };
+  }
+  return { data: {}, error: null };
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin',  'https://jbstudio.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -244,10 +323,10 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     const {
       id, businessName, ownerName, ownerEmail, plan, color, language, whatsapp, prompt, menu,
-      secondaryColor, style, address, hours, businessType, services, features,
+      secondaryColor, style, address, hours, businessType, services, features, templateId, templateVersion,
       billingDay, trialEnabled, trialDays,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
-      displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, holidays, notificationEmails,
+       displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, holidays, notificationEmails, templateData,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -261,9 +340,41 @@ export default async function handler(req, res) {
     if (ownerEmail && !EMAIL_RE.test(String(ownerEmail).slice(0, 120)))
       return res.status(400).json({ error: 'ownerEmail is not a valid email' });
 
-    const planSafe = ['basic', 'pro', 'premium'].includes(plan) ? plan : 'basic';
-    const featuresSafe = sanitizeFeatures(features, planSafe);
+    let planSafe = ['basic', 'pro', 'premium'].includes(plan) ? plan : 'basic';
+    let featuresSafe = sanitizeFeatures(features, planSafe);
     const servicesSafe = sanitizeServices(services);
+    // Metadatos opcionales para clientes creados desde plantillas versionadas.
+    // No se infieren ni se escriben en clientes existentes: su prompt y su
+    // configuración actual continúan siendo la fuente de verdad.
+    const templateRequested = templateId !== undefined || templateVersion !== undefined;
+    if (!templateRequested && templateData !== undefined) {
+      return res.status(400).json({ error: 'templateData requires an official template' });
+    }
+    let template = null;
+    if (templateRequested) {
+      if (!templateId || !templateVersion) {
+        return res.status(400).json({ error: 'templateId and templateVersion must be provided together' });
+      }
+      try {
+        template = getOfficialTemplate(String(templateId));
+      } catch (err) {
+        console.error('[api/clients] template:', err.message);
+        return res.status(500).json({ error: 'Template configuration error' });
+      }
+      if (!template || String(templateVersion) !== template.version) {
+        return res.status(400).json({ error: 'Unknown or mismatched template version' });
+      }
+    }
+    const templateIdSafe = template ? template.id : '';
+    const templateVersionSafe = template ? template.version : '';
+    const runtime = templateRuntime(template);
+    if (runtime) {
+      planSafe = runtime.plan;
+      featuresSafe = runtime.features;
+    }
+    const templateDataResult = sanitizeTemplateData(template, templateData);
+    if (templateDataResult.error) return res.status(400).json({ error: 'Invalid templateData', detail: templateDataResult.error });
+    const templateDataSafe = templateDataResult.data;
 
     // Fase 4.1 — campos nuevos del wizard rediseñado. Todos opcionales y
     // aditivos: si el request no los manda (formulario legado), quedan en
@@ -280,6 +391,23 @@ export default async function handler(req, res) {
     const phoneCountryCodeSafe = phoneCountrySafe && /^\+\d{1,4}$/.test(String(phoneCountryCode || ''))
       ? String(phoneCountryCode) : null;
     const phoneNumberSafe = phoneNumber != null ? String(phoneNumber).slice(0, 30) : '';
+    const notificationEmailsSafe = normalizeNotificationEmails(notificationEmails);
+
+    const missingTemplate = missingTemplateFields(template, {
+      businessName: String(businessName || '').trim(),
+      address: String(address || '').trim(),
+      phoneCountryCode: phoneCountryCodeSafe,
+      phoneNumber: phoneNumberSafe,
+      ownerEmail: String(ownerEmail || '').trim(),
+      timezone,
+      businessHours: businessHoursSafe,
+      services: servicesSafe,
+      features: featuresSafe,
+      notificationEmails: notificationEmailsSafe,
+    });
+    if (missingTemplate.length) {
+      return res.status(400).json({ error: 'Missing required template fields', fields: missingTemplate });
+    }
 
     // menu[] (used by widget.js's visual carousel) is derived from services[]
     // when the wizard sends them — only populated if catalog is enabled, and
@@ -331,6 +459,12 @@ export default async function handler(req, res) {
         address:      String(address || '').slice(0, 200),
         hours:        hoursDerived,
         businessType: String(businessType || '').slice(0, 80),
+        ...(templateIdSafe && templateVersionSafe
+          ? { templateId: templateIdSafe, templateVersion: templateVersionSafe, templateData: templateDataSafe }
+          : {}),
+        // Canonical runtime staff list. `templateData.barberStaff` remains the
+        // factual template payload; reservations read this normalized field.
+        ...(templateIdSafe === 'barber' ? { staff: templateDataSafe.barberStaff } : {}),
         prompt:       String(prompt).slice(0, 6000),
         menu:         menuSafe,
         services:     servicesSafe,
@@ -369,7 +503,7 @@ export default async function handler(req, res) {
         minNoticeHours: normalizeMinNotice(minNoticeHours),
         capacityPerSlot: normalizeCapacity(capacityPerSlot),
         holidays:        normalizeHolidays(holidays),
-        notificationEmails: normalizeNotificationEmails(notificationEmails),
+        notificationEmails: notificationEmailsSafe,
         widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}" data-position="${position}"></script>`,
         assistantUrl:  `https://jbstudio.app/asistente/${id}`,
       };
