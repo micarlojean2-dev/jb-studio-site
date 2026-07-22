@@ -7,7 +7,7 @@ const read = (...parts) => readFileSync(join(root, ...parts), 'utf8');
 const clientApi = read('api', 'clients.js');
 const generatorApi = read('api', 'generate-client-config.js');
 const admin = read('admin.html');
-const templates = read('lib', 'assistant-templates.js');
+const templates = read('lib', 'assistant-templates.mjs');
 let failures = 0;
 const ok = (condition, message) => {
   if (condition) console.log('  ✓', message);

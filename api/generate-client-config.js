@@ -1,4 +1,4 @@
-import { getOfficialTemplate } from '../lib/assistant-templates.js';
+import { getOfficialTemplate } from '../lib/assistant-templates.mjs';
 import { CREATOR_DRAFT_SCHEMA, OPENAI_CREATOR_INSTRUCTIONS } from '../lib/creator-schema.js';
 
 const IP_STORE = new Map();

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { getOfficialTemplate } from '../lib/assistant-templates.js';
+import { getOfficialTemplate } from '../lib/assistant-templates.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 let failures = 0;
@@ -44,7 +44,7 @@ for (const { id, capability } of templateCases) {
 }
 
 const clientApi = readFileSync(join(root, 'api', 'clients.js'), 'utf8');
-const loader = readFileSync(join(root, 'lib', 'assistant-templates.js'), 'utf8');
+const loader = readFileSync(join(root, 'lib', 'assistant-templates.mjs'), 'utf8');
 
 ok(/templateId, templateVersion/.test(clientApi) && /templateIdSafe/.test(clientApi),
   'clientes nuevos aceptan metadatos de plantilla opcionales');

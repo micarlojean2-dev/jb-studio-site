@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis';
-import { getOfficialTemplate } from '../lib/assistant-templates.js';
+import { getOfficialTemplate } from '../lib/assistant-templates.mjs';
 
 const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
