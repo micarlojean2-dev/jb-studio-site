@@ -133,11 +133,14 @@ function parseFechaISO(raw, now) {
 // que escribió la persona, que es la que se le enseña.
 function normalizeHora(v) {
   const t = String(v || '').trim();
-  const m = t.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?/i);
+  // El sufijo admite el formato tipográfico "a. m." / "p. m." (con espacio y
+  // puntos), no solo "am"/"pm"/"a.m.": sin \s* entre las dos letras, "7:00 p. m."
+  // no casaba el sufijo y se guardaba como 07:00 en vez de 19:00.
+  const m = t.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?)?/i);
   if (!m) return '';
   let h = parseInt(m[1], 10);
   const min = m[2] || '00';
-  const suf = (m[3] || '').toLowerCase().replace(/\./g, '');
+  const suf = (m[3] || '').toLowerCase().replace(/[.\s]/g, '');
   if (suf === 'pm' && h < 12) h += 12;
   if (suf === 'am' && h === 12) h = 0;
   if (h < 0 || h > 23) return '';
