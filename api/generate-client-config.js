@@ -1,4 +1,11 @@
-import { getOfficialTemplate } from '../lib/assistant-templates.mjs';
+// import() dinámico a propósito (ver nota en api/clients.js): un import estático
+// del .mjs se vuelve require() tras la transpilación a CommonJS de Vercel y
+// lanza ERR_REQUIRE_ESM en runtime. import() funciona desde CommonJS y ESM.
+let _templatesMod;
+async function getOfficialTemplate(id) {
+  if (!_templatesMod) _templatesMod = await import('../lib/assistant-templates.mjs');
+  return _templatesMod.getOfficialTemplate(id);
+}
 import { CREATOR_DRAFT_SCHEMA, OPENAI_CREATOR_INSTRUCTIONS } from '../lib/creator-schema.js';
 
 const IP_STORE = new Map();
@@ -499,7 +506,7 @@ export default async function handler(req, res) {
   let template = null;
   if (templateId !== undefined && templateId !== '') {
     try {
-      template = getOfficialTemplate(String(templateId));
+      template = await getOfficialTemplate(String(templateId));
     } catch (err) {
       console.error('[api/generate-client-config] template:', err.message);
       return res.status(500).json({ error: 'No se pudo cargar la plantilla solicitada.' });

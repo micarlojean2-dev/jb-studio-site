@@ -26,10 +26,17 @@ function jsFiles(dir) {
   }
   return out;
 }
-const offenders = [...jsFiles(join(root, 'api')), ...jsFiles(join(root, 'lib'))]
-  .filter((f) => /import\.meta/.test(readFileSync(f, 'utf8')));
-assert.deepEqual(offenders, [], `import.meta en .js (debe ser .mjs): ${offenders.join(', ')}`);
+const apiLibJs = [...jsFiles(join(root, 'api')), ...jsFiles(join(root, 'lib'))];
+const importMetaOffenders = apiLibJs.filter((f) => /import\.meta/.test(readFileSync(f, 'utf8')));
+assert.deepEqual(importMetaOffenders, [], `import.meta en .js (debe ser .mjs): ${importMetaOffenders.join(', ')}`);
 pass('ningún .js en api/ o lib/ usa import.meta (evita el crash CJS de Vercel)');
+
+// Vercel transpila los api/*.js a CommonJS; un import ESTÁTICO de un .mjs se
+// vuelve require() de un ESM -> ERR_REQUIRE_ESM en runtime. Debe usarse import()
+// dinámico. (Guard del segundo modo de fallo del mismo incidente.)
+const staticMjsOffenders = apiLibJs.filter((f) => /^\s*import\s[^;]*from\s+['"][^'"]+\.mjs['"]/m.test(readFileSync(f, 'utf8')));
+assert.deepEqual(staticMjsOffenders, [], `import estático de .mjs en .js (usa import() dinámico): ${staticMjsOffenders.join(', ')}`);
+pass('ningún .js en api/ o lib/ importa estáticamente un .mjs (evita ERR_REQUIRE_ESM)');
 
 // ── 2) El módulo de plantillas carga y getOfficialTemplate funciona ─────────
 const { getOfficialTemplate } = await import('../lib/assistant-templates.mjs');

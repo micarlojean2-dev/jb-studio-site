@@ -1,5 +1,13 @@
 import { Redis } from '@upstash/redis';
-import { getOfficialTemplate } from '../lib/assistant-templates.mjs';
+// Cargado con import() dinámico a propósito: Vercel transpila este archivo a
+// CommonJS, y un import estático del módulo ESM (.mjs) se convierte en require()
+// -> ERR_REQUIRE_ESM en runtime (rompía GET /api/clients con 500). import()
+// funciona igual desde CommonJS y desde ESM.
+let _templatesMod;
+async function getOfficialTemplate(id) {
+  if (!_templatesMod) _templatesMod = await import('../lib/assistant-templates.mjs');
+  return _templatesMod.getOfficialTemplate(id);
+}
 
 const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -356,7 +364,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'templateId and templateVersion must be provided together' });
       }
       try {
-        template = getOfficialTemplate(String(templateId));
+        template = await getOfficialTemplate(String(templateId));
       } catch (err) {
         console.error('[api/clients] template:', err.message);
         return res.status(500).json({ error: 'Template configuration error' });
