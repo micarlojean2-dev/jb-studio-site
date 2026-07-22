@@ -12,24 +12,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script src="/assets/qrcode.min.js"></script>
-  <!-- Meta Pixel Code -->
-  <script>
-  !function(f,b,e,v,n,t,s)
-  {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-  n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-  if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-  n.queue=[];t=b.createElement(e);t.async=!0;
-  t.src=v;s=b.getElementsByTagName(e)[0];
-  s.parentNode.insertBefore(t,s)}(window, document,'script',
-  'https://connect.facebook.net/en_US/fbevents.js');
-  fbq('init', '1062633503132094');
-  fbq('track', 'PageView');
-  </script>
-  <noscript>
-  <img height="1" width="1" style="display:none"
-  src="https://www.facebook.com/tr?id=1062633503132094&ev=PageView&noscript=1"/>
-  </noscript>
-  <!-- End Meta Pixel Code -->
+  <!-- Meta Pixel eliminado del panel admin a propósito (privacidad): el panel
+       interno no debe enviar PageView, clics de botones, títulos ni cookies
+       fbp/fbc a Facebook. El pixel se conserva en las páginas públicas de
+       ventas (index/ventas/success/cancel), que es donde sí se necesita. -->
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -4538,8 +4524,13 @@ LÍMITES ESTRICTOS:
     const DAY_LABELS = { monday:'Lunes', tuesday:'Martes', wednesday:'Miércoles', thursday:'Jueves', friday:'Viernes', saturday:'Sábado', sunday:'Domingo' };
 
     function freshBusinessHours() {
+      // Un asistente nuevo arranca SIN horarios prellenados: todos los días
+      // "Cerrado" y sin rangos. Prellenar 09:00–19:00 hacía pasar la validación
+      // con horarios inventados; ahora hasValidHours() obliga a que el admin
+      // marque y escriba al menos un día real antes de poder crear. (No afecta a
+      // clientes existentes: esto solo inicializa el wizard de creación.)
       const out = {};
-      DAYS.forEach(d => { out[d] = { enabled: d !== 'sunday', ranges: [{ start: '09:00', end: '19:00' }] }; });
+      DAYS.forEach(d => { out[d] = { enabled: false, ranges: [] }; });
       return out;
     }
 
@@ -4916,7 +4907,9 @@ LÍMITES ESTRICTOS:
         const d = e.target.dataset.day;
         state.business.businessHours[d].enabled = e.target.checked;
         if (e.target.checked && !state.business.businessHours[d].ranges.length) {
-          state.business.businessHours[d].ranges = [{ start: '09:00', end: '19:00' }];
+          // Sin horas inventadas: al abrir un día se muestran inputs vacíos para
+          // que el admin escriba el horario real (hasValidHours rechaza rangos vacíos).
+          state.business.businessHours[d].ranges = [{ start: '', end: '' }];
         }
         renderHoursRows();
       } else if (e.target.classList.contains('hour-start') || e.target.classList.contains('hour-end')) {
@@ -4930,7 +4923,7 @@ LÍMITES ESTRICTOS:
     document.getElementById('w-b-hours-rows').addEventListener('click', (e) => {
       if (e.target.classList.contains('hour-add-range')) {
         const d = e.target.dataset.day;
-        state.business.businessHours[d].ranges.push({ start: '15:00', end: '19:00' });
+        state.business.businessHours[d].ranges.push({ start: '', end: '' });
         renderHoursRows();
       } else if (e.target.classList.contains('hour-range-remove')) {
         const d = e.target.dataset.day;

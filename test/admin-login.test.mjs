@@ -84,9 +84,14 @@ await flush(); await flush();
 ok($('login-screen').style.display === 'none', 'oculta la pantalla de login');
 ok($('admin-panel').style.display === 'block', 'muestra el panel de admin');
 
-console.log('5. Contraseña incorrecta muestra error');
-$('login-screen').style.display = '';
-$('admin-panel').style.display = '';
+console.log('5. Salir elimina la sesión en memoria');
+$('logout-btn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+ok(window.__jbAdmin.getToken() === '', 'Salir borra el token de la sesión');
+ok($('token-input').value === '', 'Salir vacía el campo de token');
+ok($('login-screen').style.display === 'flex', 'Salir muestra la pantalla de login');
+ok($('admin-panel').style.display === 'none', 'Salir oculta el panel de admin');
+
+console.log('6. Contraseña incorrecta después de Salir muestra error');
 $('login-error').style.display = 'none';
 $('login-error').textContent = '';
 $('token-input').value = 'wrong';
@@ -95,8 +100,9 @@ await flush(); await flush();
 ok($('login-error').style.display === 'block', 'muestra el mensaje de error');
 ok(/Invalid token/i.test($('login-error').textContent), 'el texto del error es "Invalid token"');
 ok($('admin-panel').style.display !== 'block', 'NO entra al panel con token inválido');
+ok(window.__jbAdmin.getToken() === '', 'un token inválido no restaura el token anterior');
 
-console.log('6. El resto del admin sigue presente');
+console.log('7. El resto del admin sigue presente');
 // Elementos clave de otras secciones (modal de gestión, creador) siguen en el DOM.
 ok(!!$('setup-add-email'), 'el botón del modal de setup existe en el DOM');
 ok(!!$('add-menu-item') && !!$('mg-view-bot'), 'otras secciones (form y modal de gestión) intactas');
