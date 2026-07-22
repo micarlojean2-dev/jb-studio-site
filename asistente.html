@@ -138,6 +138,9 @@
       padding: 3px 8px; border-radius: 20px; background: #fff5e0; color: #8a5a00;
     }
     .a-card-desc { font-size: 11.5px; color: #6b6f76; line-height: 1.4; margin-top: 6px; }
+    .a-gallery { width: 100%; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 4px 0; }
+    .a-gallery img { width: 100%; aspect-ratio: 1.35; object-fit: cover; border-radius: 12px; background: #f2f2f4; }
+    .a-gallery-more { border: 0; background: none; color: var(--a-accent, #1a4a2e); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 6px 0; }
 
     /* Botones de inicio */
     .a-quick { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 0 2px 36px; }
@@ -573,6 +576,41 @@
     });
 
     wrap.appendChild(row);
+    msgsEl.appendChild(wrap);
+    CORE.irAlFondo(msgsEl, );
+  }
+
+  function renderGallery() {
+    var images = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
+    if (!images.length) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'a-cards-wrap';
+    var grid = document.createElement('div');
+    grid.className = 'a-gallery';
+    var shown = 4;
+    function appendImages(limit) {
+      images.slice(grid.children.length, limit).forEach(function (url) {
+        var image = document.createElement('img');
+        image.src = url;
+        image.alt = cfg.language === 'en' ? 'Gallery image' : 'Imagen de galería';
+        image.loading = 'lazy';
+        grid.appendChild(image);
+      });
+    }
+    appendImages(shown);
+    wrap.appendChild(grid);
+    if (images.length > shown) {
+      var more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'a-gallery-more';
+      more.textContent = cfg.language === 'en' ? 'See more photos' : 'Ver más fotos';
+      more.addEventListener('click', function () {
+        appendImages(images.length);
+        more.remove();
+        CORE.irAlFondo(msgsEl, );
+      });
+      wrap.appendChild(more);
+    }
     msgsEl.appendChild(wrap);
     CORE.irAlFondo(msgsEl, );
   }
@@ -1107,7 +1145,7 @@ function extractBooking(text, menu) {
           var showMenu  = /\[MOSTRAR_MENU\]/.test(d.text);
           var cleanText = CORE.limpiarMarcadores(d.text);
           if (cleanText) addMsg('bot', cleanText);
-          if (showMenu)  renderMenu();
+          if (showMenu) { renderMenu(); renderGallery(); }
           // La acción interna (mostrar menú) ya se extrajo de d.text; al
           // historial va solo el texto limpio, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: cleanText });

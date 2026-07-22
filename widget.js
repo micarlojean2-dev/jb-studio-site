@@ -229,6 +229,9 @@
     'display:flex;align-items:center;justify-content:center;font-size:25px;}',
     '.jbw-card-img{width:52px;height:52px;border-radius:15px;object-fit:cover;',
     'margin-bottom:8px;display:block;background:#f2f2f4;}',
+    '.jbw-gallery{width:100%;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:4px 0;}',
+    '.jbw-gallery img{width:100%;aspect-ratio:1.35;object-fit:cover;border-radius:12px;background:#f2f2f4;}',
+    '.jbw-gallery-more{border:0;background:none;color:var(--jbw-color,#1a4a2e);font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 0;}',
     '.jbw-card-name{font-size:13px;font-weight:650;line-height:1.3;color:#16181d;}',
     '.jbw-card-price{font-size:14.5px;font-weight:700;margin-top:4px;}',
     '.jbw-card-badge{font-size:10px;font-weight:600;margin-top:5px;padding:3px 8px;',
@@ -507,6 +510,41 @@
     });
 
     wrap.appendChild(row);
+    msgsEl.appendChild(wrap);
+    CORE.irAlFondo(msgsEl, );
+  }
+
+  function renderGallery() {
+    var images = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
+    if (!images.length) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'jbw-cards-wrap';
+    var grid = document.createElement('div');
+    grid.className = 'jbw-gallery';
+    var shown = 4;
+    function appendImages(limit) {
+      images.slice(grid.children.length, limit).forEach(function (url) {
+        var image = document.createElement('img');
+        image.src = url;
+        image.alt = cfg.language === 'en' ? 'Gallery image' : 'Imagen de galería';
+        image.loading = 'lazy';
+        grid.appendChild(image);
+      });
+    }
+    appendImages(shown);
+    wrap.appendChild(grid);
+    if (images.length > shown) {
+      var more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'jbw-gallery-more';
+      more.textContent = cfg.language === 'en' ? 'See more photos' : 'Ver más fotos';
+      more.addEventListener('click', function () {
+        appendImages(images.length);
+        more.remove();
+        CORE.irAlFondo(msgsEl, );
+      });
+      wrap.appendChild(more);
+    }
     msgsEl.appendChild(wrap);
     CORE.irAlFondo(msgsEl, );
   }
@@ -1032,7 +1070,7 @@ function extractBooking(text, menu) {
           var showMenu   = /\[MOSTRAR_MENU\]/.test(d.text);
           var cleanText  = CORE.limpiarMarcadores(d.text);
           if (cleanText) addMsg('bot', cleanText);
-          if (showMenu)  renderMenu();
+          if (showMenu) { renderMenu(); renderGallery(); }
           // La acción interna (mostrar menú) ya se extrajo de d.text; al
           // historial va solo el texto limpio, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: cleanText });

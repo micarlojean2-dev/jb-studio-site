@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="/assets/qrcode.min.js"></script>
   <!-- Meta Pixel Code -->
   <script>
   !function(f,b,e,v,n,t,s)
@@ -1608,6 +1609,38 @@
     .manage-action-btn.is-danger { color: var(--danger); }
     .manage-action-btn.is-danger:hover { background: #fff0f0; }
 
+    /* Client media is staged locally until the image API confirms the upload. */
+    .media-modal { max-width: 760px; }
+    .media-modal-body { padding: 8px 26px 24px; }
+    .media-dropzone {
+      border: 1.5px dashed #9bbba7;
+      border-radius: 10px;
+      padding: 22px;
+      text-align: center;
+      background: var(--green-light);
+      cursor: pointer;
+      margin: 14px 0;
+    }
+    .media-dropzone.is-dragging { border-color: var(--green); background: #e2f1e8; }
+    .media-dropzone strong { display: block; color: var(--green); }
+    .media-dropzone span { color: #555; font-size: 13px; }
+    .media-selectors { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .media-staged, .media-confirmed { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
+    .media-thumb { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #f5f5f5; aspect-ratio: 1; }
+    .media-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .media-thumb button { position: absolute; top: 5px; right: 5px; width: 25px; height: 25px; border: none; border-radius: 50%; background: rgba(0,0,0,.7); color: #fff; cursor: pointer; }
+    .media-empty { grid-column: 1 / -1; color: #666; font-size: 13px; padding: 8px 0; }
+    .media-section-title { font-size: 13px; font-weight: 700; color: var(--green); margin: 18px 0 8px; }
+    .qr-layout { display: flex; align-items: center; gap: 18px; padding: 14px; background: #f7f8f7; border: 1px solid var(--border); border-radius: 10px; }
+    #client-qr { width: 128px; height: 128px; flex: 0 0 128px; background: #fff; padding: 6px; }
+    #client-qr img, #client-qr canvas { max-width: 100%; height: auto; }
+    .qr-url { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; color: #444; margin: 5px 0 10px; }
+    .qr-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    @media (max-width: 560px) {
+      .media-selectors { grid-template-columns: 1fr; }
+      .qr-layout { align-items: flex-start; flex-direction: column; }
+    }
+
     .manage-action-info {
       margin: 4px 14px 12px;
       padding: 12px 14px;
@@ -2953,12 +2986,53 @@ LÍMITES ESTRICTOS:
           <button type="button" class="manage-action-btn" id="mg-edit-info">✏️ Editar información</button>
           <button type="button" class="manage-action-btn" id="mg-edit-design">🎨 Editar diseño</button>
           <button type="button" class="manage-action-btn" id="mg-edit-services">🧾 Editar servicios</button>
+          <button type="button" class="manage-action-btn" id="mg-media">🖼 Galería y código QR</button>
           <button type="button" class="manage-action-btn" id="mg-view-reservations">📅 Ver reservas</button>
           <button type="button" class="manage-action-btn" id="mg-copy-link">🔗 Copiar enlace directo</button>
           <button type="button" class="manage-action-btn" id="mg-copy-code">📋 Copiar código para web</button>
           <button type="button" class="manage-action-btn" id="mg-view-payment">💳 Ver pago</button>
           <button type="button" class="manage-action-btn" id="mg-toggle-active">⏸ Pausar chatbot</button>
           <button type="button" class="manage-action-btn is-danger" id="mg-delete">🗑 Eliminar cliente</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Images remain staged until /api/client-images responds successfully. -->
+    <div id="media-modal-overlay" class="manage-modal-overlay" style="display:none">
+      <div class="manage-modal media-modal" role="dialog" aria-modal="true" aria-labelledby="media-modal-title">
+        <div class="manage-modal-header">
+          <div class="manage-modal-title" id="media-modal-title">Galería y código QR</div>
+          <button type="button" id="media-modal-close" class="wizard-close" aria-label="Cerrar">✕</button>
+        </div>
+        <div class="media-modal-body">
+          <div class="qr-layout">
+            <div id="client-qr" aria-label="Código QR del asistente"></div>
+            <div>
+              <strong>Enlace del asistente</strong>
+              <div id="client-qr-url" class="qr-url"></div>
+              <div class="qr-actions">
+                <button type="button" id="copy-qr-url-btn" class="copy-link">Copiar enlace</button>
+                <button type="button" id="download-qr-btn" class="copy-link">Descargar PNG</button>
+                <button type="button" id="print-qr-btn" class="copy-link">Imprimir</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="media-section-title">Agregar imágenes</div>
+          <div class="media-selectors">
+            <div class="form-group"><label for="media-association">Asociar a</label><select id="media-association" class="admin-input"></select></div>
+            <div class="form-group"><label for="media-gallery">Galería</label><select id="media-gallery" class="admin-input"><option value="gallery">Galería principal</option></select></div>
+          </div>
+          <input id="media-file-input" type="file" accept="image/*" multiple hidden>
+          <div id="media-dropzone" class="media-dropzone" tabindex="0" role="button" aria-label="Seleccionar imágenes para subir">
+            <strong>Suelta imágenes aquí</strong><span>o selecciona varios archivos</span>
+          </div>
+          <div id="media-staged" class="media-staged" aria-live="polite"><div class="media-empty">No hay imágenes pendientes.</div></div>
+          <button type="button" id="save-media-btn" class="action-btn" disabled>Guardar imágenes</button>
+          <div id="media-msg" class="create-msg" role="status"></div>
+
+          <div class="media-section-title">Imágenes confirmadas</div>
+          <div id="media-confirmed" class="media-confirmed"><div class="media-empty">Aún no hay imágenes confirmadas.</div></div>
         </div>
       </div>
     </div>
@@ -3783,6 +3857,220 @@ LÍMITES ESTRICTOS:
     document.getElementById('mg-edit-services').addEventListener('click', () => {
       if (manageClient) openEditModal(manageClient, 'services');
     });
+
+    // ── Client gallery + assistant QR (UI-only; upload endpoint owns storage) ──
+    const mediaOverlay = document.getElementById('media-modal-overlay');
+    const mediaAssociation = document.getElementById('media-association');
+    const mediaGallery = document.getElementById('media-gallery');
+    const mediaInput = document.getElementById('media-file-input');
+    const mediaDropzone = document.getElementById('media-dropzone');
+    const mediaStaged = document.getElementById('media-staged');
+    const mediaConfirmed = document.getElementById('media-confirmed');
+    const mediaSave = document.getElementById('save-media-btn');
+    const mediaMsg = document.getElementById('media-msg');
+    const qrEl = document.getElementById('client-qr');
+    const qrUrlEl = document.getElementById('client-qr-url');
+    let stagedMedia = [];
+    let confirmedMedia = [];
+
+    function assistantUrl(client) {
+      return client.assistantUrl || `${window.location.origin}/asistente/${encodeURIComponent(client.id)}`;
+    }
+
+    function confirmedImageUrl(image) {
+      const value = image && (image.thumbnailUrl || image.imageUrl);
+      return /^https?:\/\//i.test(value || '') ? value : '';
+    }
+
+    function renderMediaList(target, images, staged) {
+      target.innerHTML = '';
+      if (!images.length) {
+        target.innerHTML = `<div class="media-empty">${staged ? 'No hay imágenes pendientes.' : 'Aún no hay imágenes confirmadas.'}</div>`;
+        return;
+      }
+      images.forEach((image, index) => {
+        const url = staged ? image.preview : confirmedImageUrl(image);
+        if (!url) return;
+        const tile = document.createElement('div');
+        tile.className = 'media-thumb';
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = staged ? image.file.name : 'Imagen confirmada';
+        tile.appendChild(img);
+        if (staged) {
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.textContent = '×';
+          remove.setAttribute('aria-label', `Quitar ${image.file.name}`);
+          remove.addEventListener('click', () => {
+            URL.revokeObjectURL(image.preview);
+            stagedMedia.splice(index, 1);
+            renderMediaList(mediaStaged, stagedMedia, true);
+            mediaSave.disabled = !stagedMedia.length;
+          });
+          tile.appendChild(remove);
+        }
+        target.appendChild(tile);
+      });
+      if (!target.children.length) target.innerHTML = '<div class="media-empty">Aún no hay imágenes confirmadas.</div>';
+    }
+
+    function showMediaMessage(text, ok) {
+      mediaMsg.textContent = text;
+      mediaMsg.className = `create-msg ${ok ? 'ok' : 'err'}`;
+      mediaMsg.style.display = 'block';
+    }
+
+    function renderAssistantQr(url) {
+      qrEl.innerHTML = '';
+      qrUrlEl.textContent = url;
+      if (!window.QRCode) {
+        qrEl.textContent = 'QR no disponible';
+        showMediaMessage('No se pudo cargar la biblioteca de código QR. Revisa tu conexión e intenta de nuevo.', false);
+        return;
+      }
+      new window.QRCode(qrEl, { text: url, width: 116, height: 116, correctLevel: window.QRCode.CorrectLevel.M });
+    }
+
+    async function openMediaModal(client) {
+      stagedMedia.forEach(image => URL.revokeObjectURL(image.preview));
+      stagedMedia = [];
+      confirmedMedia = [];
+      mediaAssociation.innerHTML = '<option value="gallery">Galería general</option>';
+      const items = Array.isArray(client.services) && client.services.length ? client.services : (Array.isArray(client.menu) ? client.menu : []);
+      items.forEach((item, index) => {
+        const option = document.createElement('option');
+        option.value = item.id || item.nombre || String(index);
+        option.textContent = item.nombre || `Elemento ${index + 1}`;
+        mediaAssociation.appendChild(option);
+      });
+      mediaGallery.value = 'gallery';
+      mediaInput.value = '';
+      mediaMsg.style.display = 'none';
+      mediaSave.disabled = true;
+      renderMediaList(mediaStaged, stagedMedia, true);
+      renderMediaList(mediaConfirmed, confirmedMedia, false);
+      renderAssistantQr(assistantUrl(client));
+      mediaOverlay.style.display = 'flex';
+      try {
+        const response = await fetch(`/api/client-images?clientId=${encodeURIComponent(client.id)}`, { headers: { 'x-admin-token': token } });
+        const images = await response.json();
+        if (!response.ok) throw new Error(images.error || response.status);
+        if (manageClient !== client) return;
+        confirmedMedia = Array.isArray(images) ? images : [];
+        renderMediaList(mediaConfirmed, confirmedMedia, false);
+      } catch (error) {
+        showMediaMessage(`No se pudieron cargar las imágenes: ${error.message}`, false);
+      }
+    }
+
+    function closeMediaModal() {
+      stagedMedia.forEach(image => URL.revokeObjectURL(image.preview));
+      stagedMedia = [];
+      mediaOverlay.style.display = 'none';
+    }
+
+    function addMediaFiles(files) {
+      Array.from(files).filter(file => file.type.startsWith('image/')).forEach(file => {
+        stagedMedia.push({ file, preview: URL.createObjectURL(file) });
+      });
+      renderMediaList(mediaStaged, stagedMedia, true);
+      mediaSave.disabled = !stagedMedia.length;
+    }
+
+    document.getElementById('mg-media').addEventListener('click', () => {
+      if (manageClient) void openMediaModal(manageClient);
+    });
+    document.getElementById('media-modal-close').addEventListener('click', closeMediaModal);
+    mediaOverlay.addEventListener('click', event => { if (event.target === mediaOverlay) closeMediaModal(); });
+    mediaDropzone.addEventListener('click', () => mediaInput.click());
+    mediaDropzone.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); mediaInput.click(); } });
+    mediaInput.addEventListener('change', () => addMediaFiles(mediaInput.files));
+    ['dragenter', 'dragover'].forEach(type => mediaDropzone.addEventListener(type, event => {
+      event.preventDefault(); mediaDropzone.classList.add('is-dragging');
+    }));
+    ['dragleave', 'drop'].forEach(type => mediaDropzone.addEventListener(type, event => {
+      event.preventDefault(); mediaDropzone.classList.remove('is-dragging');
+    }));
+    mediaDropzone.addEventListener('drop', event => addMediaFiles(event.dataTransfer.files));
+
+    mediaSave.addEventListener('click', async () => {
+      if (!manageClient || !stagedMedia.length) return;
+      if (!confirm(`Guardar ${stagedMedia.length} imagen(es) para ${manageClient.businessName}?`)) return;
+      mediaSave.disabled = true;
+      mediaSave.textContent = 'Guardando…';
+      try {
+        const request = async (method, action, body) => {
+          const response = await fetch(`/api/client-images?clientId=${encodeURIComponent(manageClient.id)}${action ? `&action=${action}` : ''}`, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+            body: body ? JSON.stringify(body) : undefined,
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || response.status);
+          return result;
+        };
+        const instructions = await request('POST', 'upload', { files: stagedMedia.map(({ file }) => ({ type: file.type, size: file.size })) });
+        await Promise.all(instructions.uploads.map((upload, index) => {
+          const body = new FormData();
+          Object.entries(upload.params).forEach(([key, value]) => body.append(key, value));
+          body.append('api_key', upload.apiKey);
+          body.append('signature', upload.signature);
+          body.append('file', stagedMedia[index].file);
+          return fetch(upload.uploadUrl, { method: 'POST', body }).then(response => {
+            if (!response.ok) throw new Error('La carga de imagen falló');
+            return response.json();
+          });
+        }));
+        const confirmed = await request('POST', 'confirm', { publicIds: instructions.uploads.map(upload => upload.publicId) });
+        const linkedType = mediaAssociation.value === 'gallery' ? 'gallery' : 'menu';
+        const linkedItemId = linkedType === 'gallery' ? null : mediaAssociation.value;
+        await request('PUT', '', { images: confirmed.map(image => ({ publicId: image.publicId, linkedType, linkedItemId })) });
+        // A preview becomes visible here only after Cloudinary and our endpoint confirm it.
+        confirmedMedia = confirmedMedia.concat(confirmed);
+        stagedMedia.forEach(image => URL.revokeObjectURL(image.preview));
+        stagedMedia = [];
+        renderMediaList(mediaStaged, stagedMedia, true);
+        renderMediaList(mediaConfirmed, confirmedMedia, false);
+        showMediaMessage(confirmed.length
+          ? `${confirmed.length} imagen${confirmed.length === 1 ? '' : 'es'} confirmada${confirmed.length === 1 ? '' : 's'}.`
+          : 'La carga fue confirmada, pero no devolvió URLs para mostrar.', true);
+      } catch (error) {
+        showMediaMessage(`No se guardaron imágenes: ${error.message}`, false);
+      } finally {
+        mediaSave.disabled = !stagedMedia.length;
+        mediaSave.textContent = 'Guardar imágenes';
+      }
+    });
+
+    function qrDataUrl(done) {
+      const canvas = qrEl.querySelector('canvas');
+      if (canvas) return done(canvas.toDataURL('image/png'));
+      const image = qrEl.querySelector('img');
+      if (image && image.src) return done(image.src);
+      showMediaMessage('El código QR todavía no está listo.', false);
+    }
+
+    document.getElementById('copy-qr-url-btn').addEventListener('click', () => {
+      if (!manageClient) return;
+      navigator.clipboard.writeText(assistantUrl(manageClient)).then(() => {
+        showMediaMessage('Enlace del asistente copiado.', true);
+      }).catch(() => showMediaMessage('No se pudo copiar el enlace.', false));
+    });
+    document.getElementById('download-qr-btn').addEventListener('click', () => qrDataUrl(dataUrl => {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `${manageClient.id}-assistant-qr.png`;
+      link.click();
+    }));
+    document.getElementById('print-qr-btn').addEventListener('click', () => qrDataUrl(dataUrl => {
+      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+      if (!printWindow) return showMediaMessage('El navegador bloqueó la ventana de impresión.', false);
+      printWindow.document.write(`<title>QR ${escHTML(manageClient.businessName)}</title><img src="${dataUrl}" alt="Código QR"><p>${escHTML(assistantUrl(manageClient))}</p>`);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    }));
 
     document.getElementById('mg-view-reservations').addEventListener('click', () => {
       if (manageClient) window.open(`https://jbstudio.app/reservas/${encodeURIComponent(manageClient.id)}`, '_blank');

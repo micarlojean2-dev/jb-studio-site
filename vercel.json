@@ -3,6 +3,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/client-images",
+      "destination": "/api/client-config?__scope=images"
+    },
+    {
       "source": "/ventas",
       "destination": "/ventas.html"
     },
