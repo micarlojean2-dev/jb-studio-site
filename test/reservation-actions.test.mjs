@@ -19,4 +19,8 @@ assert.match(html, /&lt;alergia &amp; aceite&gt;/);
 assert.match(html, /Cancelar/);
 assert.match(html, /Reagendar/);
 
+const source = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../api/reservations.js', import.meta.url), 'utf8'));
+assert.match(source, /action !== 'reschedule' && \(!nombre \|\| !fecha \|\| !hora\)/,
+  'secure rescheduling bypasses the creation-only name requirement');
+
 console.log('Reservation action links and confirmation email verified');

@@ -720,7 +720,7 @@ export default async function handler(req, res) {
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
-  if (!nombre || !fecha || !hora)
+  if (action !== 'reschedule' && (!nombre || !fecha || !hora))
     return res.status(400).json({ error: 'nombre, fecha and hora are required' });
 
   try {
