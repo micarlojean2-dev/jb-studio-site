@@ -229,6 +229,7 @@
     'display:flex;align-items:center;justify-content:center;font-size:25px;}',
     '.jbw-card-img{width:52px;height:52px;border-radius:15px;object-fit:cover;',
     'margin-bottom:8px;display:block;background:#f2f2f4;}',
+    '.jbw-card-no-image{justify-content:center;min-height:100px;padding:18px 12px;}',
     '.jbw-gallery{width:100%;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:4px 0;}',
     '.jbw-gallery img{width:100%;aspect-ratio:1.35;object-fit:cover;border-radius:12px;background:#f2f2f4;}',
     '.jbw-gallery-more{border:0;background:none;color:var(--jbw-color,#1a4a2e);font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 0;}',
@@ -468,7 +469,7 @@
         };
         card.appendChild(img);
       } else {
-        card.appendChild(buildIcon(item.nombre));
+        card.classList.add('jbw-card-no-image');
       }
 
       var name = document.createElement('div');
@@ -790,6 +791,8 @@ function extractBooking(text, menu) {
     var faltan = bookingFaltan();
     var completo = faltan.length === 0;
     bookingPending = completo ? null : faltan[0];
+    // The model never speaks for a complete booking; only the POST decides it.
+    if (completo) { showBookingSummary(); return; }
     busy = true; inp.disabled = true; snd.disabled = true;
     showTyping();
     var body = { clientId: clientId, messages: msgs, booking: { captured: bookingCaptured(), faltan: faltan } };
@@ -807,15 +810,12 @@ function extractBooking(text, menu) {
         var nx = CORE.extractNotas(raw);
         if (nx.notas.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, nx.notas);
         var txt = raw ? CORE.limpiarMarcadores(nx.limpio) : '';
-        if (!txt) txt = completo
-          ? (lang === 'en' ? 'Great, I have everything 😊' : 'Genial, ya tengo todo 😊')
-          : (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + faltan[0] + '?';
+        if (!txt) txt = (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + faltan[0] + '?';
         addMsg('bot', txt);
         // Se persiste el texto ya saneado (lo mismo que se mostró): así ni el
         // cliente ni DeepSeek vuelven a ver marcadores al recargar el historial.
         msgs.push({ role: 'assistant', content: txt });
         save();
-        if (completo) showBookingSummary();
       })
       .catch(function () {
         hideTyping();
@@ -875,7 +875,7 @@ function extractBooking(text, menu) {
     bookingReview = false;
     var lang = cfg.language === 'en' ? 'en' : 'es';
     busy = true; inp.disabled = true; snd.disabled = true;
-    addMsg('bot', lang === 'en' ? 'Saving your request…' : 'Guardando tu solicitud…');
+    addMsg('bot', lang === 'en' ? 'Checking availability…' : 'Revisando disponibilidad…');
     fetch(API + '/api/reservations', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -884,7 +884,9 @@ function extractBooking(text, menu) {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.ok === false && d.motivo) {
-          var msg = (lang === 'en' ? 'Sorry 😊 ' : 'Uy 😊 ') + (d.mensaje || '');
+          var msg = d.motivo === 'fuera_de_horario'
+            ? (lang === 'en' ? 'That time is not available. Please tell me another time and I will check it 😊' : 'Esa hora no está disponible. Dime otra hora y revisaré la disponibilidad 😊')
+            : (lang === 'en' ? 'Sorry 😊 ' : 'Uy 😊 ') + (d.mensaje || '');
           if (d.alternativa) {
             msg += (lang === 'en' ? ' The first slot I can offer is ' : ' El horario más cercano que te puedo ofrecer es ') + d.alternativa + '.';
             msg += (lang === 'en' ? ' Want me to book that one?' : ' ¿Te lo agendo?');
@@ -892,6 +894,8 @@ function extractBooking(text, menu) {
             msg += (lang === 'en' ? ' Tell me another day or time and I\'ll check 😊' : ' Dime otro día u hora y lo miro 😊');
           }
           addMsg('bot', msg);
+          msgs = msgs.filter(function (m) { return m.role !== 'assistant' || !/pendiente|confirmad[ao]|equipo.*revis/i.test(m.content); });
+          save();
           delete bookingData.hora;
           bookingStep = 1;
           return;
@@ -922,16 +926,7 @@ function extractBooking(text, menu) {
   // pendiente: nunca "confirmada". Cubre los casos A/B/C del requisito.
   function mensajeReservaGuardada(d, lang) {
     var en = lang === 'en';
-    var nombre = bookingData.nombre ? String(bookingData.nombre).split(/\s+/)[0] : '';
-    var negocio = cfg.businessName || (en ? 'the business' : 'el negocio');
-    // Mensaje cálido y humano. La cita nace pendiente: el negocio ya tiene toda
-    // la información y contactará si necesita confirmar o ajustar algo.
-    if (en) {
-      return 'Perfect' + (nombre ? ', ' + nombre : '') + '! 😊 Your request has been registered.\n\n' +
-             negocio + ' now has all your details and will reach out if they need to confirm or adjust anything.\n\nThank you! 🙌';
-    }
-    return '¡Perfecto' + (nombre ? ', ' + nombre : '') + '! 😊 Tu solicitud quedó registrada correctamente.\n\n' +
-           negocio + ' ya recibió toda tu información y podrá contactarte si necesita confirmar o hacer algún ajuste.\n\n¡Gracias! 🙌';
+    return en ? 'Your request has been registered successfully.' : 'Tu solicitud quedó registrada correctamente.';
   }
 
   // ── Send message ─────────────────────────────────────────────────────────
