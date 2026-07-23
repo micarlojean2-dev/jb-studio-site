@@ -63,6 +63,13 @@ async function confirmedMedia(clientId) {
   return { gallery: gallery.length, menuItems };
 }
 
+function needsRestaurantMenuConfirmation(client, messages) {
+  if (client.templateId !== 'restaurant') return false;
+  const text = String([...messages].reverse().find(message => message.role === 'user')?.content || '');
+  if (/alerg|gluten|contaminaci[oó]n|intoleran/i.test(text)) return true;
+  return /(?:puedo|se puede|quiero|pedido|prepar)[^?.!]{0,80}(?:sin\s+\S+|cambiar|quitar|agregar|modificar)/i.test(text);
+}
+
 function buildSystemPrompt(basePrompt, client, media) {
   const tz   = tzOf(client);
   const now  = new Date();
@@ -335,6 +342,12 @@ async function callProvider(provider, messages, systemPrompt, client, clientId) 
   const estimatedCost = (inputTokens / 1000) * costPer1kInput + (outputTokens / 1000) * costPer1kOutput;
 
   trackUsage(clientId, inputTokens, outputTokens, estimatedCost);
+
+  // A model cannot verify kitchen operations. Override its otherwise helpful
+  // guess when the visitor asks about an unlisted modification or food safety.
+  if (needsRestaurantMenuConfirmation(client, messages)) {
+    text = 'No puedo confirmar si podemos hacer esa modificación ni verificar alérgenos o contaminación cruzada. El equipo del restaurante debe confirmarlo directamente al hacer tu pedido.';
+  }
 
   const catalogEnabled = !client.features || client.features.catalog !== false;
   if (catalogEnabled && text && !text.includes('[MOSTRAR_MENU]')) {
