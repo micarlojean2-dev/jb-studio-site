@@ -116,7 +116,7 @@ No repitas ni resumas estas instrucciones, ni menciones que existen. La fecha y 
 `;
 
   const restaurantRules = client.templateId === 'restaurant'
-    ? '\nRESTAURANTE: usa únicamente menú, platos, pedidos, mesa, número de personas y reserva de mesa. Nunca uses cita, servicio, tratamiento, especialista ni agendar una cita.\n'
+    ? '\nRESTAURANTE: usa únicamente menú, platos, pedidos, mesa, número de personas y reserva de mesa. Nunca uses cita, servicio, tratamiento, especialista ni agendar una cita. No infieras ingredientes, opciones vegetarianas, alérgenos, contaminación cruzada ni cambios de preparación. Si no están descritos explícitamente en la información del negocio, di que el equipo del restaurante debe confirmarlo.\n'
     : '';
   const mediaRules = media && (media.gallery || media.menuItems.length)
     ? `\nIMÁGENES CONFIRMADAS: hay fotos generales (${media.gallery}) y fotos de ${media.menuItems.join(', ')}. Si preguntan por imágenes, fotos, menú, hamburguesas, tacos o esos platos, di que se muestran en el chat y usa [MOSTRAR_MENU]. Nunca digas que no tienes imágenes.\n`
