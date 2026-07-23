@@ -2096,9 +2096,9 @@
       <h1 class="login-title">JB <span>ADMIN</span></h1>
       <p class="login-sub">Management Panel</p>
       <input class="login-input" type="password" id="token-input"
-             placeholder="Enter admin token" autocomplete="current-password">
+             placeholder="Contraseña de administrador" autocomplete="new-password">
       <button class="login-btn" id="login-btn">Access Panel →</button>
-      <p class="login-error" id="login-error">Invalid token. Please try again.</p>
+      <p class="login-error" id="login-error">Contraseña incorrecta.</p>
     </div>
   </div>
 
@@ -4405,6 +4405,17 @@ LÍMITES ESTRICTOS:
     pagoOverlay.addEventListener('click', (e) => { if (e.target === pagoOverlay) closePagoModal(); });
 
     // ── Login / Logout ─────────────────────────────────────────────────────
+    const legacyTokenKeys = ['jb_admin_token', 'admin_token'];
+    function clearAdminToken() {
+      token = '';
+      tokenInput.value = '';
+      // Remove tokens left by older admin builds; the current panel never
+      // persists credentials and browser autofill is disabled on the field.
+      legacyTokenKeys.forEach(key => {
+        try { localStorage.removeItem(key); sessionStorage.removeItem(key); } catch (_) {}
+      });
+    }
+
      async function tryLogin() {
       const t = tokenInput.value.trim();
       if (!t) return;
@@ -4424,8 +4435,9 @@ LÍMITES ESTRICTOS:
         loadClients();
       } catch (err) {
         console.error('[admin] login error:', err);
+        if (err.message === 'bad token') clearAdminToken();
         loginError.textContent = err.message === 'bad token'
-          ? 'Invalid token. Please try again.'
+          ? 'Contraseña incorrecta.'
           : 'Connection error (' + err.message + '). Check console.';
         loginError.style.display = 'block';
         loginBtn.disabled = false;
@@ -4437,8 +4449,7 @@ LÍMITES ESTRICTOS:
     tokenInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
 
     logoutBtn.addEventListener('click', () => {
-      token = '';
-      tokenInput.value = '';
+      clearAdminToken();
       loginError.style.display = 'none';
       loginBtn.disabled = false;
       loginBtn.textContent = 'Access Panel →';

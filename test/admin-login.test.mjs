@@ -63,6 +63,7 @@ ok(window.__jbAdmin && typeof window.__jbAdmin.getToken === 'function', 'window.
 
 console.log('3. El botón de acceso tiene su listener');
 ok(!!$('login-btn'), 'existe #login-btn');
+ok($('token-input').getAttribute('autocomplete') === 'new-password', 'el navegador no reutiliza una contraseña guardada');
 fetchCalls.length = 0;
 fetchResponder = () => ({ ok: true, status: 200, json: async () => [] });
 $('token-input').value = 'probe-token';
@@ -78,11 +79,14 @@ fetchResponder = (url, opts) => {
   const t = opts && opts.headers && opts.headers['x-admin-token'];
   return t === 'good' ? { ok: true, status: 200, json: async () => [] } : { ok: false, status: 401, json: async () => ({}) };
 };
+window.localStorage.setItem('jb_admin_token', 'old-saved-token');
+window.sessionStorage.setItem('admin_token', 'old-saved-token');
 $('token-input').value = 'good';
 $('login-btn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 await flush(); await flush();
 ok($('login-screen').style.display === 'none', 'oculta la pantalla de login');
 ok($('admin-panel').style.display === 'block', 'muestra el panel de admin');
+ok(fetchCalls.at(-1).opts.headers['x-admin-token'] === 'good', 'una contraseña nueva escrita gana sobre un token viejo guardado');
 
 console.log('5. Salir elimina la sesión en memoria');
 $('logout-btn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
@@ -91,18 +95,29 @@ ok($('token-input').value === '', 'Salir vacía el campo de token');
 ok($('login-screen').style.display === 'flex', 'Salir muestra la pantalla de login');
 ok($('admin-panel').style.display === 'none', 'Salir oculta el panel de admin');
 
-console.log('6. Contraseña incorrecta después de Salir muestra error');
+console.log('6. Contraseña incorrecta después de Salir limpia credenciales viejas');
 $('login-error').style.display = 'none';
 $('login-error').textContent = '';
+window.localStorage.setItem('jb_admin_token', 'old-saved-token');
+window.sessionStorage.setItem('admin_token', 'old-saved-token');
 $('token-input').value = 'wrong';
 $('login-btn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 await flush(); await flush();
 ok($('login-error').style.display === 'block', 'muestra el mensaje de error');
-ok(/Invalid token/i.test($('login-error').textContent), 'el texto del error es "Invalid token"');
+ok($('login-error').textContent === 'Contraseña incorrecta.', 'el mensaje de error dice "Contraseña incorrecta"');
 ok($('admin-panel').style.display !== 'block', 'NO entra al panel con token inválido');
 ok(window.__jbAdmin.getToken() === '', 'un token inválido no restaura el token anterior');
+ok($('token-input').value === '', '401 vacía el campo para obligar a escribir una contraseña nueva');
+ok(window.localStorage.getItem('jb_admin_token') === null && window.sessionStorage.getItem('admin_token') === null,
+  '401 elimina tokens heredados guardados');
 
-console.log('7. El resto del admin sigue presente');
+console.log('7. Una contraseña nueva entra después de un 401');
+$('token-input').value = 'good';
+$('login-btn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+await flush(); await flush();
+ok($('admin-panel').style.display === 'block', 'la contraseña nueva abre el panel después de limpiar el token viejo');
+
+console.log('8. El resto del admin sigue presente');
 // Elementos clave de otras secciones (modal de gestión, creador) siguen en el DOM.
 ok(!!$('setup-add-email'), 'el botón del modal de setup existe en el DOM');
 ok(!!$('add-menu-item') && !!$('mg-view-bot'), 'otras secciones (form y modal de gestión) intactas');
