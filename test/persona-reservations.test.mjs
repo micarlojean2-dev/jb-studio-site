@@ -69,6 +69,8 @@ console.log('2. Server-side persona validation');
   ok(validarReserva(timedRestaurant, '2026-07-20', '10:30', '', 0,
     [{ estado: 'pendiente', fechaISO: '2026-07-20', horaISO: '10:00', duracion: 60 }]).motivo === 'sin_disponibilidad',
   'configured restaurant duration participates in capacity overlap checks');
+  ok(validarReserva({ ...restaurant, reservationIntervalMinutes: 30 }, '2026-07-20', '10:15', '', 0, []).motivo === 'intervalo_invalido',
+    'backend rejects starts outside the configured reservation interval');
 }
 
 if (failures) process.exit(1);

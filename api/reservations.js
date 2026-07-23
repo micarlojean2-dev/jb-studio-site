@@ -407,6 +407,14 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
     };
   }
 
+  // Starts are aligned with the business-defined booking interval rather than
+  // an arbitrary frontend suggestion. This remains authoritative for curls,
+  // email reschedules, and every chat surface.
+  const interval = Number.isFinite(client.reservationIntervalMinutes) ? client.reservationIntervalMinutes : 15;
+  if (interval > 0 && (pedido - dentro[0]) % interval !== 0) {
+    return { ok: false, motivo: 'intervalo_invalido', mensaje: 'Ese horario no coincide con los intervalos de reserva disponibles.' };
+  }
+
   if (staffRanges && staffRanges.length && !staffRanges.some(([a, b]) => pedido >= a && pedido + dur <= b)) {
     return { ok: false, motivo: 'barbero_no_disponible', mensaje: 'Ese barbero no está disponible a esa hora.' };
   }
@@ -463,7 +471,7 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
 // capacidad. Se avanza de 15 en 15 minutos: proponer "16:07" sería absurdo.
 function proximoHueco(client, fechaISO, desde, dur, rango, reservas) {
   const cap = Number.isFinite(client.capacityPerSlot) ? client.capacityPerSlot : 1;
-  const paso = 15;
+  const paso = Number.isFinite(client.reservationIntervalMinutes) ? client.reservationIntervalMinutes : 15;
   const limite = rango[1] - (dur || 0);
   for (let t = Math.ceil((desde + 1) / paso) * paso; t <= limite; t += paso) {
     if (contarSolapes(reservas, fechaISO, t, dur, client) < cap) return fmt(t);

@@ -49,6 +49,11 @@ function normalizeCapacity(v) {
   return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 1;   // por defecto, uno
 }
 
+function normalizeReservationInterval(v) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 5 && n <= 240 && n % 5 === 0 ? n : 15;
+}
+
 // Correos que reciben los avisos de reserva del negocio. Array, minúsculas,
 // sin espacios, sin duplicados, máximo 10. Se descartan los que no sean correo.
 function normalizeNotificationEmails(v) {
@@ -334,7 +339,7 @@ export default async function handler(req, res) {
       secondaryColor, style, address, hours, businessType, services, features, templateId, templateVersion,
       billingDay, trialEnabled, trialDays,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
-       displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, holidays, notificationEmails, templateData,
+        displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, reservationIntervalMinutes, holidays, notificationEmails, templateData,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -510,6 +515,7 @@ export default async function handler(req, res) {
         timezone:       normalizeTimezone(timezone),
         minNoticeHours: normalizeMinNotice(minNoticeHours),
         capacityPerSlot: normalizeCapacity(capacityPerSlot),
+        reservationIntervalMinutes: normalizeReservationInterval(reservationIntervalMinutes),
         holidays:        normalizeHolidays(holidays),
         notificationEmails: notificationEmailsSafe,
         widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}" data-position="${position}"></script>`,
@@ -528,7 +534,7 @@ export default async function handler(req, res) {
   if (req.method === 'PUT') {
     const { id, active, prompt, businessName, ownerName, ownerEmail, plan,
             color, language, whatsapp, menu, services, features,
-            timezone, minNoticeHours, businessHours, capacityPerSlot, holidays, notificationEmails } = req.body || {};
+             timezone, minNoticeHours, businessHours, capacityPerSlot, reservationIntervalMinutes, holidays, notificationEmails } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id is required' });
 
     try {
@@ -553,6 +559,7 @@ export default async function handler(req, res) {
       if (timezone !== undefined) client.timezone = normalizeTimezone(timezone);
       if (minNoticeHours !== undefined) client.minNoticeHours = normalizeMinNotice(minNoticeHours);
       if (capacityPerSlot !== undefined) client.capacityPerSlot = normalizeCapacity(capacityPerSlot);
+      if (reservationIntervalMinutes !== undefined) client.reservationIntervalMinutes = normalizeReservationInterval(reservationIntervalMinutes);
       if (holidays !== undefined) client.holidays = normalizeHolidays(holidays);
       if (notificationEmails === null) delete client.notificationEmails;
       else if (notificationEmails !== undefined) client.notificationEmails = normalizeNotificationEmails(notificationEmails);
