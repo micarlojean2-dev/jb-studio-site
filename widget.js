@@ -303,32 +303,11 @@
 
   // ── Apply color theme ────────────────────────────────────────────────────
   function greeting() {
-    var n = cfg.businessName || (cfg.language === 'en' ? 'this business' : 'este negocio');
-    var reserva = featureOn('reservations');
-    if (cfg.language === 'en') {
-      return "Hi! 😊 I'm " + n + "'s assistant.\n\nI can help you with:\n\n" +
-             '✨ Discover our services\n' +
-             (reserva ? '📅 Book an appointment\n' : '') +
-             '💰 Check prices\n\n' +
-             'What do you need?';
-    }
-    return '¡Hola! 😊 Soy el asistente de ' + n + '.\n\nPuedo ayudarte con:\n\n' +
-           '✨ Conocer nuestros servicios\n' +
-           (reserva ? '📅 Reservar una cita\n' : '') +
-           '💰 Consultar precios\n\n' +
-           '¿Qué necesitas?';
+    return CORE.greeting(cfg, featureOn('reservations'));
   }
 
   function renderQuickActions() {
-    var en = cfg.language === 'en';
-    var acciones = [{ label: en ? '✨ See services' : '✨ Ver servicios',
-                      msg: en ? 'I want to see the services' : 'Quiero ver los servicios' }];
-    if (featureOn('reservations')) {
-      acciones.push({ label: en ? '📅 Book' : '📅 Reservar',
-                      msg: en ? 'I want to book an appointment' : 'Quiero reservar una cita' });
-    }
-    acciones.push({ label: en ? '💰 Prices' : '💰 Precios',
-                    msg: en ? 'What are your prices?' : '¿Cuáles son los precios?' });
+    var acciones = CORE.accionesRapidas(cfg, featureOn('reservations'));
 
     var wrap = document.createElement('div');
     wrap.className = 'jbw-quick';
