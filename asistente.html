@@ -1227,12 +1227,13 @@ function extractBooking(text, menu) {
         addMsg('bot', g);
         msgs.push({ role: 'assistant', content: g });
         save();
-        if (emailAction) {
-          addMsg('bot', emailAction.action === 'cancel'
-            ? (cfg.language === 'en' ? 'Do you confirm that you want to cancel this reservation?' : '¿Confirmas que quieres cancelar esta reserva?')
-            : (cfg.language === 'en' ? 'Tell me the new date and time you prefer.' : 'Indica la nueva fecha y hora que prefieres.'));
-        } else renderQuickActions();
+        if (!emailAction) renderQuickActions();
       }
+      // Links from email must work even if this browser has an unrelated
+      // previous chat session saved for the same business.
+      if (emailAction) addMsg('bot', emailAction.action === 'cancel'
+        ? (cfg.language === 'en' ? 'Do you confirm that you want to cancel this reservation?' : '¿Confirmas que quieres cancelar esta reserva?')
+        : (cfg.language === 'en' ? 'Tell me the new date and time you prefer.' : 'Indica la nueva fecha y hora que prefieres.'));
       setTimeout(function () { inp.focus(); }, 200);
     })
     .catch(function () {
