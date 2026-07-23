@@ -554,7 +554,8 @@ export default async function handler(req, res) {
       if (minNoticeHours !== undefined) client.minNoticeHours = normalizeMinNotice(minNoticeHours);
       if (capacityPerSlot !== undefined) client.capacityPerSlot = normalizeCapacity(capacityPerSlot);
       if (holidays !== undefined) client.holidays = normalizeHolidays(holidays);
-      if (notificationEmails !== undefined) client.notificationEmails = normalizeNotificationEmails(notificationEmails);
+      if (notificationEmails === null) delete client.notificationEmails;
+      else if (notificationEmails !== undefined) client.notificationEmails = normalizeNotificationEmails(notificationEmails);
       if (features !== undefined && typeof features === 'object') {
         client.features = sanitizeFeatures(features, client.plan || 'basic');
       }
