@@ -501,10 +501,11 @@
 
       card.addEventListener('click', function () {
         if (inp.disabled) return;
-        var nom = item.nombre || 'este servicio';
+        var restaurant = cfg.templateId === 'restaurant';
+        var nom = item.nombre || (restaurant ? 'este plato' : 'este servicio');
         send(cfg.language === 'en'
-          ? 'I am interested in the service: ' + nom
-          : 'Me interesa el servicio: ' + nom);
+          ? (restaurant ? 'I am interested in this menu item: ' : 'I am interested in the service: ') + nom
+          : (restaurant ? 'Me interesa este plato: ' : 'Me interesa el servicio: ') + nom);
       });
 
       row.appendChild(card);

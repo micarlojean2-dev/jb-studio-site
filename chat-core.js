@@ -590,13 +590,16 @@ window.JBChatCore = (function () {
   // superficie con sus clases.
   function greeting(cfg, puedeReservar) {
     var n = cfg.businessName || (cfg.language === 'en' ? 'this business' : 'este negocio');
+    var restaurant = templateId(cfg) === 'restaurant';
     if (cfg.language === 'en') {
+      if (restaurant) return "Hi! 😊 I'm " + n + "'s assistant.\n\nI can help you with:\n\n🍽️ Explore the menu\n" + (puedeReservar ? '📅 Reserve a table\n' : '') + '💰 Check prices\n\nWhat would you like?';
       return "Hi! 😊 I'm " + n + "'s assistant.\n\nI can help you with:\n\n" +
              '✨ Discover our services\n' +
              (puedeReservar ? '📅 Book an appointment\n' : '') +
              '💰 Check prices\n\n' +
              'What do you need?';
     }
+    if (restaurant) return '¡Hola! 😊 Soy el asistente de ' + n + '.\n\nPuedo ayudarte con:\n\n🍽️ Conocer el menú\n' + (puedeReservar ? '📅 Reservar una mesa\n' : '') + '💰 Consultar precios\n\n¿Qué te gustaría ver?';
     return '¡Hola! 😊 Soy el asistente de ' + n + '.\n\nPuedo ayudarte con:\n\n' +
            '✨ Conocer nuestros servicios\n' +
            (puedeReservar ? '📅 Reservar una cita\n' : '') +
@@ -606,6 +609,12 @@ window.JBChatCore = (function () {
 
   function accionesRapidas(cfg, puedeReservar) {
     var en = cfg.language === 'en';
+    if (templateId(cfg) === 'restaurant') {
+      var menu = [{ label: en ? '🍽️ See menu' : '🍽️ Ver menú', msg: en ? 'I want to see the menu' : 'Quiero ver el menú' }];
+      if (puedeReservar) menu.push({ label: en ? '📅 Reserve table' : '📅 Reservar mesa', msg: en ? 'I want to reserve a table' : 'Quiero reservar una mesa' });
+      menu.push({ label: en ? '💰 Prices' : '💰 Precios', msg: en ? 'What are the menu prices?' : '¿Cuáles son los precios del menú?' });
+      return menu;
+    }
     var a = [{ label: en ? '✨ See services' : '✨ Ver servicios',
                msg: en ? 'I want to see the services' : 'Quiero ver los servicios' }];
     if (puedeReservar) {

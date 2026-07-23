@@ -80,6 +80,7 @@ export function createClientConfigHandler({ redis } = {}) {
     }) : [];
     const out = {
       businessName: client.businessName,
+      templateId:   client.templateId || null,
       color:        client.color    || '#1a4a2e',
       language:     client.language || 'es',
       active:       client.active !== false,
