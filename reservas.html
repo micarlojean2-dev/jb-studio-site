@@ -113,6 +113,7 @@
       <div class="filters">
         <button class="filter-btn active" data-f="proximas" onclick="setFilter('proximas',this)">Próximas</button>
         <button class="filter-btn" data-f="canceladas" onclick="setFilter('canceladas',this)">Canceladas</button>
+        <button class="filter-btn" data-f="reprogramadas" onclick="setFilter('reprogramadas',this)">Reprogramadas</button>
       </div>
       <div class="sheet" id="sheet"></div>
       <div class="updated" id="updated"></div>
@@ -250,7 +251,8 @@
     if (activeFilter === 'canceladas') {
       return allData.filter(function (r) { return r.estado === 'cancelada' || r.estado === 'rechazada'; });
     }
-    // Próximas: todo lo que no está cancelado.
+    if (activeFilter === 'reprogramadas') return allData.filter(function (r) { return r.estado === 'reprogramada'; });
+    // Próximas excludes cancelled and historical reprogramming-only entries.
     return allData.filter(function (r) { return r.estado !== 'cancelada' && r.estado !== 'rechazada'; });
   }
 
@@ -277,11 +279,8 @@
 
   function cardHTML(r) {
     var e = estadoInfo(r);
-    var notes = String(r.notes == null ? '' : r.notes).trim();
-    // Notas: solo si existen. Si no, no se muestra absolutamente nada.
-    var notesHTML = notes
-      ? '<div class="rnotes"><div class="rnotes-t">📝 Notas</div>' + esc(notes) + '</div>'
-      : '';
+    var special = String(r.specialRequests == null ? (r.notes || '') : r.specialRequests).trim();
+    var notesHTML = '<div class="rnotes"><div class="rnotes-t">Peticiones especiales</div>' + esc(special || 'Sin peticiones especiales') + '</div>';
     var creada = fechaCreacion(r.fechaSolicitud);
     return '<div class="rcard">' +
         '<div class="rrow"><span class="ic">👤</span><span class="rname">' + esc(r.nombre || '—') + '</span></div>' +
@@ -293,6 +292,8 @@
         fila('✂️', 'Barbero', r.barberPreference) +
         fila('📞', 'Teléfono', r.telefono) +
         fila('✉️', 'Correo', r.email) +
+        (r.estado === 'cancelada' ? fila('🗓️', 'Cancelada', r.fechaCancelacion ? new Date(r.fechaCancelacion).toLocaleString('es') : '') + fila('👤', 'Por', r.cancelledBy || '') : '') +
+        (r.estado === 'reprogramada' ? fila('↔️', 'Antes', (r.fechaAnterior || '') + ' ' + (r.horaAnterior || '')) : '') +
         notesHTML +
         '<div class="rfoot"><span class="estado ' + e.cls + '">' + e.txt + '</span>' +
           (creada ? '<span class="rcreated">' + esc(creada) + '</span>' : '') +

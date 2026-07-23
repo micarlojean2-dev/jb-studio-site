@@ -24,12 +24,12 @@ console.log('1. Shared chat requirements and extraction');
 {
   const restaurant = { templateId: 'restaurant' };
   const barber = { templateId: 'barber', staff: [{ id: 'ana', name: 'Ana' }] };
-  ok(CORE.bookingRequirements(restaurant, {}).join(',') === 'nombre,contacto,fecha,hora,personas',
-    'restaurant requires name, contact, date/time and party size only');
-  ok(CORE.bookingRequirements(barber, {}).join(',') === 'nombre,contacto,fecha,hora,servicio',
-    'barber requires name, contact, date/time and service');
-  ok(CORE.bookingRequirements({}, {}).join(',') === 'nombre,telefono,email,fecha,hora,servicio',
-    'legacy Spa/Bella requirements are unchanged');
+  ok(CORE.bookingRequirements(restaurant, {}).join(',') === 'nombre,contacto,email,fecha,hora,personas,specialRequests',
+    'restaurant requires special requests before review');
+  ok(CORE.bookingRequirements(barber, {}).join(',') === 'nombre,contacto,email,fecha,hora,servicio,specialRequests',
+    'barber requires special requests before review');
+  ok(CORE.bookingRequirements({}, {}).join(',') === 'nombre,telefono,email,fecha,hora,servicio,specialRequests',
+    'legacy Spa/Bella also requires special requests');
   const table = CORE.extractBooking('Somos 4, mesa junto a la ventana', [], hours, 'es', restaurant);
   ok(table.personas === '4' && table.tablePreference === 'mesa junto a la ventana',
     'restaurant extracts party size and table preference');

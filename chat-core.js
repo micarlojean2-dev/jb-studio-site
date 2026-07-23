@@ -255,16 +255,16 @@ window.JBChatCore = (function () {
   var RESUMEN_ICONOS = {
       nombre: '👤', servicio: '✂️', fecha: '📅', hora: '⏰',
       personas: '👥', partySize: '👥', telefono: '📞', email: '✉️', contacto: '📞', nota: '📝',
-      tablePreference: '🪑', barberPreference: '✂️'
+      tablePreference: '🪑', barberPreference: '✂️', specialRequests: '📝'
     };
 
   var RESUMEN_LABEL = {
       es: { nombre: 'Nombre', servicio: 'Servicio', fecha: 'Fecha', hora: 'Hora',
             personas: 'Personas', partySize: 'Personas', telefono: 'Teléfono', email: 'Email', contacto: 'Contacto', nota: 'Nota',
-            tablePreference: 'Mesa', barberPreference: 'Barbero' },
+             tablePreference: 'Mesa', barberPreference: 'Barbero', specialRequests: 'Peticiones especiales' },
       en: { nombre: 'Name', servicio: 'Service', fecha: 'Date', hora: 'Time',
             personas: 'People', partySize: 'People', telefono: 'Phone', email: 'Email', contacto: 'Contact', note: 'Note',
-            tablePreference: 'Table preference', barberPreference: 'Barber preference' }
+             tablePreference: 'Table preference', barberPreference: 'Barber preference', specialRequests: 'Special requests' }
     };
 
   var BOOKING_STEPS = [
@@ -275,7 +275,7 @@ window.JBChatCore = (function () {
       { field: 'hora',     ask: { es: '¿A qué hora? (ej: 3:00 PM)',                             en: 'What time? (e.g. 3:00 PM)' } },
       { field: 'servicio', ask: { es: '¿Qué servicio te gustaría?',                                en: 'Which service would you like?' } },
       { field: 'personas', ask: { es: '¿Para cuántas personas sería? (escribe 1 si es solo para ti)', en: 'For how many people? (write 1 if it is just you)' } },
-      { field: 'nota',     ask: { es: '¿Alguna nota adicional? (escribe "no" si no tienes ninguna)', en: 'Any additional notes? (write "no" if none)' } },
+      { field: 'specialRequests', ask: { es: '¿Tienes alguna petición especial? Escribe "No" si no tienes ninguna.', en: 'Do you have any special requests? Write "No" if none.' } },
     ];
 
   var CANCEL_STEPS = [
@@ -332,21 +332,22 @@ window.JBChatCore = (function () {
   function bookingRequirements(cfg, data) {
     var template = templateId(cfg);
     var required = template === 'restaurant'
-      ? ['nombre', 'contacto', 'fecha', 'hora', 'personas']
+        ? ['nombre', 'contacto', 'email', 'fecha', 'hora', 'personas', 'specialRequests']
       : template === 'barber'
-        ? ['nombre', 'contacto', 'fecha', 'hora', 'servicio']
-        : ['nombre', 'telefono', 'email', 'fecha', 'hora', 'servicio'];
+        ? ['nombre', 'contacto', 'email', 'fecha', 'hora', 'servicio', 'specialRequests']
+        : ['nombre', 'telefono', 'email', 'fecha', 'hora', 'servicio', 'specialRequests'];
     return required.filter(function (field) {
       if (field === 'contacto') return !(data.telefono || data.email || data.contacto);
+      if (field === 'specialRequests') return data.specialRequests === undefined;
       return !data[field];
     });
   }
 
   function summaryFields(cfg) {
     var template = templateId(cfg);
-    if (template === 'restaurant') return ['nombre', 'personas', 'fecha', 'hora', 'tablePreference', 'telefono', 'email'];
-    if (template === 'barber') return ['nombre', 'servicio', 'fecha', 'hora', 'barberPreference', 'telefono', 'email'];
-    return ['nombre', 'servicio', 'fecha', 'hora', 'personas', 'telefono', 'email'];
+    if (template === 'restaurant') return ['nombre', 'personas', 'fecha', 'hora', 'tablePreference', 'telefono', 'email', 'specialRequests'];
+    if (template === 'barber') return ['nombre', 'servicio', 'fecha', 'hora', 'barberPreference', 'telefono', 'email', 'specialRequests'];
+    return ['nombre', 'servicio', 'fecha', 'hora', 'personas', 'telefono', 'email', 'specialRequests'];
   }
 
   function extractBooking(text, menu, businessHours, lang, cfg) {

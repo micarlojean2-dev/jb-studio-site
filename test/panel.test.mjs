@@ -1,5 +1,5 @@
-// Panel de reservas (reservas.html): la tarjeta muestra 📝 Notas solo cuando
-// existen, con iconos, badge y fecha de creación. Se carga el HTML real en
+// Panel de reservas (reservas.html): la tarjeta muestra siempre las peticiones
+// especiales, con iconos, badge y fecha de creación. Se carga el HTML real en
 // jsdom, se inyectan reservas y se llama a render(). Requiere jsdom.
 // Ejecutar: node test/panel.test.mjs
 import { readFileSync } from 'node:fs';
@@ -40,13 +40,13 @@ console.log('1. Estructura de tarjetas');
 ok(cards.length === 2, 'se renderiza una tarjeta por reserva');
 ok(conNotas && /👤|💆|📅|🕒|📞|✉️/.test(conNotas.textContent), 'la tarjeta usa los iconos de campo');
 
-console.log('2. Panel MOSTRANDO notas');
+console.log('2. Panel MOSTRANDO peticiones especiales');
 ok(conNotas && conNotas.querySelector('.rnotes'), 'la reserva con notas tiene bloque .rnotes');
-ok(conNotas && conNotas.textContent.includes('📝') && conNotas.textContent.includes('alérgico a los aceites'), 'muestra el texto de la nota');
+ok(conNotas && conNotas.textContent.includes('Peticiones especiales') && conNotas.textContent.includes('alérgico a los aceites'), 'muestra el texto de la petición');
 
-console.log('3. Panel OCULTANDO notas');
-ok(sinNotas && !sinNotas.querySelector('.rnotes'), 'la reserva sin notas NO tiene bloque de notas');
-ok(sinNotas && !sinNotas.textContent.includes('📝'), 'no aparece el icono de notas ni "Sin notas"/"Ninguna"');
+console.log('3. Panel SIN peticiones');
+ok(sinNotas && sinNotas.querySelector('.rnotes'), 'la reserva sin peticiones conserva el bloque');
+ok(sinNotas && sinNotas.textContent.includes('Sin peticiones especiales'), 'muestra el estado vacío canónico');
 
 console.log('4. Badge y fecha de creación');
 ok(conNotas && conNotas.querySelector('.estado.nueva'), 'badge Nueva (verde) para pendiente');
@@ -62,9 +62,9 @@ console.log('6. Compatibilidad: reserva vieja sin campo notes no rompe');
   window.allData = [{ nombre: 'Viejo', servicio: 'X', fecha: 'ayer', hora: '9:00', estado: 'pendiente' }];
   window.render();
   const c = doc.getElementById('sheet').querySelector('.rcard');
-  ok(c && !c.textContent.includes('📝') && c.textContent.includes('Viejo'), 'renderiza sin notes (undefined) sin error');
+  ok(c && c.textContent.includes('Sin peticiones especiales') && c.textContent.includes('Viejo'), 'renderiza sin notes (undefined) sin error');
 }
 
 console.log('');
 if (fallos) { console.error(`❌ ${fallos} aserción(es) fallaron`); process.exit(1); }
-console.log('✅ Panel de reservas verificado (notas condicionales, iconos, badge, fecha)');
+console.log('✅ Panel de reservas verificado (peticiones especiales, iconos, badge, fecha)');

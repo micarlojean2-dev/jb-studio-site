@@ -752,7 +752,7 @@ function extractBooking(text, menu) {
     return true;
   }
 
-  var BARE_OK = { nombre: 1, telefono: 1, email: 1, contacto: 1 };
+   var BARE_OK = { nombre: 1, telefono: 1, email: 1, contacto: 1, specialRequests: 1 };
   function bookingFaltan() {
     return CORE.bookingRequirements(cfg, bookingData);
   }
@@ -773,6 +773,15 @@ function extractBooking(text, menu) {
     bookingPending = completo ? null : faltan[0];
     // The model never speaks for a complete booking; only the POST decides it.
     if (completo) { showBookingSummary(); return; }
+    if (bookingPending === 'specialRequests') {
+      var requestQuestion = cfg.templateId === 'restaurant'
+        ? '¿Tienes alguna alergia, intolerancia, preferencia de mesa o petición especial?'
+        : cfg.templateId === 'barber'
+          ? '¿Tienes alguna preferencia de estilo, diseño, sensibilidad o petición especial?'
+          : '¿Tienes alguna sensibilidad, alergia, embarazo, lesión o petición especial?';
+      addMsg('bot', requestQuestion + ' Escribe "No" si no tienes ninguna.');
+      return;
+    }
     busy = true; inp.disabled = true; snd.disabled = true;
     showTyping();
     var body = { clientId: clientId, messages: msgs, booking: { captured: bookingCaptured(), faltan: faltan } };
@@ -977,7 +986,7 @@ function extractBooking(text, menu) {
         }
       } else if (!traidos.length && bookingPending && BARE_OK[bookingPending] &&
                  !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
-        bookingData[bookingPending] = t;
+         bookingData[bookingPending] = bookingPending === 'specialRequests' && /^(no|ninguna|ninguno)$/i.test(t.trim()) ? '' : t;
       }
 
       if (amb) { preguntarHoraAmbigua(amb, lang); return; }

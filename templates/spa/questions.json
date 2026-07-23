@@ -17,14 +17,20 @@
         { "field": "timezone", "label": "Zona horaria", "required": true },
         { "field": "businessHours", "label": "Dias y horarios de atencion", "required": true },
         { "field": "bookingEnabled", "label": "Acepta reservas", "required": true },
-        { "field": "notificationEmails", "label": "Emails para avisos de reserva", "required": true }
+        { "field": "notificationEmails", "label": "Emails para avisos de reserva", "required": true },
+        { "field": "staffCount", "label": "Cuantas personas atienden", "required": true },
+        { "field": "capacityPerSlot", "label": "Cuantas citas pueden aceptar al mismo tiempo", "required": true },
+        { "field": "reservationIntervalMinutes", "label": "Cada cuantos minutos comienza una cita", "required": true },
+        { "field": "specialistChoice", "label": "El cliente puede elegir especialista", "required": true },
+        { "field": "cancellationPolicy", "label": "Politica de cancelacion", "required": true }
       ]
     },
     {
       "id": "services",
       "label": "Servicios",
       "questions": [
-        { "field": "services", "label": "Nombre, precio y duracion de cada servicio", "required": true }
+        { "field": "services", "label": "Nombre, precio y duracion de cada servicio", "required": true },
+        { "field": "additionalInformation", "label": "Agrega cualquier otra informacion que quieras que el asistente sepa.", "required": false }
       ]
     }
   ]

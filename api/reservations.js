@@ -2,6 +2,7 @@ import { Redis }  from '@upstash/redis';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { registrarCambio } from '../lib/changes.js';
 import { Resend } from 'resend';
+import { randomUUID } from 'node:crypto';
 
 const redis  = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -9,6 +10,7 @@ const redis  = new Redis({
 });
 
 const FROM = 'reservas@jbstudio.app';
+const APP_URL = 'https://jbstudio.app';
 
 // ── Rate limit: 5 reservas/IP/hora ──────────────────────────────────────────
 const ipStore = new Map();
@@ -272,6 +274,48 @@ function destinatariosAviso(client) {
     if (v && !vistos[v]) { vistos[v] = 1; out.push(v); }
   });
   return out.slice(0, 10);
+}
+
+function reservationActionUrl(reservation, action) {
+  const params = new URLSearchParams({
+    reservation: reservation.actionToken,
+    action,
+  });
+  return `${APP_URL}/asistente/${encodeURIComponent(reservation.clientId)}?${params}`;
+}
+
+function reservationEmailHtml(client, reservation, type) {
+  const special = reservation.specialRequests || 'Sin peticiones especiales';
+  const service = reservation.servicio || (reservation.partySize ? `${reservation.partySize} personas` : 'Reserva');
+  const title = type === 'rescheduled' ? 'Reserva reprogramada' : 'Reserva confirmada';
+  const intro = type === 'rescheduled' ? 'fue reprogramada.' : 'está confirmada.';
+  return shell(`<p style="font-size:15px;line-height:1.55">Tu reserva en <strong>${esc(client.businessName)}</strong> ${intro}</p>
+    <p style="font-size:14px;line-height:1.7"><strong>${esc(service)}</strong><br>${esc(reservation.fecha)} · ${esc(reservation.hora)}${reservation.partySize ? `<br>${esc(reservation.partySize)} personas` : ''}<br><strong>Peticiones especiales:</strong> ${esc(special)}</p>
+    <p style="margin:20px 0 0"><a href="${esc(reservationActionUrl(reservation, 'cancel'))}" style="display:inline-block;background:#b23b3b;color:#fff;text-decoration:none;padding:11px 16px;border-radius:8px;font-weight:600">Cancelar</a> <a href="${esc(reservationActionUrl(reservation, 'reschedule'))}" style="display:inline-block;background:${esc(client.color || '#1a4a2e')};color:#fff;text-decoration:none;padding:11px 16px;border-radius:8px;font-weight:600">Reagendar</a></p>`,
+    title, client.color || '#1a4a2e', client.businessName || 'Reserva');
+}
+
+async function sendReservationEmails(client, reservation, type) {
+  if (!process.env.RESEND_API_KEY) return { customer: false, owner: false, skipped: true };
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const recipients = destinatariosAviso(client);
+  const subject = type === 'cancelled' ? `${client.businessName} - reserva cancelada`
+    : type === 'rescheduled' ? `${client.businessName} - reserva reprogramada`
+    : `${client.businessName} - reserva confirmada`;
+  const details = reservationEmailHtml(client, reservation, type);
+  const ownerHtml = shell(`<p style="font-size:15px;line-height:1.55"><strong>${esc(reservation.nombre)}</strong>: ${esc(reservation.servicio || `${reservation.partySize || ''} personas`)}</p><p>${esc(reservation.fecha)} · ${esc(reservation.hora)}</p><p><strong>Peticiones especiales:</strong> ${esc(reservation.specialRequests || 'Sin peticiones especiales')}</p>`, subject, client.color || '#1a4a2e', client.businessName || 'Reserva');
+  const result = { customer: false, owner: false, skipped: false };
+  if (reservation.email) {
+    const r = await resend.emails.send({ from: FROM, to: reservation.email, subject, html: details });
+    if (r?.error) throw new Error(r.error.message || 'customer email failed');
+    result.customer = true;
+  }
+  if (recipients.length) {
+    const r = await resend.emails.send({ from: FROM, to: recipients, subject, html: ownerHtml });
+    if (r?.error) throw new Error(r.error.message || 'owner email failed');
+    result.owner = true;
+  }
+  return result;
 }
 
 // Dos citas chocan si sus intervalos se pisan. Comparar solo la hora de inicio
@@ -672,7 +716,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes } = req.body || {};
+  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, action, actionToken } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -684,12 +728,51 @@ export default async function handler(req, res) {
     if (!client)        return res.status(404).json({ error: 'Client not found' });
     if (!client.active) return res.status(403).json({ error: 'Client inactive' });
 
+    // Reprogramming is intentionally handled by this existing endpoint so the
+    // Hobby function limit stays unchanged. The random token from the email is
+    // the authority; no browser session or contact information is trusted.
+    if (action === 'reschedule') {
+      if (!actionToken || !fecha || !hora) return res.status(400).json({ error: 'actionToken, fecha and hora are required' });
+      const keys = await redis.keys(`reservations:${clientId}:*`);
+      const items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+      const index = items.findIndex((item) => item && item.actionToken === actionToken);
+      if (index < 0) return res.status(404).json({ error: 'Reservation not found' });
+      const existing = items[index];
+      if (!activa(existing)) return res.status(409).json({ error: 'Reservation is not active' });
+      const candidate = {
+        ...existing,
+        fecha: String(fecha).slice(0, 60),
+        fechaISO: parseFechaISO(fecha, nowEnZona(client.timezone)),
+        hora: String(hora).slice(0, 30),
+        horaISO: normalizeHora(hora),
+      };
+      const otherReservations = items.filter((item, itemIndex) => item && itemIndex !== index);
+      const checkedClient = { ...client, __reservationBarberPreference: candidate.barberPreference };
+      const availability = validarReserva(checkedClient, candidate.fechaISO, candidate.horaISO, candidate.servicio, undefined, otherReservations);
+      if (!availability.ok) return res.status(200).json({ ok: false, ...availability });
+      candidate.estado = 'reprogramada';
+      candidate.fechaAnterior = existing.fecha;
+      candidate.horaAnterior = existing.hora;
+      candidate.fechaReprogramacion = new Date().toISOString();
+      await redis.set(keys[index], candidate);
+      const aviso = await registrarCambio(clientId, {
+        type: 'rescheduled', reservationId: keys[index], nombre: candidate.nombre,
+        servicio: candidate.servicio, fecha: candidate.fecha, hora: candidate.hora,
+        prevFecha: existing.fecha, prevHora: existing.hora, notes: candidate.specialRequests,
+      });
+      let notifications = { customer: false, owner: false, skipped: false };
+      try { notifications = await sendReservationEmails(client, candidate, 'rescheduled'); }
+      catch (emailError) { console.error('[api/reservations] reschedule notification failed:', emailError.message); }
+      return res.status(200).json({ ok: true, reservation: candidate, aviso: { encolado: aviso.ok }, notifications });
+    }
+
     const template = reservationTemplate(client);
     const phone = telefono || (contacto && !String(contacto).includes('@') ? contacto : '');
     const mail = email || (contacto && String(contacto).includes('@') ? contacto : '');
     if (template ? (!phone && !mail) : !phone) {
       return res.status(400).json({ error: template ? 'contact is required' : 'telefono is required' });
     }
+    if (!mail) return res.status(400).json({ error: 'email is required for reservation confirmation' });
     const normalizedPartySize = normalizePersonas(partySize === undefined ? personas : partySize);
     if (template === 'restaurant' && !normalizedPartySize) {
       return res.status(400).json({ error: 'partySize is required for restaurant reservations' });
@@ -723,7 +806,11 @@ export default async function handler(req, res) {
       // Notas del cliente detectadas en la conversación (preferencias, avisos,
       // peticiones). Texto libre, opcional; vacío si el cliente no dijo nada.
       notes:          String(notes || '').slice(0, 800),
-      estado:         'pendiente',
+      // Canonical free-text request. `notes` is retained only for old records.
+      specialRequests: /^(no|ninguna|ninguno|nope)$/i.test(String(specialRequests || '').trim()) ? '' : String(specialRequests || notes || nota || '').slice(0, 800),
+      actionToken:    randomUUID(),
+      estado:         'confirmada',
+      fechaConfirmacion: new Date(ts).toISOString(),
       fechaSolicitud: new Date(ts).toISOString(),
     };
 
@@ -775,15 +862,19 @@ export default async function handler(req, res) {
     await redis.set(key, reservation);
     console.log(`[api/reservations] Saved ${key}`);
 
-    // ── Sin correos inmediatos (Fase D). La cita ya está en la hoja del
-    //    dueño al instante; el aviso va en el resumen diario agrupado, y solo
-    //    si hubo cambios. Aquí solo se encola un evento diminuto (Fase B). ──
     const aviso = await registrarCambio(clientId, {
       type: 'created', reservationId: key,
       nombre: reservation.nombre, servicio: reservation.servicio,
       fecha: reservation.fecha, hora: reservation.hora, telefono: reservation.telefono,
-      notes: reservation.notes,
+      notes: reservation.specialRequests,
     });
+    let notifications = { customer: false, owner: false, skipped: false };
+    try {
+      notifications = await sendReservationEmails(client, reservation, 'created');
+    } catch (emailError) {
+      // A confirmed reservation must never be rolled back just because email failed.
+      console.error('[api/reservations] notification failed:', emailError.message);
+    }
     // La reserva ya está guardada; si el aviso no se encoló, se registra sin
     // ocultarlo y el backend lo reporta abajo (sin confirmación falsa).
     if (!aviso.ok) console.error(`[api/reservations] reserva ${key} guardada pero el aviso NO quedó en cola:`, aviso.error);
@@ -792,11 +883,10 @@ export default async function handler(req, res) {
       ok: true,
       reservationCreated: true,
       reservationId: key,
-      status: reservation.estado,   // 'pendiente'
+      status: reservation.estado,
       // Estado real del encolado del aviso: true = irá en el próximo resumen.
       aviso: { encolado: aviso.ok },
-      // No hay envío inmediato: el aviso al dueño va en el resumen diario.
-      notifications: { owner: { attempted: false, sent: false, count: 0 }, customer: { attempted: false, sent: false } },
+      notifications,
     });
 
   } catch (err) {
@@ -808,4 +898,4 @@ export default async function handler(req, res) {
 // Solo para pruebas unitarias (no se usa en producción).
 export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
-  configuredStaff, duplicateReservation };
+  configuredStaff, duplicateReservation, reservationActionUrl, reservationEmailHtml };

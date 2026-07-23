@@ -1,5 +1,6 @@
 import { Redis }  from '@upstash/redis';
 import { registrarCambio } from '../lib/changes.js';
+import { Resend } from 'resend';
 
 const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -7,6 +8,10 @@ const redis = new Redis({
 });
 
 const FROM = 'reservas@jbstudio.app';
+
+function esc(value) {
+  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 // ── Rate limit: 5 cancelaciones/IP/hora ─────────────────────────────────────
 const ipStore = new Map();
@@ -39,11 +44,11 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, contacto, fecha } = req.body || {};
+  const { clientId, contacto, fecha, actionToken } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
-  if (!contacto || !fecha)
+  if (!actionToken && (!contacto || !fecha))
     return res.status(400).json({ error: 'contacto and fecha are required' });
 
   try {
@@ -60,7 +65,7 @@ export default async function handler(req, res) {
       : await redis.mget(...keys);
 
     const normContacto = normalizeContact(contacto);
-    const normFecha    = String(fecha).toLowerCase().trim();
+    const normFecha    = String(fecha || '').toLowerCase().trim();
 
     // Find most recent pending reservation matching contacto + fecha
     let match     = null;
@@ -68,7 +73,13 @@ export default async function handler(req, res) {
     let matchTs   = 0;
 
     items.forEach((r, i) => {
-      if (!r || r.estado === 'cancelada') return;
+      if (!r) return;
+      if (actionToken && r.actionToken === actionToken) {
+        if (r.estado === 'cancelada') { match = r; matchKey = keys[i]; matchTs = Infinity; }
+        else if (matchTs !== Infinity) { match = r; matchKey = keys[i]; matchTs = Infinity; }
+        return;
+      }
+      if (actionToken || r.estado === 'cancelada') return;
 
       const emailMatch = normalizeContact(r.email)    === normContacto;
       const telMatch   = normalizeContact(r.telefono) === normContacto;
@@ -85,10 +96,15 @@ export default async function handler(req, res) {
 
     if (!match) return res.status(200).json({ found: false });
 
+    // Idempotent secure-email cancellation: once cancelled, no event or email
+    // is emitted again.
+    if (match.estado === 'cancelada') return res.status(200).json({ found: true, alreadyCancelled: true, key: matchKey });
+
     // ── Mark as cancelled ────────────────────────────────────────────────
     const fechaCancelacion = new Date().toISOString();
     match.estado           = 'cancelada';
     match.fechaCancelacion = fechaCancelacion;
+    match.cancelledBy = actionToken ? 'cliente' : 'cliente';
     await redis.set(matchKey, match);
     console.log(`[api/cancel-reservation] Cancelled ${matchKey}`);
 
@@ -99,6 +115,20 @@ export default async function handler(req, res) {
       nombre: match.nombre, servicio: match.servicio, fecha: match.fecha, hora: match.hora,
     });
     if (!aviso.ok) console.error(`[api/cancel-reservation] cancelación ${matchKey} guardada pero el aviso NO quedó en cola:`, aviso.error);
+
+    // Notify immediately when mail is configured. Failure does not undo a
+    // cancellation because the slot must be released regardless.
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        const recipients = Array.isArray(client.notificationEmails) && client.notificationEmails.length
+          ? client.notificationEmails : (client.ownerEmail ? [client.ownerEmail] : []);
+        const subject = `${client.businessName || 'Reserva'} - reserva cancelada`;
+        const html = `<p>La reserva de <strong>${esc(match.nombre)}</strong> para ${esc(match.fecha)} a las ${esc(match.hora)} fue cancelada.</p>`;
+        if (match.email) await resend.emails.send({ from: FROM, to: match.email, subject, html });
+        if (recipients.length) await resend.emails.send({ from: FROM, to: recipients, subject, html });
+      } catch (emailError) { console.error('[api/cancel-reservation] notification failed:', emailError.message); }
+    }
 
     return res.status(200).json({ found: true, key: matchKey, aviso: { encolado: aviso.ok } });
 

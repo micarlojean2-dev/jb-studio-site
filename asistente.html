@@ -363,10 +363,17 @@
   // Campo que DeepSeek está pidiendo ahora: permite guardar una respuesta
   // escueta ("Mike") en el sitio correcto. Solo para campos de texto libre.
   var bookingPending = null;
-  var BARE_OK = { nombre: 1, telefono: 1, email: 1 };
+   var BARE_OK = { nombre: 1, telefono: 1, email: 1, specialRequests: 1 };
   var bookingReview = false;   // el resumen final está a la vista, esperando confirmación
   var submitting = false;      // evita envíos duplicados de la reserva
   var cancelStep  = 0, cancelData  = {};
+  var emailAction = (function () {
+    try {
+      var q = new URLSearchParams(window.location.search);
+      var action = q.get('action'), token = q.get('reservation');
+      return token && (action === 'cancel' || action === 'reschedule') ? { action: action, token: token } : null;
+    } catch (e) { return null; }
+  })();
 
   var CANCEL_TRIGGERS  = /\bcancel(ar)?\b|quiero cancelar/i;
   var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserva|hora libre|turno|quiero una cita/i;
@@ -790,7 +797,7 @@ function extractBooking(text, menu) {
 
   // Campos que una reserva necesita antes de pasar al resumen. La duración,
   // la capacidad y la disponibilidad las valida el servidor al crear.
-  var BARE_OK = { nombre: 1, telefono: 1, email: 1, contacto: 1 };
+   var BARE_OK = { nombre: 1, telefono: 1, email: 1, contacto: 1, specialRequests: 1 };
   function bookingFaltan() {
     return CORE.bookingRequirements(cfg, bookingData);
   }
@@ -812,6 +819,15 @@ function extractBooking(text, menu) {
     bookingPending = completo ? null : faltan[0];
     // The model never speaks for a complete booking; only the POST decides it.
     if (completo) { showBookingSummary(); return; }
+    if (bookingPending === 'specialRequests') {
+      var requestQuestion = cfg.templateId === 'restaurant'
+        ? '¿Tienes alguna alergia, intolerancia, preferencia de mesa o petición especial?'
+        : cfg.templateId === 'barber'
+          ? '¿Tienes alguna preferencia de estilo, diseño, sensibilidad o petición especial?'
+          : '¿Tienes alguna sensibilidad, alergia, embarazo, lesión o petición especial?';
+      addMsg('bot', requestQuestion + ' Escribe "No" si no tienes ninguna.');
+      return;
+    }
     busy = true; inp.disabled = true; snd.disabled = true;
     showTyping();
     var body = { clientId: clientId, messages: msgs, booking: { captured: bookingCaptured(), faltan: faltan } };
@@ -986,10 +1002,47 @@ function extractBooking(text, menu) {
       });
   }
 
+  function submitEmailAction(data) {
+    var lang = cfg.language === 'en' ? 'en' : 'es';
+    busy = true; inp.disabled = true; snd.disabled = true;
+    var url = emailAction.action === 'cancel' ? '/api/cancel-reservation' : '/api/reservations';
+    var body = emailAction.action === 'cancel'
+      ? { clientId: clientId, actionToken: emailAction.token }
+      : { clientId: clientId, action: 'reschedule', actionToken: emailAction.token, fecha: data.fecha, hora: data.hora };
+    fetch(API + url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.found || d.ok) {
+          addMsg('bot', emailAction.action === 'cancel'
+            ? (lang === 'en' ? '✅ Your reservation has been cancelled.' : '✅ Tu reserva fue cancelada correctamente.')
+            : (lang === 'en' ? '✅ Your reservation has been rescheduled.' : '✅ Tu reserva fue reprogramada correctamente.'));
+          emailAction = null;
+        } else addMsg('bot', d.mensaje || (lang === 'en' ? 'That time is not available. Please choose another time.' : 'Ese horario no está disponible. Elige otro horario.'));
+      })
+      .catch(function () { addMsg('bot', lang === 'en' ? 'Sorry, please try again.' : 'No pudimos completar la acción. Inténtalo de nuevo.'); })
+      .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
+  }
+
   function send(text) {
     if (busy || !text.trim()) return;
     var t = text.trim();
     var lang = cfg.language === 'en' ? 'en' : 'es';
+
+    if (emailAction) {
+      addMsg('user', t);
+      if (emailAction.action === 'cancel') {
+        if (CORE.esConfirmacion(t)) submitEmailAction({});
+        else addMsg('bot', lang === 'en' ? 'No changes were made.' : 'No se realizó ningún cambio.');
+        return;
+      }
+      var requested = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
+      if (!requested.fecha || !requested.hora) {
+        addMsg('bot', lang === 'en' ? 'Please provide the new date and time.' : 'Indica la nueva fecha y hora.');
+        return;
+      }
+      submitEmailAction(requested);
+      return;
+    }
 
     if (cancelStep > 0) {
       if (/^(salir|exit)$/i.test(t)) {
@@ -1051,9 +1104,9 @@ function extractBooking(text, menu) {
       // Respuesta escueta al dato que se estaba pidiendo (ej. "Mike" tras
       // "¿tu nombre?"). Solo para campos donde el texto crudo es seguro; la
       // hora/fecha/servicio necesitan la extracción para normalizarse.
-      else if (!traidos.length && bookingPending && BARE_OK[bookingPending] &&
-               !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
-        bookingData[bookingPending] = t;
+       else if (!traidos.length && bookingPending && BARE_OK[bookingPending] &&
+                !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
+         bookingData[bookingPending] = bookingPending === 'specialRequests' && /^(no|ninguna|ninguno)$/i.test(t.trim()) ? '' : t;
       }
 
       if (amb) { preguntarHoraAmbigua(amb, lang); return; }
@@ -1174,7 +1227,11 @@ function extractBooking(text, menu) {
         addMsg('bot', g);
         msgs.push({ role: 'assistant', content: g });
         save();
-        renderQuickActions();
+        if (emailAction) {
+          addMsg('bot', emailAction.action === 'cancel'
+            ? (cfg.language === 'en' ? 'Do you confirm that you want to cancel this reservation?' : '¿Confirmas que quieres cancelar esta reserva?')
+            : (cfg.language === 'en' ? 'Tell me the new date and time you prefer.' : 'Indica la nueva fecha y hora que prefieres.'));
+        } else renderQuickActions();
       }
       setTimeout(function () { inp.focus(); }, 200);
     })
