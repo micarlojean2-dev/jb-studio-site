@@ -63,11 +63,10 @@ async function confirmedMedia(clientId) {
   return { gallery: gallery.length, menuItems };
 }
 
-function needsRestaurantMenuConfirmation(client, messages) {
+function needsRestaurantMedicalWarning(client, messages) {
   if (client.templateId !== 'restaurant') return false;
   const text = String([...messages].reverse().find(message => message.role === 'user')?.content || '');
-  if (/alerg|gluten|contaminaci[oó]n|intoleran/i.test(text)) return true;
-  return /(?:puedo|se puede|quiero|pedido|prepar)[^?.!]{0,80}(?:sin\s+\S+|cambiar|quitar|agregar|modificar)/i.test(text);
+  return /alerg|intoleran|cel[ií]ac|no\s+puedo\s+consumir|contaminaci[oó]n\s+cruzada|reacci[oó]n\s+al[eé]rgica/i.test(text);
 }
 
 function buildSystemPrompt(basePrompt, client, media) {
@@ -343,10 +342,10 @@ async function callProvider(provider, messages, systemPrompt, client, clientId) 
 
   trackUsage(clientId, inputTokens, outputTokens, estimatedCost);
 
-  // A model cannot verify kitchen operations. Override its otherwise helpful
-  // guess when the visitor asks about an unlisted modification or food safety.
-  if (needsRestaurantMenuConfirmation(client, messages)) {
-    text = 'No puedo confirmar si podemos hacer esa modificación ni verificar alérgenos o contaminación cruzada. El equipo del restaurante debe confirmarlo directamente al hacer tu pedido.';
+  // Only health-related requests need an allergen disclaimer. Ordinary kitchen
+  // preferences are recorded with the reservation and never get this warning.
+  if (needsRestaurantMedicalWarning(client, messages)) {
+    text = 'Gracias por avisarnos. Anotaré tu restricción alimentaria para que el restaurante la vea. Sin embargo, no puedo garantizar la ausencia de alérgenos o contaminación cruzada; el restaurante deberá confirmarlo directamente.';
   }
 
   const catalogEnabled = !client.features || client.features.catalog !== false;

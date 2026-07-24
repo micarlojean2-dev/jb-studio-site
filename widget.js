@@ -977,7 +977,7 @@ function extractBooking(text, menu) {
 
       // Preferencias que el cliente dice en su propio mensaje ("prefiero una
       // habitación silenciosa"), sin depender de que DeepSeek emita [NOTA:].
-      var notasU = CORE.extractNotasUsuario(t);
+       var notasU = CORE.extractNotasUsuario(t, cfg);
       if (notasU.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasU);
 
       if (!traidos.length && CORRECCION_RE.test(t)) {
@@ -1018,7 +1018,7 @@ function extractBooking(text, menu) {
       delete preExtraido.__horaAmbigua;
       Object.keys(preExtraido).forEach(function (k) { bookingData[k] = preExtraido[k]; });
 
-      var notasIni = CORE.extractNotasUsuario(t);
+       var notasIni = CORE.extractNotasUsuario(t, cfg);
       if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
 
       if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }

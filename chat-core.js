@@ -218,6 +218,8 @@ window.JBChatCore = (function () {
 
   // Cortesías/genéricos que NUNCA son nota, aunque cuelen por casualidad.
   var NOTA_USER_GENERICO = /^(?:s[ií]|no|ok(?:ay)?|vale|gracias|perfecto|genial|est[aá]\s+bien|de\s+acuerdo|correcto|listo|claro|buenas?|hola|adi[oó]s)[\s.!]*$/i;
+  var FOOD_PREFERENCE_TRIGGER = /\b(?:sin\s+(?:queso|cebolla|tomate|pepinillos?|mayonesa|mostaza|hielo|picante)|poc[ao]\s+(?:sal|picante)|mucho\s+picante|extra\s+(?:queso|salsa)|salsa\s+aparte|aderezo\s+aparte|bien\s+cocid[ao]|t[eé]rmino\s+medio|muy\s+cocid[ao]|(?:con|ponle)\s+doble\s+carne|con\s+tocino|cambiar\s+papas\s+por\s+ensalada)\b/i;
+  var FOOD_MEDICAL_TRIGGER = /alerg|intoleran|cel[ií]ac|no\s+puedo\s+consumir|contaminaci[oó]n\s+cruzada|reacci[oó]n\s+al[eé]rgica/i;
 
   function limpiarFraseNota(frag) {
     return String(frag || '')
@@ -232,7 +234,7 @@ window.JBChatCore = (function () {
       .trim();
   }
 
-  function extractNotasUsuario(text) {
+  function extractNotasUsuario(text, cfg) {
     var t = String(text || '');
     // Trocear en cláusulas por puntuación fuerte, saltos y la conjunción " y ",
     // para separar "mi correo es x@y.com Y prefiero silencio" en dos ideas.
@@ -241,9 +243,11 @@ window.JBChatCore = (function () {
     clausulas.forEach(function (c) {
       var frag = c.trim();
       if (!frag) return;
-      if (!NOTA_USER_TRIGGER.test(frag)) return;
+      var foodPreference = templateId(cfg) === 'restaurant' && FOOD_PREFERENCE_TRIGGER.test(frag);
+      var foodMedical = templateId(cfg) === 'restaurant' && FOOD_MEDICAL_TRIGGER.test(frag);
+      if (!NOTA_USER_TRIGGER.test(frag) && !foodPreference && !foodMedical) return;
       // "necesito reservar", "quiero una cita": intención de reserva, no nota.
-      if (BOOKING_TRIGGERS.test(frag)) return;
+      if (BOOKING_TRIGGERS.test(frag) && !foodPreference && !foodMedical) return;
       var nota = limpiarFraseNota(frag);
       if (nota.length < 3) return;
       if (NOTA_USER_GENERICO.test(nota)) return;

@@ -75,6 +75,23 @@ console.log('7. "soy <preferencia>" NO se toma como nombre (no pisa el nombre re
   ok(d.nombre === 'Ana', '"soy Ana" sí captura el nombre');
 }
 
+console.log('8. Preferencias normales de restaurante se guardan sin advertencia médica');
+{
+  const restaurant = { templateId: 'restaurant' };
+  const one = CORE.extractNotasUsuario('Quiero una Hamburguesa Clásica sin queso', restaurant);
+  ok(one.join('|') === 'Quiero una Hamburguesa Clásica sin queso', 'captura modificación dentro de una reserva');
+  const several = CORE.extractNotasUsuario('sin cebolla y salsa aparte', restaurant);
+  ok(several.join('|') === 'sin cebolla|salsa aparte', 'captura preferencias cortas acumulables');
+  ok(CORE.extractNotasUsuario('sin queso', { templateId: 'spa' }).length === 0, 'no convierte frases de comida en notas de otras plantillas');
+}
+
+console.log('9. Restricciones médicas del restaurante también se guardan');
+{
+  const restaurant = { templateId: 'restaurant' };
+  const medical = CORE.extractNotasUsuario('Tengo alergia a los cacahuates', restaurant);
+  ok(medical.join('|') === 'Tengo alergia a los cacahuates', 'conserva la restricción explícita');
+}
+
 console.log('');
 if (fallos) { console.error(`❌ ${fallos} aserción(es) fallaron`); process.exit(1); }
 console.log('✅ Captura de notas verificada');
