@@ -99,10 +99,25 @@
   var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserva|hora libre|turno|quiero una cita/i;
 
   try { msgs = JSON.parse(sessionStorage.getItem(SESS) || '[]'); } catch (e) { msgs = []; }
+  var BOOKING_SESS = SESS + '_booking';
+  try {
+    var restoredBooking = JSON.parse(sessionStorage.getItem(BOOKING_SESS) || 'null');
+    if (restoredBooking && typeof restoredBooking === 'object') {
+      bookingStep = restoredBooking.bookingStep || 0;
+      bookingData = restoredBooking.bookingData || {};
+      bookingPending = restoredBooking.bookingPending || null;
+      bookingReview = !!restoredBooking.bookingReview;
+      horaPendiente = restoredBooking.horaPendiente || null;
+    }
+  } catch (e) {}
   if (msgs.length) greeted = true;
 
   function save() {
-    try { sessionStorage.setItem(SESS, JSON.stringify(msgs.slice(-40))); } catch (e) {}
+    try {
+      sessionStorage.setItem(SESS, JSON.stringify(msgs.slice(-60)));
+      if (bookingStep) sessionStorage.setItem(BOOKING_SESS, JSON.stringify({ bookingStep: bookingStep, bookingData: bookingData, bookingPending: bookingPending, bookingReview: bookingReview, horaPendiente: horaPendiente, language: cfg.language }));
+      else sessionStorage.removeItem(BOOKING_SESS);
+    } catch (e) {}
   }
 
   // Halo del pulso: mismo color del negocio, translúcido. Si el color no es
@@ -728,7 +743,7 @@ function extractBooking(text, menu) {
   // especial: ya es el último paso de la lista.
   // Cuando la hora podría ser AM o PM y el horario no lo aclara, se pregunta
   // en vez de decidir por el cliente. Una cita a las 4 AM no la quiere nadie.
-  var horaPendiente = null;
+   var horaPendiente = horaPendiente || null;
 
   function preguntarHoraAmbigua(amb, lang) {
     horaPendiente = amb;
@@ -764,6 +779,19 @@ function extractBooking(text, menu) {
     return out;
   }
 
+  function recordFoodRequest(text, lang) {
+    var food = CORE.applyFoodPreferences(bookingData.foodPreferences, text, cfg);
+    if (food) {
+      bookingData.foodPreferences = food;
+      bookingData.specialRequests = CORE.foodPreferencesToSpecialRequests(food);
+    }
+    if (CORE.isFoodMedical(text, cfg)) {
+      addMsg('bot', lang === 'en'
+        ? 'Thanks for telling us. I will note this dietary restriction for the restaurant. However, I cannot guarantee the absence of allergens or cross-contamination; the restaurant must confirm it directly.'
+        : 'Gracias por avisarnos. Anotaré tu restricción alimentaria para que el restaurante la vea. Sin embargo, no puedo garantizar la ausencia de alérgenos o contaminación cruzada; el restaurante deberá confirmarlo directamente.');
+    }
+  }
+
   // Cada turno de la reserva lo redacta DeepSeek con el estado estructurado.
   // El frontend sigue siendo dueño del estado y la validación; el modelo nunca
   // confirma ni inventa disponibilidad.
@@ -775,11 +803,11 @@ function extractBooking(text, menu) {
     if (completo) { showBookingSummary(); return; }
     if (bookingPending === 'specialRequests') {
       var requestQuestion = cfg.templateId === 'restaurant'
-        ? '¿Tienes alguna alergia, intolerancia, preferencia de mesa o petición especial?'
+        ? (lang === 'en' ? 'Do you have any allergy, intolerance, table preference, or special request?' : '¿Tienes alguna alergia, intolerancia, preferencia de mesa o petición especial?')
         : cfg.templateId === 'barber'
           ? '¿Tienes alguna preferencia de estilo, diseño, sensibilidad o petición especial?'
           : '¿Tienes alguna sensibilidad, alergia, embarazo, lesión o petición especial?';
-      addMsg('bot', requestQuestion + ' Escribe "No" si no tienes ninguna.');
+      addMsg('bot', requestQuestion + (lang === 'en' ? ' Write "No" if you do not have one.' : ' Escribe "No" si no tienes ninguna.'));
       return;
     }
     busy = true; inp.disabled = true; snd.disabled = true;
@@ -845,11 +873,10 @@ function extractBooking(text, menu) {
         wrap.remove();
         addMsg('user', a.label);
         if (a.ok) { submitBooking(); return; }
-        bookingData = {};
         bookingStep = 1;
         bookingPending = null;
         bookingReview = false;
-        askBookingTurn(lang);
+        addMsg('bot', lang === 'en' ? 'What would you like to change? Your other reservation details will stay the same.' : '¿Qué quieres cambiar? Tus demás datos de reserva se conservarán.');
       });
       wrap.appendChild(b);
     });
@@ -977,8 +1004,9 @@ function extractBooking(text, menu) {
 
       // Preferencias que el cliente dice en su propio mensaje ("prefiero una
       // habitación silenciosa"), sin depender de que DeepSeek emita [NOTA:].
-       var notasU = CORE.extractNotasUsuario(t, cfg);
-      if (notasU.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasU);
+        var notasU = CORE.extractNotasUsuario(t, cfg);
+       if (notasU.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasU);
+       recordFoodRequest(t, lang);
 
       if (!traidos.length && CORRECCION_RE.test(t)) {
         for (var ci = 0; ci < CAMPO_MENCIONADO.length; ci++) {
@@ -989,8 +1017,9 @@ function extractBooking(text, menu) {
          bookingData[bookingPending] = bookingPending === 'specialRequests' && /^(no|ninguna|ninguno)$/i.test(t.trim()) ? '' : t;
       }
 
-      if (amb) { preguntarHoraAmbigua(amb, lang); return; }
-      askBookingTurn(lang);
+       if (amb) { preguntarHoraAmbigua(amb, lang); return; }
+       save();
+       askBookingTurn(lang);
       return;
     }
 
@@ -1018,11 +1047,13 @@ function extractBooking(text, menu) {
       delete preExtraido.__horaAmbigua;
       Object.keys(preExtraido).forEach(function (k) { bookingData[k] = preExtraido[k]; });
 
-       var notasIni = CORE.extractNotasUsuario(t, cfg);
-      if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
+        var notasIni = CORE.extractNotasUsuario(t, cfg);
+       if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
+       recordFoodRequest(t, lang);
 
-      if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
-      askBookingTurn(lang);
+       if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
+       save();
+       askBookingTurn(lang);
       return;
     }
 

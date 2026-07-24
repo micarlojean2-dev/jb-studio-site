@@ -724,7 +724,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, action, actionToken } = req.body || {};
+  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -816,6 +816,14 @@ export default async function handler(req, res) {
       notes:          String(notes || '').slice(0, 800),
       // Canonical free-text request. `notes` is retained only for old records.
       specialRequests: /^(no|ninguna|ninguno|nope)$/i.test(String(specialRequests || '').trim()) ? '' : String(specialRequests || notes || nota || '').slice(0, 800),
+      foodPreferences: template === 'restaurant' && foodPreferences && typeof foodPreferences === 'object' ? {
+        remove: Array.isArray(foodPreferences.remove) ? foodPreferences.remove.slice(0, 20).map(x => String(x).slice(0, 40)) : [],
+        add: Array.isArray(foodPreferences.add) ? foodPreferences.add.slice(0, 20).map(x => String(x).slice(0, 40)) : [],
+        extra: Array.isArray(foodPreferences.extra) ? foodPreferences.extra.slice(0, 20).map(x => String(x).slice(0, 40)) : [],
+        cooking: String(foodPreferences.cooking || '').slice(0, 40),
+        spice: String(foodPreferences.spice || '').slice(0, 40),
+        notes: Array.isArray(foodPreferences.notes) ? foodPreferences.notes.slice(0, 20).map(x => String(x).slice(0, 80)) : [],
+      } : undefined,
       actionToken:    randomUUID(),
       estado:         'confirmada',
       fechaConfirmacion: new Date(ts).toISOString(),

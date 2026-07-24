@@ -218,8 +218,8 @@ window.JBChatCore = (function () {
 
   // Cortesías/genéricos que NUNCA son nota, aunque cuelen por casualidad.
   var NOTA_USER_GENERICO = /^(?:s[ií]|no|ok(?:ay)?|vale|gracias|perfecto|genial|est[aá]\s+bien|de\s+acuerdo|correcto|listo|claro|buenas?|hola|adi[oó]s)[\s.!]*$/i;
-  var FOOD_PREFERENCE_TRIGGER = /\b(?:sin\s+(?:queso|cebolla|tomate|pepinillos?|mayonesa|mostaza|hielo|picante)|poc[ao]\s+(?:sal|picante)|mucho\s+picante|extra\s+(?:queso|salsa)|salsa\s+aparte|aderezo\s+aparte|bien\s+cocid[ao]|t[eé]rmino\s+medio|muy\s+cocid[ao]|(?:con|ponle)\s+doble\s+carne|con\s+tocino|cambiar\s+papas\s+por\s+ensalada)\b/i;
-  var FOOD_MEDICAL_TRIGGER = /alerg|intoleran|cel[ií]ac|no\s+puedo\s+consumir|contaminaci[oó]n\s+cruzada|reacci[oó]n\s+al[eé]rgica/i;
+  var FOOD_PREFERENCE_TRIGGER = /\b(?:sin|without|no|hold|leave\s+out|don\s+t\s+like|extra|more|less|m[aá]s|poc[ao]|poquit[ao]|little|light|mucho|very|doble|double|con|with|ponle|add|on\s+the\s+side|apart\w*|side|solo|only|bien\s+cocid[ao]|muy\s+cocid[ao]|t[eé]rmino\s+medio|medium\s+rare|well\s+done|rare|cambiar\s+papas|swap)\b/i;
+  var FOOD_MEDICAL_TRIGGER = /al[eé]rg|allerg|intoleran|intolerant|cel[ií]ac|celiac|no\s+puedo\s+consumir|cannot\s+(?:eat|have|consume)|contaminaci[oó]n|contamination|reacci[oó]n\s+al[eé]rgica|lactos|dairy/i;
 
   function limpiarFraseNota(frag) {
     return String(frag || '')
@@ -349,7 +349,7 @@ window.JBChatCore = (function () {
 
   function summaryFields(cfg) {
     var template = templateId(cfg);
-    if (template === 'restaurant') return ['nombre', 'personas', 'fecha', 'hora', 'tablePreference', 'telefono', 'email', 'specialRequests'];
+    if (template === 'restaurant') return ['nombre', 'servicio', 'personas', 'fecha', 'hora', 'tablePreference', 'telefono', 'email', 'specialRequests'];
     if (template === 'barber') return ['nombre', 'servicio', 'fecha', 'hora', 'barberPreference', 'telefono', 'email', 'specialRequests'];
     return ['nombre', 'servicio', 'fecha', 'hora', 'personas', 'telefono', 'email', 'specialRequests'];
   }
@@ -361,14 +361,16 @@ window.JBChatCore = (function () {
     // Servicio: solo nombres reales del catálogo. Nunca se inventa uno.
     if (Array.isArray(menu)) {
       var low = t.toLowerCase();
-      var exacto = null, porPalabra = null;
+      var exacto = null, exactoIndex = -1, porPalabra = null;
       menu.forEach(function (m) {
         if (!m || !m.nombre) return;
         var n = String(m.nombre).toLowerCase();
         // El nombre completo en el texto gana siempre: "corte + barba" debe
         // ganar a "corte caballero", que solo coincide por la primera palabra.
-        if (low.indexOf(n) !== -1) {
-          if (!exacto || n.length > exacto.toLowerCase().length) exacto = m.nombre;
+      if (low.indexOf(n) !== -1) {
+        var matchIndex = low.lastIndexOf(n);
+        // The last named menu item wins: "hamburguesa, mejor pizza" means pizza.
+        if (!exacto || matchIndex > exactoIndex || (matchIndex === exactoIndex && n.length > exacto.toLowerCase().length)) { exacto = m.nombre; exactoIndex = matchIndex; }
           return;
         }
         var head = n.split(/\s+/)[0].replace(/[^a-záéíóúñ]/gi, '');
@@ -526,6 +528,78 @@ window.JBChatCore = (function () {
       return base.join(' · ');
     }
 
+  function isFoodMedical(text, cfg) {
+    return templateId(cfg) === 'restaurant' && FOOD_MEDICAL_TRIGGER.test(String(text || ''));
+  }
+
+  function emptyFoodPreferences() {
+    return { remove: [], add: [], extra: [], cooking: '', spice: '', notes: [] };
+  }
+
+  function hasWord(text, words) {
+    return words.some(function (word) { return new RegExp('(?:^|\\s)' + word + '(?:$|\\s|[.,;!?])', 'i').test(text); });
+  }
+
+  // Normalized food preferences are the source of truth. The rendered text is
+  // derived later, so a customer's latest decision replaces its earlier one.
+  function applyFoodPreferences(previous, text, cfg) {
+    if (templateId(cfg) !== 'restaurant') return null;
+    var source = String(text || '').toLowerCase().replace(/[’']/g, ' ').replace(/[^a-záéíóúüñ\s-]/gi, ' ');
+    if (!FOOD_PREFERENCE_TRIGGER.test(source)) return null;
+    var out = previous && typeof previous === 'object' ? {
+      remove: (previous.remove || []).slice(), add: (previous.add || []).slice(), extra: (previous.extra || []).slice(),
+      cooking: previous.cooking || '', spice: previous.spice || '', notes: (previous.notes || []).slice(),
+    } : emptyFoodPreferences();
+    var ingredients = [
+      ['cheese', ['queso', 'keso', 'qeso', 'cheese']], ['onions', ['cebolla', 'cebollas', 'seboya', 'onion', 'onions']],
+      ['tomatoes', ['tomate', 'tomates', 'tomato', 'tomatoes']], ['pickles', ['pepinillo', 'pepinillos', 'pickle', 'pickles']],
+      ['mayo', ['mayonesa', 'mayo']], ['mustard', ['mostaza', 'mustard']], ['ketchup', ['catsup', 'ketchup']],
+      ['ice', ['hielo', 'ice']], ['bacon', ['tocino', 'bacon']], ['meat', ['carne', 'meat']], ['sauce', ['salsa', 'sauce']],
+    ];
+    function removeFrom(list, item) { return list.filter(function (x) { return x !== item; }); }
+    function setIngredient(item, mode) {
+      out.remove = removeFrom(out.remove, item); out.add = removeFrom(out.add, item); out.extra = removeFrom(out.extra, item);
+      if (mode === 'remove') out.remove.push(item);
+      if (mode === 'add') out.add.push(item);
+      if (mode === 'extra') out.extra.push(item);
+    }
+    ingredients.forEach(function (entry) {
+      if (!hasWord(source, entry[1])) return;
+      var escaped = entry[1].join('|');
+      var nearRemove = new RegExp('(?:sin|without|no|hold|leave\\s+out|quitar)\\s+(?:the\\s+)?(?:' + escaped + ')', 'i');
+      var nearExtra = new RegExp('(?:extra|more|m[aá]s|doble|double)\\s+(?:' + escaped + ')', 'i');
+      var nearLight = new RegExp('(?:poc[ao]|poquit[ao]|little|light)\\s+(?:' + escaped + ')', 'i');
+      var nearAdd = new RegExp('(?:con|with|add|ponle|d[eé]jale)\\s+(?:the\\s+)?(?:' + escaped + ')', 'i');
+      if (nearRemove.test(source) || (/(?:no\s+me\s+gusta|don\s+t\s+like)/i.test(source) && entry[0] === 'cheese')) setIngredient(entry[0], 'remove');
+      else if (nearExtra.test(source)) setIngredient(entry[0], 'extra');
+      else if (nearAdd.test(source) || (/(?:solo|only)\s+/i.test(source) && entry[0] === 'onions')) setIngredient(entry[0], 'add');
+      else if (nearLight.test(source) && entry[0] === 'sauce' && out.notes.indexOf('light_sauce') === -1) out.notes.push('light_sauce');
+    });
+    if (/(salsa|sauce|aderezo|dressing).{0,20}(apart\w*|on the side)|(?:apart\w*|on the side).{0,20}(salsa|sauce|aderezo|dressing)/i.test(source)) {
+      if (out.notes.indexOf('sauce_on_side') === -1) out.notes.push('sauce_on_side');
+    }
+    if (/(bien|muy)\s+cocid|well\s+done/i.test(source)) out.cooking = 'well_done';
+    else if (/t[eé]rmino\s+medio|medium\s+rare/i.test(source)) out.cooking = 'medium_rare';
+    else if (/\brare\b|poco\s+cocid/i.test(source)) out.cooking = 'rare';
+    if (/(sin|no|less|poco|poca|light).{0,12}(?:picante|spicy)|not\s+spicy/i.test(source)) out.spice = 'no_spice';
+    else if (/(mucho|extra|more|very).{0,12}(?:picante|spicy)|extra\s+spicy/i.test(source)) out.spice = 'extra_spicy';
+    if (/cambiar\s+papas\s+por\s+ensalada|swap\s+(?:fries|potatoes)\s+(?:for|with)\s+salad/i.test(source) && out.notes.indexOf('swap_fries_salad') === -1) out.notes.push('swap_fries_salad');
+    return out;
+  }
+
+  function foodPreferencesToSpecialRequests(food) {
+    if (!food) return '';
+    var names = { cheese: 'queso', onions: 'cebolla', tomatoes: 'tomate', pickles: 'pepinillos', mayo: 'mayonesa', mustard: 'mostaza', ketchup: 'ketchup', ice: 'hielo', bacon: 'tocino', sauce: 'salsa' };
+    var lines = [];
+    (food.remove || []).forEach(function (x) { lines.push('Sin ' + (names[x] || x)); });
+    (food.add || []).forEach(function (x) { lines.push('Con ' + (names[x] || x)); });
+    (food.extra || []).forEach(function (x) { lines.push('Extra ' + (names[x] || x)); });
+    if (food.cooking) lines.push({ well_done: 'Bien cocida', medium_rare: 'Término medio', rare: 'Poco cocida' }[food.cooking]);
+    if (food.spice) lines.push(food.spice === 'no_spice' ? 'Sin picante' : 'Extra picante');
+    (food.notes || []).forEach(function (x) { lines.push({ sauce_on_side: 'Salsa aparte', light_sauce: 'Poca salsa', swap_fries_salad: 'Cambiar papas por ensalada' }[x] || x); });
+    return lines.filter(Boolean).join(' · ');
+  }
+
   function valorValido(field, t) {
       if (field === 'email')    return EMAIL_RE2.test(t) || /^(no|ninguno|skip|omitir)$/i.test(t.trim());
       if (field === 'telefono') return t.replace(/\D/g, '').length >= 7;
@@ -678,6 +752,9 @@ window.JBChatCore = (function () {
     extractNotas: extractNotas,
     extractNotasUsuario: extractNotasUsuario,
     fusionarNotas: fusionarNotas,
+    isFoodMedical: isFoodMedical,
+    applyFoodPreferences: applyFoodPreferences,
+    foodPreferencesToSpecialRequests: foodPreferencesToSpecialRequests,
     valorValido: valorValido,
     pareceReserva: pareceReserva,
     isPopular: isPopular,
