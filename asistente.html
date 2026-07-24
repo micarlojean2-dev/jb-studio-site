@@ -380,7 +380,7 @@
     if (activeReservation) sessionStorage.setItem(RESERVA_SESS, JSON.stringify(activeReservation));
     else sessionStorage.removeItem(RESERVA_SESS);
   } catch (e) {} }
-  var MODIFY_TRIGGERS = /\b(modific|cambiar|cambia|reprogram|mover|mueve|otra hora|otro d[ií]a|otra fecha|change|reschedule|modify|move)\b/i;
+  var MODIFY_TRIGGERS = CORE.MODIFY_TRIGGERS;   // raíz compartida (arreglo del \b que fallaba con "modificar")
 
   var emailAction = (function () {
     try {

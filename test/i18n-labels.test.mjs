@@ -51,3 +51,13 @@ for (const [text, expect] of [
 check(C.extractBooking('el viernes', menu, {}, 'es', { templateId: 'restaurant' }).fecha === 'el viernes', 'ES date still works');
 
 console.log(`i18n-labels.test.mjs: ${count} checks passed`);
+
+// Regression: MODIFY_TRIGGERS must match inflected forms — the old \bmodific\b
+// failed on "modificar"/"reprogramar" (letter→letter, no boundary). [BUG-MODIFY]
+const MT = C.MODIFY_TRIGGERS;
+for (const t of ['quiero modificar mi reserva', 'modificar', 'reprogramar la cita', 'cambiar la hora', 'cámbiame la fecha', 'I want to modify it', 'reschedule please', 'move my booking'])
+  check(MT.test(t) === true, `MODIFY_TRIGGERS matches: ${t}`);
+for (const t of ['quiero reservar una mesa', 'hola', 'gracias'])
+  check(MT.test(t) === false, `MODIFY_TRIGGERS does not match: ${t}`);
+
+console.log('modify-triggers: checks passed');

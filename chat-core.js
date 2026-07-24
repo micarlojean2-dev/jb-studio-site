@@ -163,6 +163,11 @@ window.JBChatCore = (function () {
 
   var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserve|reservation|book(?:ing)?|table|reserva|hora libre|turno|quiero una cita/i;
 
+  // Intención de modificar una reserva activa. Coincidencia por raíz, SIN \b
+  // final: en modo ASCII de JS, `\bmodific\b` no casa "modificar" (c→a no es
+  // frontera), así que "quiero modificar" no entraba en modo modificar. [BUG-MODIFY]
+  var MODIFY_TRIGGERS = /(modific|modify|c[aá]mbi|reprogram|reagenda|mover|mueve|otra hora|otro d[ií]a|otra fecha|change|reschedul|move)/i;
+
   var INTENT_RE = /\b(quiero|quisiera|necesito|me\s+gustar[ií]a|puedo|ap[uú]ntame|ag[eé]ndame|d[ae]me)\b/i;
 
   var CORRECCION_RE = /(me\s+equivoqu[eé]|cambiar|corregir|est[aá]\s+mal|mejor|en realidad|prefiero)/i;
@@ -847,6 +852,7 @@ window.JBChatCore = (function () {
     buildModifyUpdate: buildModifyUpdate,
     reservaTextos: reservaTextos,
     CORRECCION_RE: CORRECCION_RE,
+    MODIFY_TRIGGERS: MODIFY_TRIGGERS,
     CAMPO_MENCIONADO: CAMPO_MENCIONADO,
     extractBooking: extractBooking,
     resolverHora: resolverHora,

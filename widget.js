@@ -106,7 +106,7 @@
     if (activeReservation) sessionStorage.setItem(RESERVA_SESS, JSON.stringify(activeReservation));
     else sessionStorage.removeItem(RESERVA_SESS);
   } catch (e) {} }
-  var MODIFY_TRIGGERS = /\b(modific|cambiar|cambia|reprogram|mover|mueve|otra hora|otro d[ií]a|otra fecha|change|reschedule|modify|move)\b/i;
+  var MODIFY_TRIGGERS = CORE.MODIFY_TRIGGERS;   // raíz compartida (arreglo del \b que fallaba con "modificar")
 
   var CANCEL_TRIGGERS  = /\bcancel(ar)?\b|quiero cancelar/i;
   var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserva|hora libre|turno|quiero una cita/i;
