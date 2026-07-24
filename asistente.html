@@ -455,6 +455,7 @@
     nameEl.textContent      = cfg.businessName || 'Asistente';
     document.title          = (cfg.businessName || 'Asistente') + ' — Chat';
     inp.placeholder = cfg.language === 'en' ? 'Type a message…' : 'Escribe un mensaje…';
+    snd.setAttribute('aria-label', cfg.language === 'en' ? 'Send' : 'Enviar');
     statusText.textContent  = cfg.language === 'en' ? 'Online now' : 'En línea';
     var ubs = msgsEl.querySelectorAll('.a-r.a-u .a-b');
     for (var i = 0; i < ubs.length; i++) ubs[i].style.background = c;

@@ -352,6 +352,7 @@
     snd.style.background    = c;
     nameEl.textContent      = cfg.businessName || 'Assistant';
     inp.placeholder = cfg.language === 'en' ? 'Type a message…' : 'Escribe un mensaje…';
+    snd.setAttribute('aria-label', cfg.language === 'en' ? 'Send' : 'Enviar');
     statusEl.textContent = cfg.language === 'en' ? 'Online now' : 'En línea';
     // Update already-rendered user bubbles and bot avatars
     var ubs = msgsEl.querySelectorAll('.jbw-r.jbw-u .jbw-b');

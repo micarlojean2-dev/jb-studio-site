@@ -64,11 +64,11 @@ window.JBChatCore = (function () {
 
   // A bare number may be a party size. Match it only when it carries AM/PM,
   // unless it follows "a las", which is explicit time context.
-  var HORA_RE = /(?:a\s+las\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?|\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b)/i;
+  var HORA_RE = /(?:(?:a\s+las|at)\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?|\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b)/i;
 
-  var HORA_CTX = /(a\s+las|hrs?|horas?|:\d{2}|\b\d{1,2}\s*(?:a\.?m\.?|p\.?m\.?)\b)/i;
+  var HORA_CTX = /(a\s+las|\bat\b|hrs?|horas?|:\d{2}|\b\d{1,2}\s*(?:a\.?m\.?|p\.?m\.?)\b)/i;
 
-  var PERSONAS_RE = /(?:para|somos|seríamos|serian|ser[ií]amos)\s+(\d{1,3}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b|\b(\d{1,3}|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:personas?|ppl)\b/i;
+  var PERSONAS_RE = /(?:para|somos|seríamos|serian|ser[ií]amos|for)\s+(\d{1,3}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b|\b(\d{1,3}|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+(?:personas?|people|ppl)\b/i;
 
   var NUM_PAL = { un:1, uno:1, una:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6, siete:7, ocho:8, nueve:9, diez:10 };
 
@@ -432,10 +432,10 @@ window.JBChatCore = (function () {
     // "María José de la Cruz" se guardaban a medias. Ahora se toma la secuencia
     // completa de palabras de nombre, conservando partículas (de, del, la, y…) y
     // cortando en cuanto aparece algo que no es nombre (un verbo, una nota…).
-    var nm = t.match(/\b(?:soy|me\s+llamo|mi\s+nombre\s+es)\s+(.+)/i);
+    var nm = t.match(/\b(?:soy|me\s+llamo|mi\s+nombre\s+es|my\s+name\s+is|i\s+am)\s+(.+)/i);
     if (nm) {
       var primera = nm[1].trim().split(/\s+/)[0].toLowerCase().replace(/[.,;:]+$/, '');
-      var noNombre = /^(que|quien|el|la|un|una|para|de|del|al[eé]rgic[oa]|vegetarian[oa]|vegan[oa]|celiac[oa]|diab[eé]tic[oa]|intolerante|nuev[oa]|client[ea]|puntual|flexible|mayor|menor|estudiante|jubilad[oa]|sensible|zurd[oa])$/i.test(primera);
+      var noNombre = /^(que|quien|el|la|un|una|para|de|del|al[eé]rgic[oa]|allergic|vegetarian[oa]?|vegan[oa]?|celiac[oa]?|diab[eé]tic[oa]|intolerante|intolerant|nuev[oa]|client[ea]|puntual|flexible|mayor|menor|estudiante|jubilad[oa]|sensible|zurd[oa])$/i.test(primera);
       // "soy alérgico A los aceites", "soy vegetariano DE toda la vida": tras el
       // candidato viene un complemento -> es una descripción, no un nombre.
       var complemento = new RegExp('\\bsoy\\s+' + primera.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+(a|al|de|con|sin|muy|desde|por)\\b', 'i').test(t);
