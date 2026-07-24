@@ -98,7 +98,9 @@ const STYLES = ['Moderno', 'Elegante', 'Amigable', 'Minimalista'];
 // Fase 4: únicamente estos dos planes tienen suscripción real en Stripe. El
 // monto guardado siempre se deriva del plan — nunca de lo que mande el
 // cliente — para que coincida exactamente con lo que Stripe va a cobrar.
-const PLAN_PRICES = { basic: 49, pro: 65 };
+// Plan único: JB Studio Pro, $65/mes. (Se conserva el mapa por si algún cliente
+// legado guardó otro plan, pero ya no se crean ni se ofrecen basic/premium.)
+const PLAN_PRICES = { pro: 65 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Fase 4.1 — mismas listas que usa el wizard nuevo en admin.html (idiomas,
@@ -353,7 +355,9 @@ export default async function handler(req, res) {
     if (ownerEmail && !EMAIL_RE.test(String(ownerEmail).slice(0, 120)))
       return res.status(400).json({ error: 'ownerEmail is not a valid email' });
 
-    let planSafe = ['basic', 'pro', 'premium'].includes(plan) ? plan : 'basic';
+    // Plan único: el navegador NO puede elegir el plan ni el precio. Todo
+    // cliente nuevo nace 'pro' ($65). El campo `plan` del body se ignora.
+    let planSafe = 'pro';
     let featuresSafe = sanitizeFeatures(features, planSafe);
     const servicesSafe = sanitizeServices(services);
     // Metadatos opcionales para clientes creados desde plantillas versionadas.
@@ -488,7 +492,7 @@ export default async function handler(req, res) {
         ...(languagesSafe && languagesSafe.length ? { languages: languagesSafe, primaryLanguage: primaryLanguageSafe } : {}),
         ...(businessHoursSafe ? { businessHours: businessHoursSafe } : {}),
         ...(phoneCountrySafe && phoneCountryCodeSafe ? { phoneCountry: phoneCountrySafe, phoneCountryCode: phoneCountryCodeSafe, phoneNumber: phoneNumberSafe } : {}),
-        monthlyPrice: PLAN_PRICES[planSafe] || null,
+        monthlyPrice: PLAN_PRICES.pro,   // plan único: siempre 65
         billingDay:   Number.isInteger(Number(billingDay)) && Number(billingDay) >= 1 && Number(billingDay) <= 28 ? Number(billingDay) : 1,
         trialEnabled: !!trialEnabled,
         trialDays:    Number.isInteger(Number(trialDays)) && Number(trialDays) >= 1 && Number(trialDays) <= 90 ? Number(trialDays) : 7,
@@ -546,10 +550,11 @@ export default async function handler(req, res) {
       if (businessName !== undefined) client.businessName = String(businessName).slice(0, 120);
       if (ownerName !== undefined) client.ownerName   = String(ownerName).slice(0, 120);
       if (ownerEmail!== undefined) client.ownerEmail  = String(ownerEmail).slice(0, 120);
-      if (plan      !== undefined && ['basic','pro','premium'].includes(plan)) {
-        client.plan = plan;
-        // Mantiene el monto sincronizado con el plan, igual que en la creación.
-        if (PLAN_PRICES[plan]) client.monthlyPrice = PLAN_PRICES[plan];
+      // Plan único: solo se acepta 'pro'. No se puede cambiar a basic/premium
+      // (ya no existen). Cualquier otro valor se ignora en silencio.
+      if (plan === 'pro') {
+        client.plan = 'pro';
+        client.monthlyPrice = PLAN_PRICES.pro;
       }
       if (color     !== undefined && /^#[0-9a-fA-F]{3,6}$/.test(color)) client.color = color;
       if (language  !== undefined) client.language    = language === 'en' ? 'en' : 'es';
@@ -564,7 +569,7 @@ export default async function handler(req, res) {
       if (notificationEmails === null) delete client.notificationEmails;
       else if (notificationEmails !== undefined) client.notificationEmails = normalizeNotificationEmails(notificationEmails);
       if (features !== undefined && typeof features === 'object') {
-        client.features = sanitizeFeatures(features, client.plan || 'basic');
+        client.features = sanitizeFeatures(features, client.plan || 'pro');
       }
       if (businessHours !== undefined) {
         const bh = sanitizeBusinessHours(businessHours);

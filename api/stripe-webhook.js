@@ -150,19 +150,80 @@ async function sendWelcome(c, clientId) {
 
 
 async function updateClient(clientId, patch) {
-  if (!clientId) return;
+  if (!clientId) return null;
   try {
     const client = await redis.get(`client:${clientId}`);
-    if (!client) { console.warn(`[stripe-webhook] client not found: ${clientId}`); return; }
+    if (!client) { console.warn(`[stripe-webhook] client not found: ${clientId}`); return null; }
     Object.assign(client, patch);
     await redis.set(`client:${clientId}`, client);
+    return client;
   } catch (err) {
     console.error(`[stripe-webhook] Redis update failed for ${clientId}:`, err.message);
+    return null;
   }
 }
 
+// Timestamps reales de Stripe → ISO completo (con hora), para poder calcular
+// días restantes con precisión en el panel. null si Stripe no da el dato.
+function isoFull(unixSeconds) {
+  return unixSeconds ? new Date(unixSeconds * 1000).toISOString() : null;
+}
 function isoDate(unixSeconds) {
   return unixSeconds ? new Date(unixSeconds * 1000).toISOString().slice(0, 10) : null;
+}
+
+// Plan único: Stripe es la fuente de verdad. Traduce el objeto subscription a
+// nuestro estado local exacto (active + paymentStatus) y guarda todos los
+// campos que el panel necesita. Lo usan subscription.created, subscription.updated
+// y, como red de seguridad, checkout.session.completed.
+function subscriptionPatch(sub) {
+  const item = sub.items?.data?.[0];
+  const patch = {
+    stripeSubscriptionId: sub.id,
+    stripeCustomerId:     sub.customer || null,
+    stripePriceId:        item?.price?.id || null,
+    subscriptionStatus:   sub.status,
+    trialStartedAt:       isoFull(sub.trial_start),
+    trialEndsAt:          isoFull(sub.trial_end),
+    currentPeriodStart:   isoFull(sub.current_period_start),
+    currentPeriodEnd:     isoFull(sub.current_period_end),
+    cancelAtPeriodEnd:    !!sub.cancel_at_period_end,
+    canceledAt:           isoFull(sub.canceled_at),
+    // El próximo cobro cae al final del periodo actual (durante el trial, ese
+    // fin coincide con el fin de la prueba).
+    nextPaymentAt:        isoFull(sub.current_period_end),
+  };
+  switch (sub.status) {
+    case 'trialing':
+      patch.active = true;  patch.paymentStatus = 'trialing';  patch.paymentFailed = false; break;
+    case 'active':
+      patch.active = true;  patch.paymentStatus = 'active';    patch.paymentFailed = false; break;
+    case 'past_due':
+      patch.active = true;  patch.paymentStatus = 'past_due';  patch.paymentFailed = true;  break;
+    case 'unpaid':
+      patch.active = false; patch.paymentStatus = 'unpaid';    patch.paymentFailed = true;  break;
+    case 'canceled':
+      patch.active = false; patch.paymentStatus = 'canceled';  patch.canceledAt = patch.canceledAt || new Date().toISOString(); break;
+    case 'incomplete':
+      patch.active = false; patch.paymentStatus = 'incomplete'; break;
+    case 'incomplete_expired':
+      patch.active = false; patch.paymentStatus = 'incomplete_expired'; break;
+    default:
+      patch.paymentStatus = sub.status;
+  }
+  return patch;
+}
+
+// Envía la bienvenida una sola vez, cuando el cliente queda activo (trialing o
+// active). No se repite en renovaciones (idempotente vía flag bienvenidaEnviada).
+async function maybeWelcome(clientId) {
+  try {
+    const c = await redis.get(`client:${clientId}`);
+    if (c && c.active && c.ownerEmail && !c.bienvenidaEnviada) {
+      await sendWelcome(c, clientId);
+      await updateClient(clientId, { bienvenidaEnviada: new Date().toISOString() });
+    }
+  } catch (e) { console.error('[stripe-webhook] welcome:', e.message); }
 }
 
 export default async function handler(req, res) {
@@ -201,35 +262,45 @@ export default async function handler(req, res) {
     switch (event.type) {
 
       // ── 1. Checkout completado ──────────────────────────────────────────
+      // No se activa por abrir/regresar de Checkout: se registran los IDs y,
+      // como red de seguridad, se aplica el estado leído de la suscripción real
+      // (por si subscription.created llegara más tarde o se perdiera).
       case 'checkout.session.completed': {
         const session = event.data.object;
         if (session.mode !== 'subscription') break;
         const clientId = session.metadata?.clientId || session.client_reference_id;
         if (!clientId) { console.warn('[stripe-webhook] checkout.session.completed: no clientId'); break; }
 
-        const patch = {
+        const subscriptionId = session.subscription || session.parent?.subscription_details?.subscription || null;
+        await updateClient(clientId, {
           stripeCustomerId:        session.customer || null,
-          stripeSubscriptionId:    session.subscription || session.parent?.subscription_details?.subscription || null,
+          stripeSubscriptionId:    subscriptionId,
           stripeCheckoutSessionId: session.id,
-        };
-
-        // Solo se marca como pagado si Stripe confirma el pago en la propia
-        // sesión — "no marcar como pagado solo porque se abrió Checkout".
-        // Si no, el estado lo termina de resolver invoice.paid /
-        // customer.subscription.updated cuando llegue.
-        if (session.payment_status === 'paid' || session.payment_status === 'no_payment_required') {
-          patch.active            = true;
-          patch.paymentStatus     = 'paid';
-          patch.paymentFailed     = false;
-          patch.gracePeriodEndsAt = null;
+        });
+        if (subscriptionId) {
+          try {
+            const sub = await stripe.subscriptions.retrieve(subscriptionId);
+            await updateClient(clientId, subscriptionPatch(sub));
+            await maybeWelcome(clientId);
+          } catch (e) { console.error('[stripe-webhook] checkout sub sync:', e.message); }
         }
-
-        await updateClient(clientId, patch);
-        console.log(`[stripe-webhook] Client ${clientId} checkout completed (payment_status=${session.payment_status})`);
+        console.log(`[stripe-webhook] Client ${clientId} checkout completed`);
         break;
       }
 
-      // ── 2. Pago de factura exitoso ───────────────────────────────────────
+      // ── 2/3. Alta y cambios de la suscripción (fuente de verdad del estado) ─
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated': {
+        const sub = event.data.object;
+        const clientId = sub.metadata?.clientId || await getClientIdFromSubscription(sub.id);
+        if (!clientId) { console.warn(`[stripe-webhook] ${event.type}: no clientId`); break; }
+        await updateClient(clientId, subscriptionPatch(sub));
+        await maybeWelcome(clientId);
+        console.log(`[stripe-webhook] Client ${clientId} → subscription ${sub.status}`);
+        break;
+      }
+
+      // ── 4. Pago de factura exitoso ───────────────────────────────────────
       case 'invoice.paid': {
         const invoice = event.data.object;
         const subscriptionId = getInvoiceSubscriptionId(invoice);
@@ -237,37 +308,23 @@ export default async function handler(req, res) {
         const clientId = getInvoiceClientId(invoice) || await getClientIdFromSubscription(subscriptionId);
         if (!clientId) { console.warn('[stripe-webhook] invoice.paid: no clientId'); break; }
 
-        const periodEnd = invoice.lines?.data?.[0]?.period?.end || null;
-        const paidUntil = isoDate(periodEnd);
-
         await updateClient(clientId, {
-          active:                true,
-          paymentStatus:         'paid',
-          paymentFailed:         false,
-          stripeCustomerId:      invoice.customer,
-          stripeSubscriptionId:  subscriptionId,
-          lastPaymentAt:         isoDate(invoice.status_transitions?.paid_at) || new Date().toISOString().slice(0, 10),
-          nextPaymentAt:         paidUntil,
-          paidUntil,
-          gracePeriodEndsAt:     null,
+          lastPaymentAt:     isoFull(invoice.status_transitions?.paid_at) || new Date().toISOString(),
+          paymentFailed:     false,
+          gracePeriodEndsAt: null,
         });
-        console.log(`[stripe-webhook] Client ${clientId} paid — active until ${paidUntil}`);
-
-        // Bienvenida solo la primera vez que se activa. Las renovaciones
-        // mensuales también disparan invoice.paid y no deben repetirla.
+        // El estado (active/status/periodos) se sincroniza desde la suscripción
+        // real, no desde la factura: Stripe es la fuente de verdad.
         try {
-          const c = await redis.get(`client:${clientId}`);
-          if (c && c.ownerEmail && !c.bienvenidaEnviada) {
-            await sendWelcome(c, clientId);
-            await updateClient(clientId, { bienvenidaEnviada: new Date().toISOString().slice(0, 10) });
-          }
-        } catch (e) {
-          console.error('[stripe-webhook] welcome:', e.message);
-        }
+          const sub = await stripe.subscriptions.retrieve(subscriptionId);
+          await updateClient(clientId, subscriptionPatch(sub));
+          await maybeWelcome(clientId);
+        } catch (e) { console.error('[stripe-webhook] invoice.paid sub sync:', e.message); }
+        console.log(`[stripe-webhook] Client ${clientId} invoice paid`);
         break;
       }
 
-      // ── 3. Pago fallido ──────────────────────────────────────────────────
+      // ── 5. Pago fallido ──────────────────────────────────────────────────
       case 'invoice.payment_failed': {
         const invoice = event.data.object;
         const subscriptionId = getInvoiceSubscriptionId(invoice);
@@ -275,70 +332,33 @@ export default async function handler(req, res) {
         const clientId = getInvoiceClientId(invoice) || await getClientIdFromSubscription(subscriptionId);
         if (!clientId) { console.warn('[stripe-webhook] payment_failed: no clientId'); break; }
 
-        // No se pausa por el primer fallo: Stripe reintenta automáticamente
-        // (Smart Retries) mientras la suscripción esté en past_due — la
-        // fecha del próximo reintento la da Stripe (invoice.next_payment_attempt),
-        // nunca se inventa. Si ya no hay próximo intento programado, tampoco
-        // se pausa aquí: el estado final ("unpaid"/"canceled") lo confirma
-        // customer.subscription.updated / customer.subscription.deleted.
+        // No se pausa por el primer fallo: Stripe reintenta (Smart Retries)
+        // mientras la suscripción esté en past_due. El estado final
+        // (unpaid/canceled) lo confirma customer.subscription.updated/deleted.
         await updateClient(clientId, {
-          paymentStatus:      'past_due',
-          paymentFailed:      true,
-          lastPaymentFailedAt: new Date().toISOString().slice(0, 10),
-          gracePeriodEndsAt:  isoDate(invoice.next_payment_attempt),
+          paymentStatus:       'past_due',
+          paymentFailed:       true,
+          lastPaymentFailedAt: new Date().toISOString(),
+          gracePeriodEndsAt:   isoFull(invoice.next_payment_attempt),
         });
-        console.log(`[stripe-webhook] Client ${clientId} payment failed — next attempt: ${isoDate(invoice.next_payment_attempt) || '(ninguno)'}`);
+        console.log(`[stripe-webhook] Client ${clientId} payment failed — next attempt: ${isoFull(invoice.next_payment_attempt) || '(ninguno)'}`);
         break;
       }
 
-      // ── 4/5. Cambios de estado de la suscripción ─────────────────────────
-      // Según la documentación oficial de Stripe: "past_due" debe mantener el
-      // acceso activo (Smart Retries en curso); solo "unpaid" o "canceled"
-      // deben revocar el acceso.
-      case 'customer.subscription.updated': {
-        const sub = event.data.object;
-        const clientId = sub.metadata?.clientId;
-        if (!clientId) { console.warn('[stripe-webhook] subscription.updated: no clientId'); break; }
-
-        const patch = { cancelAtPeriodEnd: !!sub.cancel_at_period_end };
-
-        if (sub.status === 'active' || sub.status === 'trialing') {
-          patch.active            = true;
-          patch.paymentStatus     = 'paid';
-          patch.paymentFailed     = false;
-          patch.gracePeriodEndsAt = null;
-        } else if (sub.status === 'past_due') {
-          patch.active        = true; // en período de gracia — sigue activo
-          patch.paymentStatus = 'past_due';
-          patch.paymentFailed = true;
-        } else if (sub.status === 'unpaid') {
-          patch.active        = false; // reintentos agotados — Stripe ya no cobrará más
-          patch.paymentStatus = 'failed';
-          patch.paymentFailed = true;
-        } else if (sub.status === 'canceled') {
-          patch.active        = false;
-          patch.paymentStatus = 'cancelled';
-          patch.cancelledAt   = new Date().toISOString().slice(0, 10);
-        }
-
-        await updateClient(clientId, patch);
-        console.log(`[stripe-webhook] Client ${clientId} → subscription ${sub.status}`);
-        break;
-      }
-
+      // ── 6. Suscripción eliminada (terminó de verdad) ─────────────────────
       case 'customer.subscription.deleted': {
         const sub = event.data.object;
-        const clientId = sub.metadata?.clientId;
+        const clientId = sub.metadata?.clientId || await getClientIdFromSubscription(sub.id);
         if (!clientId) { console.warn('[stripe-webhook] subscription.deleted: no clientId'); break; }
-
-        // No se borra el cliente ni su configuración — solo se marca como
-        // cancelado. Si vuelve a suscribirse, un nuevo Checkout reactiva todo.
+        // No se borra el cliente ni su configuración — solo se marca cancelado.
         await updateClient(clientId, {
-          active:        false,
-          paymentStatus: 'cancelled',
-          cancelledAt:   new Date().toISOString().slice(0, 10),
+          active:             false,
+          paymentStatus:      'canceled',
+          subscriptionStatus: 'canceled',
+          canceledAt:         isoFull(sub.canceled_at) || new Date().toISOString(),
+          cancelAtPeriodEnd:  false,
         });
-        console.log(`[stripe-webhook] Client ${clientId} subscription deleted — cancelled`);
+        console.log(`[stripe-webhook] Client ${clientId} subscription deleted — canceled`);
         break;
       }
 
@@ -355,3 +375,6 @@ export default async function handler(req, res) {
 
   return res.status(200).json({ received: true });
 }
+
+// Solo para pruebas unitarias (mapeo determinista, sin red).
+export const __test = { subscriptionPatch, isoFull, isoDate };
