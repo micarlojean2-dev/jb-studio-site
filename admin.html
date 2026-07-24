@@ -2167,9 +2167,7 @@
             <div class="form-group">
               <label>Plan</label>
               <select id="f-plan" class="admin-input">
-                <option value="basic">Basic</option>
-                <option value="pro">Pro</option>
-                <option value="premium">Premium</option>
+                <option value="pro">JB Studio Pro</option>
               </select>
             </div>
             <div class="form-group">
@@ -2711,8 +2709,7 @@ LÍMITES ESTRICTOS:
               <div class="form-group">
                 <label>Plan</label>
                 <select id="w-b-plan" class="admin-input">
-                  <option value="basic">Básico</option>
-                  <option value="pro">Pro</option>
+                  <option value="pro">JB Studio Pro</option>
                 </select>
               </div>
               <div class="form-group">
@@ -2846,8 +2843,8 @@ LÍMITES ESTRICTOS:
             <div class="wizard-step-sub">El precio se toma automáticamente del plan elegido.</div>
 
             <div class="pago-summary-card">
-              <div class="pago-summary-plan" id="w-pago-plan-label">Plan Básico</div>
-              <div class="pago-summary-price" id="w-pago-price-label">$49 al mes</div>
+              <div class="pago-summary-plan" id="w-pago-plan-label">JB Studio Pro</div>
+              <div class="pago-summary-price" id="w-pago-price-label">$65 al mes · 7 días de prueba gratis</div>
               <div class="pago-summary-note">El chatbot quedará esperando pago hasta que el cliente complete la suscripción.</div>
             </div>
 
@@ -3051,9 +3048,7 @@ LÍMITES ESTRICTOS:
               <div class="form-group">
                 <label>Plan</label>
                 <select id="e-plan" class="admin-input">
-                  <option value="basic">Básico</option>
-                  <option value="pro">Pro</option>
-                  <option value="premium">Premium</option>
+                  <option value="pro">JB Studio Pro</option>
                 </select>
               </div>
               <div class="form-group">
@@ -3107,18 +3102,9 @@ LÍMITES ESTRICTOS:
           <div class="manage-modal-title" id="pago-modal-title">Administrar pago</div>
           <button type="button" id="pago-modal-close" class="wizard-close">✕</button>
         </div>
-        <div style="padding:4px 26px 0;">
-          <div class="summary-row"><span>Plan</span><span id="pago-info-plan"></span></div>
-          <div class="summary-row"><span>Mensualidad</span><span id="pago-info-price"></span></div>
-          <div class="summary-row"><span>Último pago</span><span id="pago-info-last"></span></div>
-          <div class="summary-row"><span>Próximo pago</span><span id="pago-info-next"></span></div>
-          <div class="summary-row"><span>Días restantes</span><span id="pago-info-days"></span></div>
-          <div class="summary-row" id="pago-info-grace-row" style="display:none"><span>Período de gracia hasta</span><span id="pago-info-grace"></span></div>
-          <div class="summary-row"><span>Estado</span><span id="pago-info-status"></span></div>
-        </div>
+        <div id="pago-body" style="padding:4px 26px 0;"></div>
         <div style="padding:18px 26px 24px;display:flex;flex-direction:column;gap:10px;">
           <div id="pago-generate-wrap"></div>
-          <a id="pago-stripe-link" class="wizard-btn-secondary" style="display:none;text-align:center;text-decoration:none;" target="_blank" rel="noopener noreferrer">Abrir cliente en Stripe</a>
           <button type="button" id="pago-modal-cancel" class="wizard-btn-secondary">Cerrar</button>
         </div>
       </div>
@@ -3193,47 +3179,74 @@ LÍMITES ESTRICTOS:
     // Precios públicos por plan (los mismos que ya usa el guion de ventas de
     // Alex en ventas.html) — no existe un campo de monto guardado por cliente,
     // así que se muestra el precio de lista del plan en vez de inventar uno.
-    const PLAN_PRICES = { basic: 49, pro: 65 };
-    const PLAN_LABELS = { basic: 'Básico', pro: 'Pro', premium: 'Premium' };
+    const PLAN_PRICES = { pro: 65 };
+    // Plan único: JB Studio Pro, $65/mes.
+    const PLAN_LABELS = { pro: 'JB Studio Pro' };
+    const PLAN_NAME = 'JB Studio Pro';
+    const PLAN_PRICE_LABEL = '$65/mes';
 
-    function planPriceLabel(plan) {
-      const price = PLAN_PRICES[plan];
-      return price != null ? ('$' + price) : 'Sin monto';
+    // ── Cálculo de días desde un timestamp REAL de Stripe (ISO). Nunca negativo:
+    //    si la fecha ya pasó, 0. null si no hay fecha. ──────────────────────────
+    function pagoDias(iso) {
+      if (!iso) return null;
+      const t = new Date(iso).getTime();
+      if (isNaN(t)) return null;
+      return Math.max(0, Math.ceil((t - Date.now()) / 86400000));
+    }
+    function pagoFecha(iso) {
+      if (!iso) return null;
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return null;
+      return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
     }
 
-    // "$65/mes" en vez de solo "$65" — mismo dato, mejor lectura (Fase 2.3).
-    function planPriceLabelPerMonth(plan) {
-      const price = PLAN_PRICES[plan];
-      return price != null ? ('$' + price + '/mes') : 'Sin monto';
+    // ── Estado canónico de la suscripción (Stripe = fuente de verdad). Devuelve
+    //    los 7 estados exactos con etiqueta, chatbot, y el botón que corresponde.
+    function pagoEstado(c) {
+      const st  = c.subscriptionStatus || null;
+      const ps  = c.paymentStatus || null;
+      const finAcceso = c.currentPeriodEnd || c.trialEndsAt || null;
+      const canceladoDeVerdad = st === 'canceled' || ps === 'canceled' || ps === 'cancelled';
+
+      // 6. Cancelación finalizada
+      if (canceladoDeVerdad) {
+        return { estado: 'Cancelado', estadoCls: 'st-red', chatbot: 'Inactivo', chatbotCls: 'st-gray',
+          boton: 'Crear nueva suscripción', accion: 'checkout' };
+      }
+      // 7. Pago fallido / impago
+      if (st === 'past_due' || st === 'unpaid' || ps === 'past_due' || ps === 'unpaid') {
+        return { estado: 'Problema con el pago', estadoCls: 'st-red', chatbot: c.active ? 'Activo' : 'Inactivo',
+          chatbotCls: c.active ? 'st-green' : 'st-gray', boton: 'Actualizar método de pago', accion: 'portal' };
+      }
+      // 5. Cancelación programada (aún con acceso)
+      if (c.cancelAtPeriodEnd && (st === 'trialing' || st === 'active')) {
+        return { estado: 'Cancelación programada', estadoCls: 'st-yellow', chatbot: 'Activo', chatbotCls: 'st-green',
+          boton: 'Administrar suscripción', accion: 'portal', finAcceso };
+      }
+      // 3. Trial activo
+      if (st === 'trialing') {
+        return { estado: 'Prueba gratuita', estadoCls: 'st-green', chatbot: 'Activo', chatbotCls: 'st-green',
+          boton: 'Administrar suscripción', accion: 'portal' };
+      }
+      // 4. Pagado y activo
+      if (st === 'active' || (!st && ps === 'paid') || (!st && ps === 'active')) {
+        return { estado: 'Pagado', estadoCls: 'st-green', chatbot: c.active ? 'Activo' : 'Inactivo',
+          chatbotCls: c.active ? 'st-green' : 'st-gray', boton: 'Administrar suscripción', accion: 'portal' };
+      }
+      // 2. Checkout generado pero no completado (hay sesión, no hay suscripción)
+      if (c.stripeCheckoutSessionId && !c.stripeSubscriptionId) {
+        return { estado: 'Enlace de prueba generado', estadoCls: 'st-yellow', chatbot: 'Inactivo', chatbotCls: 'st-gray',
+          boton: 'Copiar enlace', accion: 'copy', botonSecundario: 'Generar enlace nuevo', accionSecundaria: 'checkout' };
+      }
+      // 1. Sin suscripción
+      return { estado: 'Esperando comenzar prueba', estadoCls: 'st-gray', chatbot: 'Inactivo', chatbotCls: 'st-gray',
+        boton: 'Generar enlace de prueba', accion: 'checkout' };
     }
 
-    // Fase 4: clientes creados desde el wizard automático siempre traen
-    // `paymentStatus` (lo pone el servidor — ver api/clients.js / el webhook
-    // de Stripe). Clientes antiguos (formulario manual, ej. Barbería Prueba)
-    // no lo tienen — para esos se mantiene exactamente la lógica de siempre.
+    // Compat: badge de estado para las tablas/tarjetas (deriva del estado canónico).
     function paymentStatusInfo(c) {
-      if (c.paymentStatus) {
-        const today = new Date().toISOString().slice(0, 10);
-        switch (c.paymentStatus) {
-          case 'cancelled': return { label: 'Cancelado', cls: 'st-red' };
-          case 'failed':    return { label: 'Pago fallido', cls: 'st-red' };
-          case 'past_due':
-            return (c.gracePeriodEndsAt && c.gracePeriodEndsAt >= today)
-              ? { label: 'En período de gracia', cls: 'st-yellow' }
-              : { label: 'Pago fallido', cls: 'st-red' };
-          case 'paid':    return { label: 'Pagado', cls: 'st-green' };
-          case 'pending': return { label: 'Esperando pago', cls: 'st-yellow' };
-          default:        return { label: 'No pagado', cls: 'st-red' };
-        }
-      }
-      // ── Lógica original (clientes sin paymentStatus) ──────────────────────
-      if (c.subscriptionEnded) return { label: 'Cancelado', cls: 'st-red' };
-      if (c.paymentFailed)     return { label: 'Pago fallido', cls: 'st-red' };
-      if (c.paidUntil) {
-        const today = new Date().toISOString().slice(0, 10);
-        return c.paidUntil >= today ? { label: 'Pagado', cls: 'st-green' } : { label: 'Pago pendiente', cls: 'st-yellow' };
-      }
-      return { label: 'No pagado', cls: 'st-red' };
+      const e = pagoEstado(c);
+      return { label: e.estado, cls: e.estadoCls };
     }
 
     function chatbotStatusInfo(c) {
@@ -3516,7 +3529,7 @@ LÍMITES ESTRICTOS:
             </div>
           </td>
           <td><span class="ct-category">${escHTML(categoria)}</span></td>
-          <td>${escHTML(PLAN_LABELS[c.plan] || c.plan)}<span class="ct-subline">${planPriceLabelPerMonth(c.plan)}</span></td>
+          <td>${PLAN_NAME}<span class="ct-subline">${PLAN_PRICE_LABEL}</span></td>
           <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>${
             faltaConfigCliente(c).length
               ? `<button type="button" class="ct-link ct-setup" data-cid="${escHTML(c.id)}" title="Faltan: ${escHTML(faltaConfigCliente(c).join(', '))}" style="color:#a01b1b;display:block;margin-top:4px">⚠️ Completar</button>`
@@ -3541,7 +3554,7 @@ LÍMITES ESTRICTOS:
             <span class="client-color-dot" style="background:${escHTML(c.color || '#1a4a2e')}"></span>
             <div class="cc-name">${escHTML(c.businessName)}</div>
           </div>
-          <div class="cc-meta">${escHTML(categoria)} · ${escHTML(PLAN_LABELS[c.plan] || c.plan)} · ${planPriceLabelPerMonth(c.plan)}</div>
+          <div class="cc-meta">${escHTML(categoria)} · ${PLAN_NAME} · ${PLAN_PRICE_LABEL}</div>
           <div class="cc-rows">
             <div class="cc-row"><span>Chatbot</span><span class="st-badge ${bot.cls}">${bot.label}</span></div>
             <div class="cc-row"><span>Pago</span><span class="st-badge ${pay.cls}">${pay.label}</span></div>
@@ -3806,7 +3819,7 @@ LÍMITES ESTRICTOS:
     function openManageModal(c) {
       manageClient = c;
       manageTitle.textContent = c.businessName;
-      manageSub.textContent = `Plan ${PLAN_LABELS[c.plan] || c.plan}`;
+      manageSub.textContent = PLAN_NAME + " · " + PLAN_PRICE_LABEL;
       managePayInfo.style.display = 'none';
       // Fase 4: antes del primer pago el botón deja claro que es una
       // activación de prueba, no un pago real — reutiliza el mismo PUT
@@ -4177,7 +4190,7 @@ LÍMITES ESTRICTOS:
         document.getElementById('e-bname').value = c.businessName || '';
         document.getElementById('e-owner').value = c.ownerName || '';
         document.getElementById('e-email').value = c.ownerEmail || '';
-        document.getElementById('e-plan').value  = c.plan || 'basic';
+        document.getElementById('e-plan').value  = 'pro';
         document.getElementById('e-lang').value  = c.language || 'es';
         document.getElementById('e-wa').value    = c.whatsapp || '';
       } else if (section === 'design') {
@@ -4293,7 +4306,7 @@ LÍMITES ESTRICTOS:
         return `
         <tr data-id="${escHTML(c.id)}">
           <td>${escHTML(c.businessName)}</td>
-          <td>${planPriceLabelPerMonth(c.plan)}</td>
+          <td>${PLAN_PRICE_LABEL}</td>
           <td>${escHTML(c.lastPaymentAt || 'Sin fecha')}</td>
           <td>${escHTML(c.nextPaymentAt || c.paidUntil || 'Sin fecha')}</td>
           <td><span class="st-badge ${pay.cls}">${pay.label}</span></td>
@@ -4306,7 +4319,7 @@ LÍMITES ESTRICTOS:
         return `
         <div class="client-card" data-id="${escHTML(c.id)}">
           <div class="cc-top"><div class="cc-name">${escHTML(c.businessName)}</div></div>
-          <div class="cc-meta">${planPriceLabelPerMonth(c.plan)}</div>
+          <div class="cc-meta">${PLAN_PRICE_LABEL}</div>
           <div class="cc-rows">
             <div class="cc-row"><span>Último pago</span><span>${escHTML(c.lastPaymentAt || 'Sin fecha')}</span></div>
             <div class="cc-row"><span>Próximo pago</span><span>${escHTML(c.nextPaymentAt || c.paidUntil || 'Sin fecha')}</span></div>
@@ -4343,54 +4356,102 @@ LÍMITES ESTRICTOS:
     const pagoCancelBtn  = document.getElementById('pago-modal-cancel');
     let pagoClient = null;
 
+    // Fila del panel de pagos (label + valor). value puede ser HTML seguro ya escapado.
+    function pagoRow(label, value) {
+      return `<div class="summary-row"><span>${label}</span><span>${value}</span></div>`;
+    }
+
+    // Cuerpo del panel según el estado (los 7 estados). Datos reales de Stripe.
+    function pagoBodyHTML(c, e) {
+      const st = c.subscriptionStatus || null;
+      let rows = pagoRow('Negocio', escHTML(c.businessName || c.id))
+        + pagoRow('Plan', PLAN_NAME)
+        + pagoRow('Mensualidad', PLAN_PRICE_LABEL)
+        + pagoRow('Estado', `<span class="st-badge ${e.estadoCls}">${e.estado}</span>`)
+        + pagoRow('Chatbot', `<span class="st-badge ${e.chatbotCls}">${e.chatbot}</span>`);
+
+      if (e.estado === 'Prueba gratuita') {
+        rows += pagoRow('Inicio de prueba', pagoFecha(c.trialStartedAt) || '—')
+          + pagoRow('Fin de prueba', pagoFecha(c.trialEndsAt) || '—')
+          + pagoRow('Días restantes de prueba', String(pagoDias(c.trialEndsAt) ?? 0))
+          + pagoRow('Próximo cobro', '$65 el ' + (pagoFecha(c.nextPaymentAt || c.currentPeriodEnd) || '—'))
+          + pagoRow('Cobros', 'Todavía no se ha realizado ningún cobro');
+      } else if (e.estado === 'Pagado') {
+        rows += pagoRow('Último pago', pagoFecha(c.lastPaymentAt) || '—')
+          + pagoRow('Próximo pago', '$65 el ' + (pagoFecha(c.nextPaymentAt || c.currentPeriodEnd) || '—'))
+          + pagoRow('Días hasta el próximo pago', String(pagoDias(c.nextPaymentAt || c.currentPeriodEnd) ?? 0));
+      } else if (e.estado === 'Cancelación programada') {
+        rows += pagoRow('Fecha final de acceso', pagoFecha(e.finAcceso) || '—')
+          + pagoRow('Días restantes', String(pagoDias(e.finAcceso) ?? 0))
+          + pagoRow('Renovación', 'No se renovará');
+      } else if (e.estado === 'Cancelado') {
+        rows += pagoRow('Cancelada el', pagoFecha(c.canceledAt) || '—')
+          + pagoRow('Próximo pago', 'No habrá más cobros');
+      } else if (e.estado === 'Problema con el pago') {
+        rows += pagoRow('Último pago', pagoFecha(c.lastPaymentAt) || 'Sin pagos')
+          + pagoRow('Próximo intento', pagoFecha(c.gracePeriodEndsAt || c.nextPaymentAt) || 'Según Stripe');
+      } else if (e.estado === 'Enlace de prueba generado') {
+        rows += pagoRow('Prueba', 'Enlace generado — el cliente aún no completó el checkout');
+      } else { // Esperando comenzar prueba
+        rows += pagoRow('Prueba', 'No iniciada')
+          + pagoRow('Último pago', 'Sin pagos')
+          + pagoRow('Próximo cobro', 'Sin fecha (la prueba aún no ha comenzado)');
+      }
+      return rows;
+    }
+
+    // Acción de un botón del panel: portal (sesión nueva del Customer Portal),
+    // checkout (enlace de prueba) o copy (obtener el enlace y copiarlo).
+    async function pagoAccion(action, c, btn) {
+      const orig = btn.textContent; btn.disabled = true; btn.textContent = '…';
+      try {
+        if (action === 'portal') {
+          const res = await fetch('/api/create-checkout?action=portal', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+            body: JSON.stringify({ clientId: c.id }),
+          });
+          const d = await res.json(); if (!res.ok) throw new Error(d.error || res.status);
+          window.open(d.url, '_blank', 'noopener');
+        } else {
+          const res = await fetch('/api/create-checkout', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+            body: JSON.stringify({ clientId: c.id }),
+          });
+          const d = await res.json(); if (!res.ok) throw new Error(d.error || res.status);
+          const wrap = document.getElementById('pago-generate-wrap');
+          let box = wrap.querySelector('.pay-link-inline');
+          if (!box) { box = document.createElement('div'); box.className = 'pay-link-inline'; wrap.appendChild(box); }
+          box.innerHTML = `<div class="pay-link-label">Enlace de prueba — envíalo al cliente</div>
+            <div class="snippet-box" style="word-break:break-all;">${escHTML(d.url)}</div>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+              <button class="copy-link" style="margin-top:0">Copiar enlace</button>
+              <a class="copy-link" style="margin-top:0;text-decoration:none;display:inline-block;" href="${escHTML(d.url)}" target="_blank" rel="noopener noreferrer">Abrir</a>
+            </div>`;
+          box.querySelector('.copy-link').addEventListener('click', function () {
+            navigator.clipboard.writeText(d.url).then(() => { this.textContent = 'Copiado ✓'; setTimeout(() => this.textContent = 'Copiar enlace', 1800); });
+          });
+          if (action === 'copy') navigator.clipboard.writeText(d.url).catch(() => {});
+        }
+      } catch (err) { alert('Error: ' + err.message); }
+      btn.disabled = false; btn.textContent = orig;
+    }
+
     function openPagoModal(c) {
       pagoClient = c;
-      const pay = paymentStatusInfo(c);
-
-      document.getElementById('pago-modal-title').textContent = c.businessName;
-      document.getElementById('pago-info-plan').textContent   = PLAN_LABELS[c.plan] || c.plan;
-      document.getElementById('pago-info-price').textContent  = planPriceLabelPerMonth(c.plan);
-      document.getElementById('pago-info-last').textContent   = c.lastPaymentAt || 'Sin fecha';
-      document.getElementById('pago-info-next').textContent   = c.nextPaymentAt || c.paidUntil || 'Sin fecha';
-      document.getElementById('pago-info-days').textContent   = daysRemainingLabel(c.nextPaymentAt || c.paidUntil);
-      document.getElementById('pago-info-status').innerHTML   = `<span class="st-badge ${pay.cls}">${pay.label}</span>`;
-
-      const graceRow = document.getElementById('pago-info-grace-row');
-      if (c.gracePeriodEndsAt && c.paymentStatus === 'past_due') {
-        document.getElementById('pago-info-grace').textContent = c.gracePeriodEndsAt;
-        graceRow.style.display = '';
-      } else {
-        graceRow.style.display = 'none';
-      }
-
-      // Solo se muestran las acciones que corresponden al estado real —
-      // basado en paymentStatus (Fase 4) cuando existe; si no, en las
-      // señales antiguas, igual que antes.
-      const failed = c.paymentStatus
-        ? (c.paymentStatus === 'past_due' || c.paymentStatus === 'failed')
-        : c.paymentFailed;
+      const e = pagoEstado(c);
+      document.getElementById('pago-modal-title').textContent = c.businessName || c.id;
+      document.getElementById('pago-body').innerHTML = pagoBodyHTML(c, e);
 
       const genWrap = document.getElementById('pago-generate-wrap');
       genWrap.innerHTML = '';
-      if (failed) {
-        genWrap.innerHTML = `<button type="button" class="action-btn ct-pay-action" data-cid="${escHTML(c.id)}" data-plan="${escHTML(c.plan)}" style="margin-top:0;width:100%;">Reintentar cobro</button>`;
-      } else if (!c.stripeCustomerId) {
-        genWrap.innerHTML = `<button type="button" class="action-btn ct-pay-action" data-cid="${escHTML(c.id)}" data-plan="${escHTML(c.plan)}" style="margin-top:0;width:100%;">Generar enlace de pago</button>`;
-      }
-      genWrap.querySelectorAll('.ct-pay-action').forEach(btn => {
-        btn.addEventListener('click', () => generatePaymentLink(btn.dataset.cid, btn.dataset.plan, btn));
-      });
-
-      // dashboard.stripe.com/test/... — todo lo de esta fase corre en Stripe
-      // Test Mode. Cuando se conecten claves live en producción, este enlace
-      // necesitará distinguir el modo real de la suscripción.
-      const stripeLink = document.getElementById('pago-stripe-link');
-      if (c.stripeCustomerId) {
-        stripeLink.href = `https://dashboard.stripe.com/test/customers/${encodeURIComponent(c.stripeCustomerId)}`;
-        stripeLink.style.display = '';
-      } else {
-        stripeLink.style.display = 'none';
-      }
+      const mkBtn = (label, action, cls) => {
+        const b = document.createElement('button'); b.type = 'button';
+        b.className = cls || 'action-btn'; b.style.width = '100%'; b.style.marginTop = '0';
+        b.textContent = label; b.addEventListener('click', () => pagoAccion(action, c, b));
+        return b;
+      };
+      genWrap.appendChild(mkBtn(e.boton, e.accion));
+      if (e.botonSecundario) genWrap.appendChild(mkBtn(e.botonSecundario, e.accionSecundaria, 'wizard-btn-secondary'));
 
       pagoOverlay.style.display = 'flex';
     }
@@ -4548,7 +4609,7 @@ LÍMITES ESTRICTOS:
     function freshState() {
       return {
         business: {
-          name: '', type: '', plan: 'basic',
+          name: '', type: '', plan: 'pro',
           languages: ['es'], primaryLanguage: 'es',
           address: '',
           businessHours: freshBusinessHours(),
@@ -5116,7 +5177,7 @@ LÍMITES ESTRICTOS:
 
     function renderFeatureGroups() {
       const wrap = document.getElementById('w-feature-groups');
-      const isBasic = state.business.plan !== 'pro';
+      const isBasic = false; // plan único: todas las funciones disponibles
       wrap.innerHTML = FEATURE_GROUPS.map(group => `
         <div class="feature-group-card">
           <div class="feature-group-title">${esc(group.title)}</div>
@@ -5164,22 +5225,16 @@ LÍMITES ESTRICTOS:
       const box = document.getElementById('w-plan-compare');
       box.innerHTML = `
         <div class="plan-compare-col">
-          <div class="plan-compare-col-title">Básico</div>
-          <div class="plan-compare-col-body">Información, precios y catálogo.</div>
-        </div>
-        <div class="plan-compare-col">
-          <div class="plan-compare-col-title">Pro</div>
-          <div class="plan-compare-col-body">Todo lo anterior, más reservas, interesados y avisos.</div>
+          <div class="plan-compare-col-title">JB Studio Pro — $65/mes</div>
+          <div class="plan-compare-col-body">Todo incluido: información, precios, catálogo, reservas, interesados y avisos. 7 días de prueba gratis, sin compromiso.</div>
         </div>`;
     }
 
     // ── Pago: informativo, el precio siempre sale del plan ────────────────
-    const WIZARD_PLAN_PRICES = { basic: 49, pro: 65 };
+    const WIZARD_PLAN_PRICES = { pro: 65 };
     function updatePagoSummary() {
-      const planLabel = state.business.plan === 'pro' ? 'Pro' : 'Básico';
-      const price = WIZARD_PLAN_PRICES[state.business.plan] || WIZARD_PLAN_PRICES.basic;
-      document.getElementById('w-pago-plan-label').textContent = `Plan ${planLabel}`;
-      document.getElementById('w-pago-price-label').textContent = `$${price} al mes`;
+      document.getElementById('w-pago-plan-label').textContent = 'JB Studio Pro';
+      document.getElementById('w-pago-price-label').textContent = '$65 al mes · 7 días de prueba gratis';
 
       // El prompt se regenera cada vez que se ve la sección Pago — puramente
       // local, sin llamadas de red (igual que siempre).
@@ -6301,7 +6356,7 @@ LÍMITES ESTRICTOS:
     html += '</div></div>';
 
     html += '<div class="auto-summary-section"><h3>Plan recomendado</h3>';
-    html += '<span class="auto-plan-box ' + plan.plan + '">' + (plan.plan === 'pro' ? 'Pro — $65/mes' : 'Básico — $49/mes') + '</span>';
+    html += '<span class="auto-plan-box pro">JB Studio Pro — $65/mes</span>';
     if (plan.reason) html += '<span style="font-size:13px;color:#666;margin-left:10px;">' + esc(plan.reason) + '</span>';
     html += '</div>';
 
@@ -6611,7 +6666,7 @@ LÍMITES ESTRICTOS:
         successWidgetPreview.classList.toggle('pos-left', widgetPosition === 'bottom-left');
         viewBtn.textContent = isWidget ? 'Ver vista previa' : 'Ver chatbot';
 
-        successName.textContent = (client.businessName || b.businessName) + ' — ' + (client.plan === 'pro' ? 'Pro' : 'Básico');
+        successName.textContent = (client.businessName || b.businessName) + ' — JB Studio Pro';
         successUrl.value = assistantUrl;
         successSnippet.value = snippet;
 
