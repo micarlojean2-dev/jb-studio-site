@@ -32,9 +32,19 @@ function getProvider() {
   return (process.env.CLIENT_CHAT_PROVIDER || 'anthropic').toLowerCase();
 }
 
+// DeepSeek retired 'deepseek-chat': its API now only accepts deepseek-v4-flash
+// / deepseek-v4-pro and 400s on the old name, which made every chat 500 in
+// production. Map the dead name (and an empty default) to the current flash
+// model so a stale DEEPSEEK_MODEL env never breaks the assistant. [BUG-MODEL]
+const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-flash';
+export function resolveDeepseekModel(configured) {
+  if (!configured || /^deepseek-chat$/i.test(String(configured).trim())) return DEEPSEEK_DEFAULT_MODEL;
+  return configured;
+}
+
 function getModel() {
   if (getProvider() === 'deepseek') {
-    return process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+    return resolveDeepseekModel(process.env.DEEPSEEK_MODEL);
   }
   return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 }
@@ -415,4 +425,4 @@ export function menuDecision(lastUserMsg, { bookingActive, catalogEnabled } = {}
   return !bookingActive && MENU_INTENT.test(msg) && !CLOSING_INTENT.test(msg);
 }
 
-export const __test = { menuDecision };
+export const __test = { menuDecision, resolveDeepseekModel };

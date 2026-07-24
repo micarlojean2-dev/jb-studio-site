@@ -34,3 +34,12 @@ check(shows('muéstrame el menú primero', { bookingActive: true }) === true, 'm
 check(menuDecision('quiero ver el menú', { catalogEnabled: false }) === false, 'catalog disabled hides');
 
 console.log(`menu-gating.test.mjs: ${count} checks passed`);
+
+// Regression: DeepSeek retired 'deepseek-chat' — the resolver must map the dead
+// name (and empty) to a currently-valid model, but keep an explicit valid one. [BUG-MODEL]
+const { resolveDeepseekModel } = __test;
+if (resolveDeepseekModel('deepseek-chat') !== 'deepseek-v4-flash') throw new Error('deepseek-chat must map to deepseek-v4-flash');
+if (resolveDeepseekModel('') !== 'deepseek-v4-flash') throw new Error('empty model must map to deepseek-v4-flash');
+if (resolveDeepseekModel(undefined) !== 'deepseek-v4-flash') throw new Error('undefined model must map to deepseek-v4-flash');
+if (resolveDeepseekModel('deepseek-v4-pro') !== 'deepseek-v4-pro') throw new Error('explicit valid model must be kept');
+console.log('deepseek model resolver: 4 checks passed');
