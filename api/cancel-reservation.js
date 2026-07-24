@@ -117,20 +117,44 @@ export default async function handler(req, res) {
     if (!aviso.ok) console.error(`[api/cancel-reservation] cancelación ${matchKey} guardada pero el aviso NO quedó en cola:`, aviso.error);
 
     // Notify immediately when mail is configured. Failure does not undo a
-    // cancellation because the slot must be released regardless.
-    if (process.env.RESEND_API_KEY) {
-      try {
-        const resend = new Resend(process.env.RESEND_API_KEY);
-        const recipients = Array.isArray(client.notificationEmails) && client.notificationEmails.length
-          ? client.notificationEmails : (client.ownerEmail ? [client.ownerEmail] : []);
-        const subject = `${client.businessName || 'Reserva'} - reserva cancelada`;
-        const html = `<p>La reserva de <strong>${esc(match.nombre)}</strong> para ${esc(match.fecha)} a las ${esc(match.hora)} fue cancelada.</p>`;
-        if (match.email) await resend.emails.send({ from: FROM, to: match.email, subject, html });
-        if (recipients.length) await resend.emails.send({ from: FROM, to: recipients, subject, html });
-      } catch (emailError) { console.error('[api/cancel-reservation] notification failed:', emailError.message); }
+    // cancellation because the slot must be released regardless. The outcome is
+    // reported truthfully — a missing key is surfaced, never faked as sent.
+    const email = {
+      configured: !!process.env.RESEND_API_KEY,
+      customer: { attempted: false, sent: false, messageId: null, error: null },
+      owners:   { attempted: false, sent: false, messageIds: [], recipients: [], error: null },
+      warning: null,
+    };
+    if (!process.env.RESEND_API_KEY) {
+      email.warning = 'RESEND_API_KEY missing: cancellation email NOT sent';
+      console.error(`[api/cancel-reservation] EMAIL SKIPPED (RESEND_API_KEY missing) for ${clientId} — cancellation saved, email not sent`);
+    } else {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const recipients = Array.isArray(client.notificationEmails) && client.notificationEmails.length
+        ? client.notificationEmails : (client.ownerEmail ? [client.ownerEmail] : []);
+      const subject = `${client.businessName || 'Reserva'} - reserva cancelada`;
+      const html = `<p>La reserva de <strong>${esc(match.nombre)}</strong> para ${esc(match.fecha)} a las ${esc(match.hora)} fue cancelada.</p>`;
+      const idOf = (r) => (r && r.data && r.data.id) || (r && r.id) || null;
+      if (match.email) {
+        email.customer.attempted = true;
+        try { const r = await resend.emails.send({ from: FROM, to: match.email, subject, html });
+          if (r && r.error) email.customer.error = r.error.message || 'send failed';
+          else { email.customer.sent = true; email.customer.messageId = idOf(r); }
+        } catch (e) { email.customer.error = e.message; }
+      }
+      if (recipients.length) {
+        email.owners.attempted = true; email.owners.recipients = recipients;
+        for (const to of recipients) {
+          try { const r = await resend.emails.send({ from: FROM, to, subject, html });
+            if (r && r.error) email.owners.error = r.error.message || 'send failed';
+            else { email.owners.sent = true; const id = idOf(r); if (id) email.owners.messageIds.push(id); }
+          } catch (e) { email.owners.error = e.message; }
+        }
+      }
+      if (email.customer.error || email.owners.error) console.error(`[api/cancel-reservation] email error for ${clientId}:`, email.customer.error || email.owners.error);
     }
 
-    return res.status(200).json({ found: true, key: matchKey, aviso: { encolado: aviso.ok } });
+    return res.status(200).json({ found: true, key: matchKey, aviso: { encolado: aviso.ok }, email, emailWarning: email.warning || null });
 
   } catch (err) {
     console.error('[api/cancel-reservation]', err.message);

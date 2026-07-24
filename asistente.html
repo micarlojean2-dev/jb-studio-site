@@ -913,10 +913,9 @@ function extractBooking(text, menu) {
   // nadie pudiera revisar un dedazo en el teléfono o la fecha.
   function showBookingSummary() {
     var lang = cfg.language === 'en' ? 'en' : 'es';
-    var L = RESUMEN_LABEL[lang];
     var lineas = CORE.summaryFields(cfg).concat(['contacto'])
       .filter(function (k) { return bookingData[k]; })
-      .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + L[k] + ': ' + bookingData[k]; });
+      .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + CORE.summaryLabel(cfg, k, lang) + ': ' + bookingData[k]; });
 
     var quien = bookingData.nombre ? ' ' + String(bookingData.nombre).split(/\s+/)[0] : '';
     addMsg('bot', (lang === 'en'
@@ -962,9 +961,7 @@ function extractBooking(text, menu) {
     // Clave de idempotencia estable para ESTE intento de reserva. Se conserva en
     // bookingData, así un reintento tras respuesta perdida manda la misma clave y
     // el backend devuelve la reserva ya creada en vez de duplicarla. [BUG-4]
-    if (!bookingData.idempotencyKey) {
-      bookingData.idempotencyKey = 'ik' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-    }
+    if (!bookingData.idempotencyKey) bookingData.idempotencyKey = CORE.genIdempotencyKey();
     busy = true; inp.disabled = true; snd.disabled = true;
     addMsg('bot', lang === 'en' ? 'Checking availability…' : 'Revisando disponibilidad…');
     fetch(API + '/api/reservations', {
@@ -1006,9 +1003,7 @@ function extractBooking(text, menu) {
             estado: d.status || 'confirmada', confirmedAt: Date.now(), language: lang,
           };
           saveReserva();
-          addMsg('bot', d.duplicate
-            ? (lang === 'en' ? 'You already had this reservation — it is still active. ✅' : 'Ya tenías esta reserva registrada, sigue activa. ✅')
-            : mensajeReservaGuardada(d, lang));
+          addMsg('bot', d.duplicate ? CORE.reservaTextos(lang).duplicateActive : mensajeReservaGuardada(d, lang));
           if (d.duplicate) offerReservationActions(lang);
           bookingStep = 0; bookingData = {}; bookingPending = null; dupAttempts = 0;
           save();
@@ -1039,23 +1034,15 @@ function extractBooking(text, menu) {
     return en ? 'Your request has been registered successfully.' : 'Tu solicitud quedó registrada correctamente.';
   }
 
-  // ── Reserva activa: resumen y acciones (modificar / cancelar) ───────────
-  function reservaResumen(lang) {
-    var r = activeReservation || {};
-    var partes = [];
-    if (r.fecha) partes.push(r.fecha);
-    if (r.hora) partes.push(r.hora);
-    var base = partes.join(' · ');
-    if (r.personas) base += (lang === 'en' ? ', ' + r.personas + ' people' : ', ' + r.personas + ' personas');
-    return base;
-  }
-
+  // ── Reserva activa: acciones (modificar / cancelar) ─────────────────────
+  // Toda la lógica y los textos son deterministas y compartidos con widget.js
+  // vía chat-core (CORE.reservaTextos / reservaResumen / duplicateAttemptState /
+  // buildModifyUpdate), para que ambas superficies no diverjan ni mezclen idioma.
   function offerReservationActions(lang) {
+    var T = CORE.reservaTextos(lang);
     var wrap = document.createElement('div');
     wrap.className = 'a-quick';
-    [{ label: lang === 'en' ? '✏️ Modify' : '✏️ Modificar', act: 'modify' },
-     { label: lang === 'en' ? '❌ Cancel' : '❌ Cancelar', act: 'cancel' },
-     { label: lang === 'en' ? '✅ Keep it' : '✅ Mantener', act: 'keep' }
+    [{ label: T.modify, act: 'modify' }, { label: T.cancel, act: 'cancel' }, { label: T.keep, act: 'keep' }
     ].forEach(function (o, i) {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'a-quick-btn'; b.textContent = o.label; b.style.animationDelay = (i * 60) + 'ms';
@@ -1067,19 +1054,16 @@ function extractBooking(text, menu) {
 
   function handleReservationAction(act, lang) {
     if (!activeReservation) return;
-    if (act === 'keep') { addMsg('bot', lang === 'en' ? 'No problem — your reservation stays as it is. 😊' : 'Perfecto, tu reserva sigue igual. 😊'); return; }
+    var T = CORE.reservaTextos(lang);
+    if (act === 'keep') { addMsg('bot', T.keepMsg); return; }
     if (act === 'cancel') { submitActiveCancel(lang); return; }
     modifyMode = true;
-    addMsg('bot', lang === 'en'
-      ? 'What would you like to change? Tell me the new date, time, number of people or a preference (e.g. "no onions"). Your other details stay the same.'
-      : '¿Qué quieres cambiar? Dime la nueva fecha, hora, número de personas o una preferencia (por ejemplo "sin cebolla"). Tus demás datos se conservan.');
+    addMsg('bot', T.askChange);
   }
 
   function submitActiveCancel(lang) {
-    if (!activeReservation || !activeReservation.actionToken) {
-      addMsg('bot', lang === 'en' ? 'I could not find your reservation to cancel.' : 'No encontré tu reserva para cancelarla.');
-      return;
-    }
+    var T = CORE.reservaTextos(lang);
+    if (!activeReservation || !activeReservation.actionToken) { addMsg('bot', T.notFound); return; }
     busy = true; inp.disabled = true; snd.disabled = true; showTyping();
     fetch(API + '/api/cancel-reservation', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1087,18 +1071,16 @@ function extractBooking(text, menu) {
     }).then(function (r) { return r.json(); }).then(function (d) {
       hideTyping();
       if (d.found || d.ok) {
-        addMsg('bot', lang === 'en' ? '✅ Your reservation has been cancelled. You can make a new one whenever you like.' : '✅ Tu reserva fue cancelada. Puedes hacer una nueva cuando quieras.');
+        addMsg('bot', T.cancelled);
         activeReservation = null; dupAttempts = 0; spamUntil = 0; modifyMode = false; saveReserva();
-      } else addMsg('bot', lang === 'en' ? 'I could not cancel it. Please try again.' : 'No pude cancelarla. Inténtalo de nuevo.');
-    }).catch(function () { hideTyping(); addMsg('bot', lang === 'en' ? "Sorry, that didn't go through 😅" : 'Uy, no se envió 😅'); })
+      } else addMsg('bot', T.cancelFail);
+    }).catch(function () { hideTyping(); addMsg('bot', T.netFail); })
     .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
   }
 
   function submitModify(update, lang) {
-    if (!activeReservation || !activeReservation.actionToken) {
-      addMsg('bot', lang === 'en' ? 'I could not find your reservation to modify.' : 'No encontré tu reserva para modificarla.');
-      modifyMode = false; return;
-    }
+    var T = CORE.reservaTextos(lang);
+    if (!activeReservation || !activeReservation.actionToken) { addMsg('bot', T.notFound); modifyMode = false; return; }
     // fecha/hora son obligatorias en reschedule; si el cambio no las trae, se
     // reenvían las actuales para conservar la reserva.
     var body = {
@@ -1120,32 +1102,20 @@ function extractBooking(text, menu) {
           activeReservation.specialRequests = d.reservation.specialRequests || activeReservation.specialRequests;
           activeReservation.estado = d.reservation.estado || activeReservation.estado;
           saveReserva();
-          addMsg('bot', (lang === 'en' ? '✅ Done. Your reservation is now: ' : '✅ Listo. Tu reserva quedó: ') + reservaResumen(lang));
+          addMsg('bot', T.modifyDone + CORE.reservaResumen(activeReservation, lang));
         } else if (d.ok === false && d.motivo) {
-          addMsg('bot', (lang === 'en' ? 'That change is not available: ' : 'Ese cambio no está disponible: ') + (d.mensaje || '') + (d.alternativa ? (lang === 'en' ? ' Closest time: ' + d.alternativa : ' Hora más cercana: ' + d.alternativa) : ''));
-        } else addMsg('bot', lang === 'en' ? 'I could not modify it. Please try again.' : 'No pude modificarla. Inténtalo de nuevo.');
-      }).catch(function () { hideTyping(); addMsg('bot', lang === 'en' ? "Sorry, that didn't go through 😅" : 'Uy, no se envió 😅'); })
+          addMsg('bot', T.modifyUnavail + (d.mensaje || '') + (d.alternativa ? (T.closest + d.alternativa) : ''));
+        } else addMsg('bot', T.modifyFail);
+      }).catch(function () { hideTyping(); addMsg('bot', T.netFail); })
       .finally(function () { modifyMode = false; busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
   }
 
   // Intento de crear otra reserva teniendo una activa: nunca se crea otra.
-  // Primer aviso educado, luego firme, y ante insistencia un límite temporal —
-  // sin bloquear al cliente ni cerrar la puerta a modificar/cancelar. [BUG-4]
+  // Escalado + límite temporal deterministas y compartidos. [BUG-4]
   function handleDuplicateAttempt(lang) {
-    dupAttempts++;
-    if (Date.now() < spamUntil || dupAttempts >= 3) {
-      spamUntil = Date.now() + 60000;
-      addMsg('bot', lang === 'en'
-        ? 'To avoid duplicate reservations, please modify or cancel your current one first. 🙏'
-        : 'Para evitar reservas duplicadas, primero modifica o cancela tu reserva actual. 🙏');
-    } else if (dupAttempts === 1) {
-      addMsg('bot', (lang === 'en' ? 'You already have an active reservation for ' : 'Ya tienes una reserva activa para ') +
-        reservaResumen(lang) + (lang === 'en' ? '. Would you like to modify or cancel it?' : '. ¿Quieres modificarla o cancelarla?'));
-    } else {
-      addMsg('bot', lang === 'en'
-        ? 'To avoid duplicate reservations, please modify or cancel your current one first.'
-        : 'Para evitar reservas duplicadas, primero debes modificar o cancelar tu reserva actual.');
-    }
+    var s = CORE.duplicateAttemptState(activeReservation, dupAttempts, spamUntil, Date.now(), lang);
+    dupAttempts = s.attempts; spamUntil = s.spamUntil;
+    addMsg('bot', s.text);
     offerReservationActions(lang);
   }
 
@@ -1236,17 +1206,9 @@ function extractBooking(text, menu) {
     // Modo modificar: el siguiente mensaje trae el cambio para la reserva activa.
     if (modifyMode) {
       addMsg('user', t);
-      if (/^(cancelar|cancel|salir|exit)$/i.test(t)) { modifyMode = false; addMsg('bot', lang === 'en' ? 'No changes made.' : 'No se hizo ningún cambio.'); return; }
-      var upd = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
-      delete upd.__horaAmbigua;
-      var mfood = CORE.applyFoodPreferences(activeReservation && activeReservation.foodPreferences, t, cfg);
-      var update = {};
-      if (upd.fecha) update.fecha = upd.fecha;
-      if (upd.hora) update.hora = upd.hora;
-      if (upd.personas || upd.partySize) update.partySize = upd.personas || upd.partySize;
-      if (upd.servicio) update.servicio = upd.servicio;
-      if (mfood) { update.foodPreferences = mfood; update.specialRequests = CORE.foodPreferencesToSpecialRequests(mfood, lang); }
-      if (!Object.keys(update).length) { addMsg('bot', lang === 'en' ? 'Tell me the new date, time, number of people or preference.' : 'Dime la nueva fecha, hora, número de personas o preferencia.'); return; }
+      if (/^(cancelar|cancel|salir|exit)$/i.test(t)) { modifyMode = false; addMsg('bot', CORE.reservaTextos(lang).noChange); return; }
+      var update = CORE.buildModifyUpdate(t, cfg, activeReservation);
+      if (!Object.keys(update).length) { addMsg('bot', CORE.reservaTextos(lang).needChange); return; }
       submitModify(update, lang);
       return;
     }

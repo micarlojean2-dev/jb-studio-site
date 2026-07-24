@@ -91,7 +91,16 @@ function buildSystemPrompt(basePrompt, client, media) {
   // hereden también los chatbots creados antes de este cambio. El prompt del
   // cliente (datos, precios, reglas del negocio) se concatena debajo y manda
   // sobre los hechos; esto solo fija el tono.
-  const header = `Hoy es ${day}, ${date} y son las ${time} (hora local del negocio, ${tz}). Usa siempre esta hora: es la del negocio, no la de quien te escribe.
+  // Idioma fijado por el negocio, no por el modelo ni por quien escribe: la
+  // interfaz genera los textos críticos (resumen, botones, avisos) en este mismo
+  // idioma, y una respuesta del modelo en otro idioma rompería la experiencia.
+  const langDirective = client.language === 'en'
+    ? 'LANGUAGE: Always reply in English, in every message, regardless of the language the customer writes in. Never switch languages.'
+    : 'IDIOMA: Responde SIEMPRE en español, en todos los mensajes, sin importar en qué idioma te escriban. Nunca cambies de idioma.';
+
+  const header = `${langDirective}
+
+Hoy es ${day}, ${date} y son las ${time} (hora local del negocio, ${tz}). Usa siempre esta hora: es la del negocio, no la de quien te escribe.
 
 FORMATO: No uses Markdown. Nada de asteriscos, negritas ni guiones para listas. Escribe en texto plano, como una conversación real. Separa las ideas en párrafos cortos con saltos de línea; no sueltes un muro de texto.
 
@@ -306,7 +315,8 @@ Cómo responder:
 - Habla natural y cálido, como recepción. Confirma en una frase lo que el cliente acaba de decir.
 - Pide SOLO el primer dato que falta de la lista, uno a la vez. No enumeres pasos ("Paso 2 de 8") ni uses listas de datos pendientes.
 - Si el cliente corrige algo (cambia hora, servicio, etc.), acéptalo con naturalidad.
-- Si ya no falta nada, di que le muestras el resumen para confirmar (no lo confirmes tú).
+- NUNCA escribas tú el resumen ni listes los datos capturados (nombre, fecha, hora, personas, platillo, teléfono, correo, etc.): de eso se encarga la interfaz, con sus propias etiquetas y en el idioma correcto. Tú solo pides el siguiente dato.
+- Si ya no falta nada, di una frase corta como "¡Perfecto! Te muestro el resumen para confirmar" SIN listar los datos, y no lo confirmes tú.
 - NUNCA digas que la cita quedó agendada o confirmada. NUNCA inventes horarios libres ni disponibilidad: eso lo revisa el negocio al confirmar.
 - PROHIBIDO afirmar cualquiera de estas cosas (aún no han ocurrido y no las controlas): "ya notificamos al equipo/negocio", "avisamos al negocio", "tu cita está confirmada", "el correo fue enviado", "te enviamos la confirmación", "la reserva fue creada/guardada". El sistema envía esos avisos por su cuenta y te lo confirmará; tú no.
 - Frase breve, sin markdown.

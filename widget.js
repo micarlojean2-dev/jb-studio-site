@@ -95,6 +95,19 @@
   var cancelStep = 0;    // 0 = idle, 1 = asking contacto, 2 = asking fecha
   var cancelData = {};
 
+  // ── Active reservation state (misma lógica que asistente.html) ───────────
+  var RESERVA_SESS = SESS + '_reserva';
+  var activeReservation = null;
+  var dupAttempts = 0;
+  var spamUntil = 0;
+  var modifyMode = false;
+  try { activeReservation = JSON.parse(sessionStorage.getItem(RESERVA_SESS) || 'null'); } catch (e) {}
+  function saveReserva() { try {
+    if (activeReservation) sessionStorage.setItem(RESERVA_SESS, JSON.stringify(activeReservation));
+    else sessionStorage.removeItem(RESERVA_SESS);
+  } catch (e) {} }
+  var MODIFY_TRIGGERS = /\b(modific|cambiar|cambia|reprogram|mover|mueve|otra hora|otro d[ií]a|otra fecha|change|reschedule|modify|move)\b/i;
+
   var CANCEL_TRIGGERS  = /\bcancel(ar)?\b|quiero cancelar/i;
   var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserva|hora libre|turno|quiero una cita/i;
 
@@ -849,10 +862,9 @@ function extractBooking(text, menu) {
   // aquí, no cuando el dueño intenta llamar y el número no existe.
   function showBookingSummary() {
     var lang = cfg.language === 'en' ? 'en' : 'es';
-    var L = RESUMEN_LABEL[lang];
     var lineas = CORE.summaryFields(cfg).concat(['contacto'])
       .filter(function (k) { return bookingData[k]; })
-      .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + L[k] + ': ' + bookingData[k]; });
+      .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + CORE.summaryLabel(cfg, k, lang) + ': ' + bookingData[k]; });
 
     var quien = bookingData.nombre ? ' ' + String(bookingData.nombre).split(/\s+/)[0] : '';
     addMsg('bot', (lang === 'en'
@@ -891,6 +903,7 @@ function extractBooking(text, menu) {
     submitting = true;
     bookingReview = false;
     var lang = cfg.language === 'en' ? 'en' : 'es';
+    if (!bookingData.idempotencyKey) bookingData.idempotencyKey = CORE.genIdempotencyKey();
     busy = true; inp.disabled = true; snd.disabled = true;
     addMsg('bot', lang === 'en' ? 'Checking availability…' : 'Revisando disponibilidad…');
     fetch(API + '/api/reservations', {
@@ -917,9 +930,20 @@ function extractBooking(text, menu) {
           bookingStep = 1;
           return;
         }
-        if (d && d.ok) {   // éxito: compatible con {ok:true} (hoy) y con reservationCreated (Fase 2)
-          addMsg('bot', mensajeReservaGuardada(d, lang));
-          bookingStep = 0; bookingData = {}; bookingPending = null;
+        if (d && d.ok) {   // éxito: creada nueva o reconocida idempotente (duplicate)
+          activeReservation = {
+            reservationId: d.reservationId || (activeReservation && activeReservation.reservationId) || null,
+            actionToken: d.actionToken || (activeReservation && activeReservation.actionToken) || null,
+            fecha: bookingData.fecha, hora: bookingData.hora,
+            personas: bookingData.partySize || bookingData.personas || '',
+            servicio: bookingData.servicio || '', specialRequests: bookingData.specialRequests || '',
+            estado: d.status || 'confirmada', confirmedAt: Date.now(), language: lang,
+          };
+          saveReserva();
+          addMsg('bot', d.duplicate ? CORE.reservaTextos(lang).duplicateActive : mensajeReservaGuardada(d, lang));
+          if (d.duplicate) offerReservationActions(lang);
+          bookingStep = 0; bookingData = {}; bookingPending = null; dupAttempts = 0;
+          save();   // limpia BOOKING_SESS: sin esto una recarga reanudaría una reserva fantasma
           return;
         }
         addMsg('bot', lang === 'en'
@@ -944,6 +968,84 @@ function extractBooking(text, menu) {
   function mensajeReservaGuardada(d, lang) {
     var en = lang === 'en';
     return en ? 'Your request has been registered successfully.' : 'Tu solicitud quedó registrada correctamente.';
+  }
+
+  // ── Reserva activa: acciones (idénticas a asistente.html vía chat-core) ──
+  function offerReservationActions(lang) {
+    var T = CORE.reservaTextos(lang);
+    var wrap = document.createElement('div');
+    wrap.className = 'jbw-quick';
+    [{ label: T.modify, act: 'modify' }, { label: T.cancel, act: 'cancel' }, { label: T.keep, act: 'keep' }
+    ].forEach(function (o, i) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'jbw-quick-btn'; b.textContent = o.label; b.style.animationDelay = (i * 60) + 'ms';
+      b.addEventListener('click', function () { wrap.remove(); addMsg('user', o.label); handleReservationAction(o.act, lang); });
+      wrap.appendChild(b);
+    });
+    msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, );
+  }
+
+  function handleReservationAction(act, lang) {
+    if (!activeReservation) return;
+    var T = CORE.reservaTextos(lang);
+    if (act === 'keep') { addMsg('bot', T.keepMsg); return; }
+    if (act === 'cancel') { submitActiveCancel(lang); return; }
+    modifyMode = true;
+    addMsg('bot', T.askChange);
+  }
+
+  function submitActiveCancel(lang) {
+    var T = CORE.reservaTextos(lang);
+    if (!activeReservation || !activeReservation.actionToken) { addMsg('bot', T.notFound); return; }
+    busy = true; inp.disabled = true; snd.disabled = true; showTyping();
+    fetch(API + '/api/cancel-reservation', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: clientId, actionToken: activeReservation.actionToken }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      hideTyping();
+      if (d.found || d.ok) {
+        addMsg('bot', T.cancelled);
+        activeReservation = null; dupAttempts = 0; spamUntil = 0; modifyMode = false; saveReserva();
+      } else addMsg('bot', T.cancelFail);
+    }).catch(function () { hideTyping(); addMsg('bot', T.netFail); })
+    .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
+  }
+
+  function submitModify(update, lang) {
+    var T = CORE.reservaTextos(lang);
+    if (!activeReservation || !activeReservation.actionToken) { addMsg('bot', T.notFound); modifyMode = false; return; }
+    var body = {
+      clientId: clientId, action: 'reschedule', actionToken: activeReservation.actionToken,
+      fecha: update.fecha || activeReservation.fecha, hora: update.hora || activeReservation.hora,
+    };
+    if (update.partySize || update.personas) body.partySize = update.partySize || update.personas;
+    if (update.specialRequests) body.specialRequests = update.specialRequests;
+    if (update.foodPreferences) body.foodPreferences = update.foodPreferences;
+    if (update.servicio) body.servicio = update.servicio;
+    busy = true; inp.disabled = true; snd.disabled = true; showTyping();
+    fetch(API + '/api/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); }).then(function (d) {
+        hideTyping();
+        if (d.ok && d.reservation) {
+          activeReservation.fecha = d.reservation.fecha; activeReservation.hora = d.reservation.hora;
+          activeReservation.personas = d.reservation.partySize || d.reservation.personas || activeReservation.personas;
+          activeReservation.servicio = d.reservation.servicio || activeReservation.servicio;
+          activeReservation.specialRequests = d.reservation.specialRequests || activeReservation.specialRequests;
+          activeReservation.estado = d.reservation.estado || activeReservation.estado;
+          saveReserva();
+          addMsg('bot', T.modifyDone + CORE.reservaResumen(activeReservation, lang));
+        } else if (d.ok === false && d.motivo) {
+          addMsg('bot', T.modifyUnavail + (d.mensaje || '') + (d.alternativa ? (T.closest + d.alternativa) : ''));
+        } else addMsg('bot', T.modifyFail);
+      }).catch(function () { hideTyping(); addMsg('bot', T.netFail); })
+      .finally(function () { modifyMode = false; busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
+  }
+
+  function handleDuplicateAttempt(lang) {
+    var s = CORE.duplicateAttemptState(activeReservation, dupAttempts, spamUntil, Date.now(), lang);
+    dupAttempts = s.attempts; spamUntil = s.spamUntil;
+    addMsg('bot', s.text);
+    offerReservationActions(lang);
   }
 
   // ── Send message ─────────────────────────────────────────────────────────
@@ -973,6 +1075,26 @@ function extractBooking(text, menu) {
         submitCancellation();
       }
       return;
+    }
+
+    // Modo modificar: el siguiente mensaje trae el cambio para la reserva activa.
+    if (modifyMode) {
+      addMsg('user', t);
+      if (/^(cancelar|cancel|salir|exit)$/i.test(t)) { modifyMode = false; addMsg('bot', CORE.reservaTextos(lang).noChange); return; }
+      var updW = CORE.buildModifyUpdate(t, cfg, activeReservation);
+      if (!Object.keys(updW).length) { addMsg('bot', CORE.reservaTextos(lang).needChange); return; }
+      submitModify(updW, lang);
+      return;
+    }
+
+    // Con una reserva ya activa, un nuevo intento de reservar no crea otra:
+    // se ofrece modificar o cancelar. [BUG-4/5]
+    if (activeReservation && bookingStep === 0 && featureOn('reservations')) {
+      var preARW = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
+      var looksNewW = CORE.pareceReserva(t, preARW) || BOOKING_TRIGGERS.test(t);
+      if (CANCEL_TRIGGERS.test(t)) { addMsg('user', t); submitActiveCancel(lang); return; }
+      if (MODIFY_TRIGGERS.test(t)) { addMsg('user', t); handleReservationAction('modify', lang); return; }
+      if (looksNewW) { addMsg('user', t); handleDuplicateAttempt(lang); return; }
     }
 
     // ── Active booking flow: collect next field ──────────────────────────

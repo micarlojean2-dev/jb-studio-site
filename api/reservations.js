@@ -60,7 +60,7 @@ function parseFechaISO(raw, now) {
   const mk = (d) => d.toISOString().slice(0, 10);
   const addDays = (d, n) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x; };
 
-  if (/\bpasado\s+ma(ñ|n)ana\b/.test(txt)) return mk(addDays(base, 2));
+  if (/\bpasado\s+ma(ñ|n)ana\b|\bday\s+after\s+tomorrow\b/.test(txt)) return mk(addDays(base, 2));
   if (/\bhoy\b|\btoday\b/.test(txt)) return mk(base);
   if (/\bma(ñ|n)ana\b|\btomorrow\b/.test(txt)) return mk(addDays(base, 1));
 
@@ -323,25 +323,60 @@ function reservationEmailHtml(client, reservation, type) {
     title, client.color || '#1a4a2e', client.businessName || 'Reserva');
 }
 
-async function sendReservationEmails(client, reservation, type) {
-  if (!process.env.RESEND_API_KEY) return { customer: false, owner: false, skipped: true };
-  const resend = new Resend(process.env.RESEND_API_KEY);
+// The Resend SDK returns { data: { id }, error }. Older shapes exposed the id at
+// the top level, so read both.
+function resendMessageId(r) {
+  return (r && r.data && r.data.id) || (r && r.id) || null;
+}
+
+// Sends the reservation emails and reports EXACTLY what happened per recipient,
+// including the provider messageId, so the API never presents a skipped or
+// failed email as sent. `deps.resend` lets tests inject a controlled provider.
+// Owner notifications go out one-per-recipient: it yields a messageId for each
+// and avoids exposing the whole owner list to every recipient. [BUG-2]
+async function sendReservationEmails(client, reservation, type, deps) {
+  const result = {
+    configured: !!process.env.RESEND_API_KEY,
+    customer: { attempted: false, sent: false, messageId: null, error: null },
+    owners:   { attempted: false, sent: false, messageIds: [], recipients: [], error: null },
+    warning: null,
+  };
+  const resend = (deps && deps.resend) || (process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null);
+  if (!resend) {
+    // Never fake a send: the reservation still stands, but this is surfaced in
+    // the response and logged so a missing key is visible, not silent. [BUG-2]
+    result.warning = 'RESEND_API_KEY missing: confirmation email NOT sent';
+    console.error(`[api/reservations] EMAIL SKIPPED (RESEND_API_KEY missing) for ${reservation.clientId} — reservation saved, email not sent`);
+    return result;
+  }
   const recipients = destinatariosAviso(client);
   const subject = type === 'cancelled' ? `${client.businessName} - reserva cancelada`
     : type === 'rescheduled' ? `${client.businessName} - reserva reprogramada`
     : `${client.businessName} - reserva confirmada`;
   const details = reservationEmailHtml(client, reservation, type);
   const ownerHtml = shell(`<p style="font-size:15px;line-height:1.55"><strong>${esc(reservation.nombre)}</strong>: ${esc(reservation.servicio || `${reservation.partySize || ''} personas`)}</p><p>${esc(reservation.fecha)} · ${esc(reservation.hora)}</p><p><strong>Peticiones especiales:</strong> ${esc(reservation.specialRequests || 'Sin peticiones especiales')}</p>`, subject, client.color || '#1a4a2e', client.businessName || 'Reserva');
-  const result = { customer: false, owner: false, skipped: false };
+
   if (reservation.email) {
-    const r = await resend.emails.send({ from: FROM, to: reservation.email, subject, html: details });
-    if (r?.error) throw new Error(r.error.message || 'customer email failed');
-    result.customer = true;
+    result.customer.attempted = true;
+    try {
+      const r = await resend.emails.send({ from: FROM, to: reservation.email, subject, html: details });
+      if (r && r.error) { result.customer.error = r.error.message || 'send failed'; }
+      else { result.customer.sent = true; result.customer.messageId = resendMessageId(r); }
+    } catch (e) { result.customer.error = e.message || 'send threw'; }
+    if (result.customer.error) console.error(`[api/reservations] customer email failed for ${reservation.clientId}:`, result.customer.error);
   }
+
   if (recipients.length) {
-    const r = await resend.emails.send({ from: FROM, to: recipients, subject, html: ownerHtml });
-    if (r?.error) throw new Error(r.error.message || 'owner email failed');
-    result.owner = true;
+    result.owners.attempted = true;
+    result.owners.recipients = recipients;
+    for (const to of recipients) {
+      try {
+        const r = await resend.emails.send({ from: FROM, to, subject, html: ownerHtml });
+        if (r && r.error) { result.owners.error = r.error.message || 'send failed'; }
+        else { result.owners.sent = true; const id = resendMessageId(r); if (id) result.owners.messageIds.push(id); }
+      } catch (e) { result.owners.error = e.message || 'send threw'; }
+    }
+    if (result.owners.error) console.error(`[api/reservations] owner email failed for ${reservation.clientId}:`, result.owners.error);
   }
   return result;
 }
@@ -820,10 +855,8 @@ export default async function handler(req, res) {
         servicio: candidate.servicio, fecha: candidate.fecha, hora: candidate.hora,
         prevFecha: existing.fecha, prevHora: existing.hora, notes: candidate.specialRequests,
       });
-      let notifications = { customer: false, owner: false, skipped: false };
-      try { notifications = await sendReservationEmails(client, candidate, 'rescheduled'); }
-      catch (emailError) { console.error('[api/reservations] reschedule notification failed:', emailError.message); }
-      return res.status(200).json({ ok: true, reservation: candidate, aviso: { encolado: aviso.ok }, notifications });
+      const emailResult = await sendReservationEmails(client, candidate, 'rescheduled');
+      return res.status(200).json({ ok: true, reservation: candidate, aviso: { encolado: aviso.ok }, email: emailResult, emailWarning: emailResult.warning || null });
     }
 
     const template = reservationTemplate(client);
@@ -989,13 +1022,9 @@ export default async function handler(req, res) {
       fecha: reservation.fecha, hora: reservation.hora, telefono: reservation.telefono,
       notes: reservation.specialRequests,
     });
-    let notifications = { customer: false, owner: false, skipped: false };
-    try {
-      notifications = await sendReservationEmails(client, reservation, 'created');
-    } catch (emailError) {
-      // A confirmed reservation must never be rolled back just because email failed.
-      console.error('[api/reservations] notification failed:', emailError.message);
-    }
+    // A confirmed reservation is never rolled back if email fails; the outcome
+    // is reported truthfully in `email` below (never faked as sent). [BUG-2]
+    const emailResult = await sendReservationEmails(client, reservation, 'created');
     // La reserva ya está guardada; si el aviso no se encoló, se registra sin
     // ocultarlo y el backend lo reporta abajo (sin confirmación falsa).
     if (!aviso.ok) console.error(`[api/reservations] reserva ${key} guardada pero el aviso NO quedó en cola:`, aviso.error);
@@ -1011,7 +1040,10 @@ export default async function handler(req, res) {
       status: reservation.estado,
       // Estado real del encolado del aviso: true = irá en el próximo resumen.
       aviso: { encolado: aviso.ok },
-      notifications,
+      // Truthful per-recipient email outcome with provider messageIds. When
+      // RESEND_API_KEY is missing, email.configured=false and email.warning is set.
+      email: emailResult,
+      emailWarning: emailResult.warning || null,
     });
 
   } catch (err) {
@@ -1023,4 +1055,5 @@ export default async function handler(req, res) {
 // Solo para pruebas unitarias (no se usa en producción).
 export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
-  configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml };
+  configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml,
+  sendReservationEmails, resendMessageId };

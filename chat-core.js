@@ -35,10 +35,15 @@ window.JBChatCore = (function () {
                 september:9, october:10, november:11, december:12, jan:1, feb:2, mar:3,
                 apr:4, jun:6, jul:7, aug:8, sep:9, sept:9, oct:10, nov:11, dec:12 };
 
+  // Incluye relativos y días de la semana en español E inglés: sin el inglés,
+  // "this Friday"/"tomorrow" no se capturaban como fecha y una reserva en inglés
+  // no podía completarse nunca (el flujo se quedaba pidiendo la fecha). El
+  // backend (parseFechaISO) ya normaliza estos mismos términos en inglés.
   var FECHA_TEXTO_RE = new RegExp(
     '(pasado\\s+ma(?:ñ|n)ana|ma(?:ñ|n)ana|hoy|' +
-    '(?:este|el|pr(?:ó|o)ximo)\\s+(?:lunes|martes|mi(?:é|e)rcoles|jueves|viernes|s(?:á|a)bado|domingo)|' +
-    '(?:lunes|martes|mi(?:é|e)rcoles|jueves|viernes|s(?:á|a)bado|domingo)|' +
+    'day\\s+after\\s+tomorrow|tomorrow|today|' +
+    '(?:este|el|pr(?:ó|o)ximo|this|next)\\s+(?:lunes|martes|mi(?:é|e)rcoles|jueves|viernes|s(?:á|a)bado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|' +
+    '(?:lunes|martes|mi(?:é|e)rcoles|jueves|viernes|s(?:á|a)bado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|' +
     '\\d{1,2}\\s+de\\s+(?:' + MES_NOM + ')(?:\\s+de\\s+\\d{4})?|' +
     '(?:' + MES_NOM + ')\\s+\\d{1,2}\\b)', 'i');
 
@@ -264,12 +269,100 @@ window.JBChatCore = (function () {
 
   var RESUMEN_LABEL = {
       es: { nombre: 'Nombre', servicio: 'Servicio', fecha: 'Fecha', hora: 'Hora',
-            personas: 'Personas', partySize: 'Personas', telefono: 'Teléfono', email: 'Email', contacto: 'Contacto', nota: 'Nota',
+            personas: 'Personas', partySize: 'Personas', telefono: 'Teléfono', email: 'Correo', contacto: 'Contacto', nota: 'Nota',
              tablePreference: 'Mesa', barberPreference: 'Barbero', specialRequests: 'Peticiones especiales' },
       en: { nombre: 'Name', servicio: 'Service', fecha: 'Date', hora: 'Time',
-            personas: 'People', partySize: 'People', telefono: 'Phone', email: 'Email', contacto: 'Contact', note: 'Note',
+            personas: 'People', partySize: 'People', telefono: 'Phone', email: 'Email', contacto: 'Contact', nota: 'Note',
              tablePreference: 'Table preference', barberPreference: 'Barber preference', specialRequests: 'Special requests' }
     };
+
+  // Deterministic, template-aware label for a summary field. Critical for i18n:
+  // the customer-facing summary must never rely on the model for its labels, and
+  // a restaurant's dish is "Platillo/Dish", not "Servicio/Service".
+  function summaryLabel(cfg, field, lang) {
+    var l = (lang === 'en') ? 'en' : 'es';
+    if (field === 'servicio' && templateId(cfg) === 'restaurant') return l === 'en' ? 'Dish' : 'Platillo';
+    return (RESUMEN_LABEL[l] && RESUMEN_LABEL[l][field]) || field;
+  }
+
+  // ── Reserva activa: lógica y textos compartidos (asistente.html + widget.js) ─
+  // Se extraen aquí para que ambas superficies usen EXACTAMENTE lo mismo y no
+  // vuelvan a divergir. La parte de DOM (botones, addMsg, fetch) vive en cada
+  // superficie; lo determinista (idioma, escalado, resumen, update) vive aquí.
+  function genIdempotencyKey() {
+    return 'ik' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+
+  function reservaResumen(r, lang) {
+    r = r || {};
+    var en = lang === 'en';
+    var partes = [];
+    if (r.fecha) partes.push(r.fecha);
+    if (r.hora) partes.push(r.hora);
+    var base = partes.join(' · ');
+    if (r.personas) base += en ? (', ' + r.personas + ' people') : (', ' + r.personas + ' personas');
+    return base;
+  }
+
+  // Escalado determinista del intento de duplicar: mensaje + nuevo estado.
+  function duplicateAttemptState(activeReservation, dupAttempts, spamUntil, now, lang) {
+    var en = lang === 'en';
+    var nextAttempts = dupAttempts + 1;
+    var text, nextSpam = spamUntil;
+    if (now < spamUntil || nextAttempts >= 3) {
+      nextSpam = now + 60000;
+      text = en ? 'To avoid duplicate reservations, please modify or cancel your current one first. 🙏'
+                : 'Para evitar reservas duplicadas, primero modifica o cancela tu reserva actual. 🙏';
+    } else if (nextAttempts === 1) {
+      text = (en ? 'You already have an active reservation for ' : 'Ya tienes una reserva activa para ') +
+        reservaResumen(activeReservation, lang) +
+        (en ? '. Would you like to modify or cancel it?' : '. ¿Quieres modificarla o cancelarla?');
+    } else {
+      text = en ? 'To avoid duplicate reservations, please modify or cancel your current one first.'
+                : 'Para evitar reservas duplicadas, primero debes modificar o cancelar tu reserva actual.';
+    }
+    return { text: text, attempts: nextAttempts, spamUntil: nextSpam };
+  }
+
+  // Construye el update de modificación desde el texto libre del cliente.
+  function buildModifyUpdate(text, cfg, activeReservation) {
+    var lang = cfg && cfg.language === 'en' ? 'en' : 'es';
+    var upd = extractBooking(text, cfg.menu, cfg.businessHours, cfg.language, cfg);
+    delete upd.__horaAmbigua;
+    var food = applyFoodPreferences(activeReservation && activeReservation.foodPreferences, text, cfg);
+    var update = {};
+    if (upd.fecha) update.fecha = upd.fecha;
+    if (upd.hora) update.hora = upd.hora;
+    if (upd.personas || upd.partySize) update.partySize = upd.personas || upd.partySize;
+    if (upd.servicio) update.servicio = upd.servicio;
+    if (food) { update.foodPreferences = food; update.specialRequests = foodPreferencesToSpecialRequests(food, lang); }
+    return update;
+  }
+
+  // Todos los textos de las acciones de reserva, en el idioma del negocio. El
+  // modelo no participa: estos textos son fijos y bilingües. [i18n determinista]
+  function reservaTextos(lang) {
+    var en = lang === 'en';
+    return {
+      modify: en ? '✏️ Modify' : '✏️ Modificar',
+      cancel: en ? '❌ Cancel' : '❌ Cancelar',
+      keep: en ? '✅ Keep it' : '✅ Mantener',
+      keepMsg: en ? 'No problem — your reservation stays as it is. 😊' : 'Perfecto, tu reserva sigue igual. 😊',
+      askChange: en ? 'What would you like to change? Tell me the new date, time, number of people or a preference (e.g. "no onions"). Your other details stay the same.'
+                    : '¿Qué quieres cambiar? Dime la nueva fecha, hora, número de personas o una preferencia (por ejemplo "sin cebolla"). Tus demás datos se conservan.',
+      noChange: en ? 'No changes made.' : 'No se hizo ningún cambio.',
+      needChange: en ? 'Tell me the new date, time, number of people or preference.' : 'Dime la nueva fecha, hora, número de personas o preferencia.',
+      cancelled: en ? '✅ Your reservation has been cancelled. You can make a new one whenever you like.' : '✅ Tu reserva fue cancelada. Puedes hacer una nueva cuando quieras.',
+      cancelFail: en ? 'I could not cancel it. Please try again.' : 'No pude cancelarla. Inténtalo de nuevo.',
+      modifyDone: en ? '✅ Done. Your reservation is now: ' : '✅ Listo. Tu reserva quedó: ',
+      modifyUnavail: en ? 'That change is not available: ' : 'Ese cambio no está disponible: ',
+      modifyFail: en ? 'I could not modify it. Please try again.' : 'No pude modificarla. Inténtalo de nuevo.',
+      closest: en ? ' Closest time: ' : ' Hora más cercana: ',
+      notFound: en ? 'I could not find your reservation.' : 'No encontré tu reserva.',
+      duplicateActive: en ? 'You already had this reservation — it is still active. ✅' : 'Ya tenías esta reserva registrada, sigue activa. ✅',
+      netFail: en ? "Sorry, that didn't go through 😅" : 'Uy, no se envió 😅',
+    };
+  }
 
   var BOOKING_STEPS = [
       { field: 'nombre',   ask: { es: '¿Cuál es tu nombre completo?',                           en: 'What is your full name?' } },
@@ -747,6 +840,12 @@ window.JBChatCore = (function () {
     CANCEL_STEPS: CANCEL_STEPS,
     RESUMEN_ICONOS: RESUMEN_ICONOS,
     RESUMEN_LABEL: RESUMEN_LABEL,
+    summaryLabel: summaryLabel,
+    genIdempotencyKey: genIdempotencyKey,
+    reservaResumen: reservaResumen,
+    duplicateAttemptState: duplicateAttemptState,
+    buildModifyUpdate: buildModifyUpdate,
+    reservaTextos: reservaTextos,
     CORRECCION_RE: CORRECCION_RE,
     CAMPO_MENCIONADO: CAMPO_MENCIONADO,
     extractBooking: extractBooking,
