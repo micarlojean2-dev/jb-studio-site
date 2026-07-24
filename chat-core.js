@@ -573,7 +573,11 @@ window.JBChatCore = (function () {
       if (nearRemove.test(source) || (/(?:no\s+me\s+gusta|don\s+t\s+like)/i.test(source) && entry[0] === 'cheese')) setIngredient(entry[0], 'remove');
       else if (nearExtra.test(source)) setIngredient(entry[0], 'extra');
       else if (nearAdd.test(source) || (/(?:solo|only)\s+/i.test(source) && entry[0] === 'onions')) setIngredient(entry[0], 'add');
-      else if (nearLight.test(source) && entry[0] === 'sauce' && out.notes.indexOf('light_sauce') === -1) out.notes.push('light_sauce');
+      else if (nearLight.test(source) && entry[0] === 'sauce') {
+        out.extra = removeFrom(out.extra, 'sauce');
+        out.notes = out.notes.filter(function (x) { return x !== 'sauce_on_side'; });
+        if (out.notes.indexOf('light_sauce') === -1) out.notes.push('light_sauce');
+      }
     });
     if (/(salsa|sauce|aderezo|dressing).{0,20}(apart\w*|on the side)|(?:apart\w*|on the side).{0,20}(salsa|sauce|aderezo|dressing)/i.test(source)) {
       if (out.notes.indexOf('sauce_on_side') === -1) out.notes.push('sauce_on_side');

@@ -50,6 +50,8 @@ revised = food('Sin queso', revised);
 check(revised.remove.includes('cheese') && !revised.extra.includes('cheese'), 'last cheese decision wins');
 revised = food('Con cebolla'); revised = food('No, mejor sin cebolla', revised);
 check(revised.remove.includes('onions') && !revised.add.includes('onions'), 'last onion decision wins');
+revised = food('Extra sauce'); revised = food('Light sauce', revised);
+check(!revised.extra.includes('sauce') && revised.notes.includes('light_sauce'), 'last sauce decision wins');
 revised = food('Sin queso', revised); revised = food('Sin queso', revised);
 check(revised.remove.filter(x => x === 'cheese').length === 1, 'duplicate preferences collapse');
 check(CORE.foodPreferencesToSpecialRequests(food('without cheese'), 'en') === 'No cheese', 'English special requests stay in English');
