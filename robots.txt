@@ -1,3 +1,4 @@
 User-agent: *
 Allow: /
+Disallow: /qa/
 Sitemap: https://jbstudio.app/sitemap.xml
