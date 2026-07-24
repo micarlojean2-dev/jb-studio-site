@@ -2,7 +2,7 @@ import { Redis }  from '@upstash/redis';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { registrarCambio } from '../lib/changes.js';
 import { Resend } from 'resend';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 
 const redis  = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -196,13 +196,41 @@ function contactMatches(a, b) {
   return !!a && !!b && norm(a) === norm(b);
 }
 
-function duplicateReservation(reservas, reservation) {
+// Returns the key of an existing active reservation that is effectively the
+// same booking (same day + time + contact), or null. Returning the key lets the
+// caller answer with existingReservationId instead of a blind "duplicada".
+function duplicateReservationKey(reservasConKey, reservation) {
   const sameDate = (r) => r.fechaISO && reservation.fechaISO
     ? r.fechaISO === reservation.fechaISO
     : String(r.fecha || '').trim().toLowerCase() === String(reservation.fecha || '').trim().toLowerCase();
-  return (reservas || []).some((r) => activa(r) && sameDate(r) &&
+  const hit = (reservasConKey || []).find((r) => activa(r) && sameDate(r) &&
     r.horaISO === reservation.horaISO &&
     (contactMatches(r.telefono, reservation.telefono) || contactMatches(r.email, reservation.email)));
+  return hit ? hit._key : null;
+}
+
+// Stable fingerprint of a booking, used as the idempotency lock when the client
+// does not supply its own key. Two identical confirmations (double-click, a
+// retried POST after a lost response) map to the same lock and therefore to the
+// same reservation. [BUG-4]
+function idempotencyFingerprint(clientId, r) {
+  const norm = (v) => String(v || '').toLowerCase().replace(/[\s\-().+]/g, '');
+  const sig = [clientId, norm(r.telefono), norm(r.email), r.fechaISO || r.fecha,
+    r.horaISO || r.hora, String(r.servicio || '').toLowerCase().trim(),
+    String(r.partySize || r.personas || '')].join('|');
+  return createHash('sha256').update(sig).digest('hex').slice(0, 32);
+}
+
+// The idempotency lock stores 'pending' while a request is mid-flight, then the
+// created reservation key. Concurrent losers poll briefly for that key so they
+// can return the winner's reservation instead of erroring or duplicating.
+async function waitForReservationKey(lockKey) {
+  for (let i = 0; i < 10; i++) {
+    const v = await redis.get(lockKey);
+    if (typeof v === 'string' && v.startsWith('reservations:')) return v;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return null;
 }
 
 
@@ -724,7 +752,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken } = req.body || {};
+  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, idempotencyKey } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -754,6 +782,30 @@ export default async function handler(req, res) {
         hora: String(hora).slice(0, 30),
         horaISO: normalizeHora(hora),
       };
+      // A modification may also change party size, table/dish and requests — all
+      // authenticated by the same token. Fields not supplied keep their previous
+      // value so a time-only change never wipes the customer's preferences.
+      const modTemplate = reservationTemplate(client);
+      const modPartySize = normalizePersonas(partySize === undefined ? personas : partySize);
+      if (modPartySize) {
+        candidate.personas = modPartySize;
+        if (modTemplate === 'restaurant') candidate.partySize = modPartySize;
+      }
+      if (servicio) { candidate.servicio = String(servicio).slice(0, 200); candidate.duracion = durationFor(client, servicio); }
+      if (tablePreference !== undefined && modTemplate === 'restaurant') candidate.tablePreference = String(tablePreference || '').slice(0, 200);
+      if (specialRequests !== undefined && !/^(no|ninguna|ninguno|nope)$/i.test(String(specialRequests || '').trim())) {
+        candidate.specialRequests = String(specialRequests || '').slice(0, 800);
+      }
+      if (foodPreferences && typeof foodPreferences === 'object' && modTemplate === 'restaurant') {
+        candidate.foodPreferences = {
+          remove: Array.isArray(foodPreferences.remove) ? foodPreferences.remove.slice(0, 20).map(x => String(x).slice(0, 40)) : [],
+          add: Array.isArray(foodPreferences.add) ? foodPreferences.add.slice(0, 20).map(x => String(x).slice(0, 40)) : [],
+          extra: Array.isArray(foodPreferences.extra) ? foodPreferences.extra.slice(0, 20).map(x => String(x).slice(0, 40)) : [],
+          cooking: String(foodPreferences.cooking || '').slice(0, 40),
+          spice: String(foodPreferences.spice || '').slice(0, 40),
+          notes: Array.isArray(foodPreferences.notes) ? foodPreferences.notes.slice(0, 20).map(x => String(x).slice(0, 80)) : [],
+        };
+      }
       const otherReservations = items.filter((item, itemIndex) => item && itemIndex !== index);
       const checkedClient = { ...client, __reservationBarberPreference: candidate.barberPreference };
       const availability = validarReserva(checkedClient, candidate.fechaISO, candidate.horaISO, candidate.servicio, undefined, otherReservations);
@@ -841,23 +893,72 @@ export default async function handler(req, res) {
       });
     }
 
+    // ── Idempotency lock (atomic, race-proof) ────────────────────────────
+    // A confirmation can arrive more than once: a double-click, a reload+click,
+    // or the frontend retrying after a lost response. SET NX means exactly one
+    // of N concurrent identical requests wins the lock; the rest return the
+    // winner's reservation instead of creating a second one. The client may
+    // pass its own idempotencyKey; otherwise a fingerprint of the booking is
+    // used so even keyless double-clicks are covered. [BUG-4]
+    const idemRaw = (typeof idempotencyKey === 'string' && /^[A-Za-z0-9_-]{8,100}$/.test(idempotencyKey))
+      ? idempotencyKey : idempotencyFingerprint(clientId, reservation);
+    const lockKey = `idempo:${clientId}:${idemRaw}`;
+    let lockAcquired = false;
+    try {
+      const got = await redis.set(lockKey, 'pending', { nx: true, ex: 900 });
+      lockAcquired = got === 'OK' || got === true;
+    } catch (e) {
+      console.error('[api/reservations] idempotency lock error:', e.message);
+      lockAcquired = true;   // Redis lock unavailable: fall through, do not block a real booking
+    }
+    if (!lockAcquired) {
+      const existingKey = await waitForReservationKey(lockKey);
+      if (existingKey) {
+        const existing = await redis.get(existingKey);
+        if (existing) {
+          return res.status(200).json({
+            ok: true, reservationCreated: false, duplicate: true,
+            reservationId: existingKey, existingReservationId: existingKey,
+            status: existing.estado, actionToken: existing.actionToken,
+          });
+        }
+      }
+      // Winner still in flight (rare): tell the client it is already being handled.
+      return res.status(200).json({ ok: true, reservationCreated: false, duplicate: true,
+        mensaje: 'Esta reserva ya se está procesando.' });
+    }
+
     // Validación autoritativa: el navegador ya avisa, pero esta es la que
     // decide. Una cita fuera de horario no se acepta ni por curl.
     // Las reservas vivas hacen falta para capacidad, duplicados y la agenda de
     // un barbero elegido. Si Redis falla, conservamos el comportamiento previo:
     // no rechazamos una reserva real por una consulta auxiliar caída.
     let existentes = null;
+    let existentesConKey = null;
     try {
       const ks = await redis.keys(`reservations:${clientId}:*`);
-      existentes = ks.length ? (ks.length === 1 ? [await redis.get(ks[0])] : await redis.mget(...ks)) : [];
-      existentes = existentes.filter(Boolean);
+      const vals = ks.length ? (ks.length === 1 ? [await redis.get(ks[0])] : await redis.mget(...ks)) : [];
+      existentesConKey = ks.map((k, i) => vals[i] ? { ...vals[i], _key: k } : null).filter(Boolean);
+      existentes = existentesConKey;
     } catch (e) {
       console.error('[api/reservations] disponibilidad, no se pudo leer:', e.message);
       existentes = null;
     }
 
-    if (existentes && duplicateReservation(existentes, reservation)) {
-      return res.status(200).json({ ok: false, motivo: 'duplicada', mensaje: 'Ya existe una reserva con estos datos.' });
+    // Prior active reservation with the same day+time+contact: a real duplicate
+    // (a distinct earlier booking, not a retry). Return its id so the client can
+    // offer to modify or cancel it instead of stacking another. Release the lock
+    // so a genuinely different corrected booking can still go through.
+    const dupKey = existentesConKey && duplicateReservationKey(existentesConKey, reservation);
+    if (dupKey) {
+      const dup = existentesConKey.find((r) => r._key === dupKey);
+      await redis.del(lockKey).catch(() => {});
+      return res.status(200).json({
+        ok: false, reservationCreated: false, duplicate: true, motivo: 'duplicada',
+        reservationId: dupKey, existingReservationId: dupKey,
+        status: dup ? dup.estado : 'confirmada', actionToken: dup ? dup.actionToken : undefined,
+        mensaje: 'Ya existe una reserva con estos datos.',
+      });
     }
     const clientForValidation = { ...client, __reservationBarberPreference: reservation.barberPreference };
     const v = validarReserva(clientForValidation, reservation.fechaISO, reservation.horaISO, reservation.servicio, undefined, existentes);
@@ -867,15 +968,19 @@ export default async function handler(req, res) {
       reservation.estado = 'rechazada';
       reservation.motivoRechazo = v.motivo;
       await redis.set(key, reservation);
+      await redis.del(lockKey).catch(() => {});   // let a corrected retry proceed
       console.log(`[api/reservations] Rechazada ${key}: ${v.motivo}`);
       return res.status(200).json({
-        ok: false, motivo: v.motivo, mensaje: v.mensaje, alternativa: v.alternativa || null,
+        ok: false, reservationCreated: false, motivo: v.motivo, mensaje: v.mensaje, alternativa: v.alternativa || null,
       });
     }
 
     // ── Guardar en Redis (operación primaria: la reserva no se pierde
     //    aunque falle un correo) ──────────────────────────────────────────
     await redis.set(key, reservation);
+    // Record the created key in the lock so a later retry with the same key (or
+    // a concurrent loser) resolves to THIS reservation instead of a new one.
+    await redis.set(lockKey, key, { ex: 24 * 60 * 60 }).catch(() => {});
     console.log(`[api/reservations] Saved ${key}`);
 
     const aviso = await registrarCambio(clientId, {
@@ -898,7 +1003,11 @@ export default async function handler(req, res) {
     return res.status(201).json({
       ok: true,
       reservationCreated: true,
+      duplicate: false,
       reservationId: key,
+      // Returned to the same client that just booked so it can modify (reschedule)
+      // or cancel this reservation in-session by its token, without a new endpoint.
+      actionToken: reservation.actionToken,
       status: reservation.estado,
       // Estado real del encolado del aviso: true = irá en el próximo resumen.
       aviso: { encolado: aviso.ok },
@@ -914,4 +1023,4 @@ export default async function handler(req, res) {
 // Solo para pruebas unitarias (no se usa en producción).
 export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
-  configuredStaff, duplicateReservation, reservationActionUrl, reservationEmailHtml };
+  configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml };

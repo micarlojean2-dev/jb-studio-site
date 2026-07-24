@@ -319,7 +319,8 @@ CAPTURA DE NOTAS (silenciosa, no la menciones al cliente): si el cliente dice es
 
 IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, dile exactamente esta idea con tus palabras: "No puedo confirmar citas en este momento, pero puedo ayudarte con información del negocio." Si tienes teléfono o correo del negocio, ofrécelo para que se la agenden ahí. Sigue ayudando con servicios, precios, horarios y dudas.\n\nNUNCA des una razón técnica ni menciones sistemas, configuración, instalación, activación, datos que falten, pruebas, demos, ni que algo "estará listo pronto": eso es interno y al cliente no le importa. Nunca pidas datos para una cita ni digas que la has agendado.`;
     }
-    const text = await callProvider(provider, messages, systemPrompt, client, clientId);
+    const bookingActive = !!(booking && typeof booking === 'object');
+    const text = await callProvider(provider, messages, systemPrompt, client, clientId, bookingActive);
 
     return res.status(200).json({ text, provider, model: getModel(), preview: previewOk });
 
@@ -329,7 +330,23 @@ IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, d
   }
 }
 
-async function callProvider(provider, messages, systemPrompt, client, clientId) {
+// The menu marker must be driven by what the CUSTOMER asked for, never by the
+// assistant's own wording. Its own reply naturally repeats a dish name after a
+// booking ("disfruta tu Hamburguesa Clásica") or in a summary, and matching on
+// that text made the menu pop up after confirmations and goodbyes. [BUG-3]
+// User intent, outside an active booking: menu, catalog, prices, "what do you
+// have/sell", dish/photo words, or an explicit "show me…".
+// Stem matching, no trailing \b: in JS's ASCII \b mode a word boundary after an
+// accented vowel ("menú") never matches, so "ver el menú" silently failed.
+const MENU_INTENT = /(men[uú]|carta|cat[aá]logo|precio|cu[aá]nto\s+(?:cuesta|vale|sale)|qu[eé]\s+(?:tienen|venden|hay|ofrecen|sirven)|platillo|plato|hamburgues|tacos?|comida|bebida|postre|foto|im[aá]gen|servicio|tratamiento|producto|what\s+do\s+you\s+(?:have|sell|offer)|how\s+much|prices?)/i;
+// During an active booking a passing dish mention should not flash the menu;
+// only an explicit request for it does.
+const MENU_EXPLICIT = /(men[uú]|carta|cat[aá]logo|foto|im[aá]gen)/i;
+// Closings, confirmations and refusals never warrant the menu, even if a stray
+// dish word slips in.
+const CLOSING_INTENT = /\b(eso\s+(?:es|era)\s+todo|nada\s+m[aá]s|ya\s+no|no\s+quiero|no\s+gracias|listo|perfecto|gracias|hasta\s+luego|adi[oó]s|chao|bye|thanks?|thank\s+you|that\s+(?:is|s)\s+all|nothing\s+else|no\s+more|s[ií],?\s+confirm|confirmo|confirmar)\b/i;
+
+async function callProvider(provider, messages, systemPrompt, client, clientId, bookingActive) {
   const data = provider === 'deepseek'
     ? await callDeepSeek(messages, systemPrompt, 420)
     : await callAnthropic(messages, systemPrompt, 420);
@@ -350,29 +367,42 @@ async function callProvider(provider, messages, systemPrompt, client, clientId) 
   trackUsage(clientId, inputTokens, outputTokens, estimatedCost);
 
   // Only health-related requests need an allergen disclaimer. Ordinary kitchen
-  // preferences are recorded with the reservation and never get this warning.
-  if (needsRestaurantMedicalWarning(client, messages)) {
-    const last = String([...messages].reverse().find(message => message.role === 'user')?.content || '');
-    const english = /\b(?:allerg|intolerant|celiac|cross contamination|dairy|peanuts|cannot eat)\b/i.test(last);
-    text = english
+  // preferences are recorded with the reservation and never get that warning.
+  // These canned replies only make sense while we are actually collecting the
+  // reservation's preferences. Outside a booking the greedy trigger (a bare
+  // "no") hijacked ordinary messages — and even answered in English on a
+  // Spanish client. Gate on the active booking and use the client's language. [BUG-EXTRA]
+  const en = client.language === 'en';
+  if (bookingActive && needsRestaurantMedicalWarning(client, messages)) {
+    text = en
       ? 'Thanks for telling us. I will note this dietary restriction for the restaurant. However, I cannot guarantee the absence of allergens or cross-contamination; the restaurant must confirm it directly.'
       : 'Gracias por avisarnos. Anotaré tu restricción alimentaria para que el restaurante la vea. Sin embargo, no puedo garantizar la ausencia de alérgenos o contaminación cruzada; el restaurante deberá confirmarlo directamente.';
-  } else if (restaurantNormalPreference(client, messages)) {
-    const last = String([...messages].reverse().find(message => message.role === 'user')?.content || '');
-    const english = /\b(?:without|no|hold|leave|extra|more|less|sauce|spicy|well done|medium rare)\b/i.test(last);
-    text = english
+  } else if (bookingActive && restaurantNormalPreference(client, messages)) {
+    text = en
       ? 'Perfect 😊 I will note that preference and send it to the restaurant with your reservation.'
       : 'Perfecto 😊 Anotaré esa preferencia y la enviaré al restaurante junto con tu reserva.';
   }
 
+  // Menu gating: the marker is present iff the customer asked for it. Strip any
+  // marker the model volunteered on its own, then re-add only per menuDecision.
   const catalogEnabled = !client.features || client.features.catalog !== false;
-  if (catalogEnabled && text && !text.includes('[MOSTRAR_MENU]')) {
-    const MENU_KEYWORDS = /men[uú]|cat[áa]logo|im[áa]genes?|fotos?|servicios?|precios?|tratamientos?|productos?|hamburgues|tacos?|platos?|comida/i;
-    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
-    if (MENU_KEYWORDS.test(lastUserMsg) || MENU_KEYWORDS.test(text)) {
-      text = text + '\n[MOSTRAR_MENU]';
-    }
-  }
+  text = text.replace(/\s*\[MOSTRAR_MENU\]\s*/g, ' ').trimEnd();
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+  if (menuDecision(lastUserMsg, { bookingActive, catalogEnabled })) text = text + '\n[MOSTRAR_MENU]';
 
   return text;
 }
+
+// Pure, testable menu-visibility rule. The marker is driven only by what the
+// customer asked for — never by the assistant's own wording. [BUG-3]
+// An explicit "menu/carta/fotos" always shows it (even mid-booking). A merely
+// incidental dish/price word shows it only outside a booking and only when the
+// message is not a closing/refusal that happens to name a dish.
+export function menuDecision(lastUserMsg, { bookingActive, catalogEnabled } = {}) {
+  if (!catalogEnabled) return false;
+  const msg = String(lastUserMsg || '');
+  if (MENU_EXPLICIT.test(msg)) return true;
+  return !bookingActive && MENU_INTENT.test(msg) && !CLOSING_INTENT.test(msg);
+}
+
+export const __test = { menuDecision };
