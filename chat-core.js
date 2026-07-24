@@ -156,7 +156,7 @@ window.JBChatCore = (function () {
 
   var MARCADOR_RE = /\[[A-Z_]{3,}\]/g;
 
-  var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserva|hora libre|turno|quiero una cita/i;
+  var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserve|reservation|book(?:ing)?|table|reserva|hora libre|turno|quiero una cita/i;
 
   var INTENT_RE = /\b(quiero|quisiera|necesito|me\s+gustar[ií]a|puedo|ap[uú]ntame|ag[eé]ndame|d[ae]me)\b/i;
 
@@ -179,7 +179,7 @@ window.JBChatCore = (function () {
 
   // Palabras que cortan el nombre: verbos y conectores que abren otra idea. Sin
   // esto, "me llamo Ana y prefiero silencio" capturaría "Ana y prefiero".
-  var NOMBRE_STOP = /^(?:prefiero|prefieres|necesito|necesita|soy|somos|tengo|tienes|quiero|quieres|quisiera|deseo|pero|porque|para|con|sin|mi|me|te|se|es|son|gracias|hola|buenas|el|un|una|que|y|además|tambi[eé]n|luego|despu[eé]s|ahora|tel|cel|whatsapp|email|correo|tel[eé]fono)$/i;
+  var NOMBRE_STOP = /^(?:prefiero|prefieres|necesito|necesita|soy|somos|tengo|tienes|quiero|quieres|quisiera|deseo|pero|porque|para|con|sin|mi|my|me|te|se|es|son|is|gracias|hola|buenas|el|un|una|que|y|además|tambi[eé]n|luego|despu[eé]s|ahora|tel|cel|whatsapp|email|correo|tel[eé]fono|phone)$/i;
 
   // Reconstruye el nombre a partir del texto que sigue a "me llamo/soy/mi
   // nombre es". Camina palabra a palabra: acepta nombres y partículas, y se
@@ -587,16 +587,17 @@ window.JBChatCore = (function () {
     return out;
   }
 
-  function foodPreferencesToSpecialRequests(food) {
+  function foodPreferencesToSpecialRequests(food, lang) {
     if (!food) return '';
-    var names = { cheese: 'queso', onions: 'cebolla', tomatoes: 'tomate', pickles: 'pepinillos', mayo: 'mayonesa', mustard: 'mostaza', ketchup: 'ketchup', ice: 'hielo', bacon: 'tocino', sauce: 'salsa' };
+    var en = lang === 'en';
+    var names = en ? { cheese: 'cheese', onions: 'onions', tomatoes: 'tomatoes', pickles: 'pickles', mayo: 'mayo', mustard: 'mustard', ketchup: 'ketchup', ice: 'ice', bacon: 'bacon', meat: 'meat', sauce: 'sauce' } : { cheese: 'queso', onions: 'cebolla', tomatoes: 'tomate', pickles: 'pepinillos', mayo: 'mayonesa', mustard: 'mostaza', ketchup: 'ketchup', ice: 'hielo', bacon: 'tocino', meat: 'carne', sauce: 'salsa' };
     var lines = [];
-    (food.remove || []).forEach(function (x) { lines.push('Sin ' + (names[x] || x)); });
-    (food.add || []).forEach(function (x) { lines.push('Con ' + (names[x] || x)); });
+    (food.remove || []).forEach(function (x) { lines.push((en ? 'No ' : 'Sin ') + (names[x] || x)); });
+    (food.add || []).forEach(function (x) { lines.push((en ? 'With ' : 'Con ') + (names[x] || x)); });
     (food.extra || []).forEach(function (x) { lines.push('Extra ' + (names[x] || x)); });
-    if (food.cooking) lines.push({ well_done: 'Bien cocida', medium_rare: 'Término medio', rare: 'Poco cocida' }[food.cooking]);
-    if (food.spice) lines.push(food.spice === 'no_spice' ? 'Sin picante' : 'Extra picante');
-    (food.notes || []).forEach(function (x) { lines.push({ sauce_on_side: 'Salsa aparte', light_sauce: 'Poca salsa', swap_fries_salad: 'Cambiar papas por ensalada' }[x] || x); });
+    if (food.cooking) lines.push((en ? { well_done: 'Well done', medium_rare: 'Medium rare', rare: 'Rare' } : { well_done: 'Bien cocida', medium_rare: 'Término medio', rare: 'Poco cocida' })[food.cooking]);
+    if (food.spice) lines.push(food.spice === 'no_spice' ? (en ? 'Less spicy' : 'Sin picante') : (en ? 'Extra spicy' : 'Extra picante'));
+    (food.notes || []).forEach(function (x) { lines.push((en ? { sauce_on_side: 'Sauce on the side', light_sauce: 'Light sauce', swap_fries_salad: 'Swap fries for salad' } : { sauce_on_side: 'Salsa aparte', light_sauce: 'Poca salsa', swap_fries_salad: 'Cambiar papas por ensalada' })[x] || x); });
     return lines.filter(Boolean).join(' · ');
   }
 

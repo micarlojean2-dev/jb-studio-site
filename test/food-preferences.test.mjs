@@ -52,10 +52,12 @@ revised = food('Con cebolla'); revised = food('No, mejor sin cebolla', revised);
 check(revised.remove.includes('onions') && !revised.add.includes('onions'), 'last onion decision wins');
 revised = food('Sin queso', revised); revised = food('Sin queso', revised);
 check(revised.remove.filter(x => x === 'cheese').length === 1, 'duplicate preferences collapse');
+check(CORE.foodPreferencesToSpecialRequests(food('without cheese'), 'en') === 'No cheese', 'English special requests stay in English');
 
 check(CORE.extractBooking('cambiar hamburguesa por pizza', menu, null, 'es', restaurant).servicio === 'Pizza', 'last dish named wins');
 const englishBooking = CORE.extractBooking('I want Classic Burger for 2 people on August 5 at 1 PM. My name is QA English', [{ nombre: 'Classic Burger' }], null, 'en', restaurant);
 check(englishBooking.servicio === 'Classic Burger' && englishBooking.personas === '2' && englishBooking.hora === '1:00 PM' && englishBooking.nombre === 'QA English', 'English booking fields are extracted');
+check(CORE.pareceReserva('I want to reserve a table', {}), 'English reserve intent starts booking');
 check(CORE.summaryFields(restaurant).includes('servicio'), 'restaurant summary includes dish');
 
 for (const text of ['Soy alérgico al queso', 'Tengo intolerancia a la lactosa', 'Soy celíaco', 'Cross contamination', "I'm allergic to dairy", "I'm lactose intolerant", 'I have celiac disease', "I'm allergic to peanuts"]) {

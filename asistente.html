@@ -829,7 +829,7 @@ function extractBooking(text, menu) {
     var food = CORE.applyFoodPreferences(bookingData.foodPreferences, text, cfg);
     if (food) {
       bookingData.foodPreferences = food;
-      bookingData.specialRequests = CORE.foodPreferencesToSpecialRequests(food);
+      bookingData.specialRequests = CORE.foodPreferencesToSpecialRequests(food, lang);
     }
     if (CORE.isFoodMedical(text, cfg)) {
       addMsg('bot', lang === 'en'
