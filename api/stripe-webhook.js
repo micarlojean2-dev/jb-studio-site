@@ -178,6 +178,11 @@ function isoDate(unixSeconds) {
 // y, como red de seguridad, checkout.session.completed.
 function subscriptionPatch(sub) {
   const item = sub.items?.data?.[0];
+  // Stripe movió current_period_start/end del objeto subscription al item
+  // (facturación por-item). Se leen del item con fallback al campo antiguo, para
+  // que el panel no muestre "—"/0 días cuando el subscription ya no los trae.
+  const periodStart = sub.current_period_start ?? item?.current_period_start ?? null;
+  const periodEnd    = sub.current_period_end   ?? item?.current_period_end   ?? null;
   const patch = {
     stripeSubscriptionId: sub.id,
     stripeCustomerId:     sub.customer || null,
@@ -185,13 +190,13 @@ function subscriptionPatch(sub) {
     subscriptionStatus:   sub.status,
     trialStartedAt:       isoFull(sub.trial_start),
     trialEndsAt:          isoFull(sub.trial_end),
-    currentPeriodStart:   isoFull(sub.current_period_start),
-    currentPeriodEnd:     isoFull(sub.current_period_end),
+    currentPeriodStart:   isoFull(periodStart),
+    currentPeriodEnd:     isoFull(periodEnd),
     cancelAtPeriodEnd:    !!sub.cancel_at_period_end,
     canceledAt:           isoFull(sub.canceled_at),
     // El próximo cobro cae al final del periodo actual (durante el trial, ese
     // fin coincide con el fin de la prueba).
-    nextPaymentAt:        isoFull(sub.current_period_end),
+    nextPaymentAt:        isoFull(periodEnd),
   };
   switch (sub.status) {
     case 'trialing':

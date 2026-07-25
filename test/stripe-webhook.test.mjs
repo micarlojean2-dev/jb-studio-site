@@ -46,4 +46,14 @@ check(scheduled.cancelAtPeriodEnd === true && scheduled.active === true, 'cancel
 
 check(isoFull(0) === null && isoFull(null) === null, 'isoFull null-safe');
 
+// Stripe API nueva: current_period_end vive en el item, no en el subscription.
+const itemPeriod = subscriptionPatch({
+  id: 'sub_2', customer: 'cus_2', status: 'trialing',
+  items: { data: [{ price: { id: 'price_pro' }, current_period_start: 1000000000, current_period_end: 1000604800 }] },
+  trial_start: 1000000000, trial_end: 1000604800,
+  // NOTE: sin current_period_end a nivel subscription (como la API real)
+});
+check(itemPeriod.currentPeriodEnd === t(1000604800), 'currentPeriodEnd cae al item cuando el subscription no lo trae');
+check(itemPeriod.nextPaymentAt === t(1000604800), 'nextPaymentAt usa el periodo del item');
+
 console.log(`stripe-webhook.test.mjs: ${count} checks passed`);
