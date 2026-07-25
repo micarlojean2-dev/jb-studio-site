@@ -1331,7 +1331,7 @@ function extractBooking(text, menu) {
       .then(function (d) {
         hideTyping();
         if (d.error === 'inactive') {
-          addMsg('bot', d.message || (cfg.language === 'en' ? 'This service is temporarily unavailable.' : 'Este servicio no está disponible temporalmente.'));
+          addMsg('bot', d.message || (cfg.language === 'en' ? 'This assistant is temporarily out of service. Please contact the business directly.' : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio.'));
         } else if (d.text) {
           if (d.preview === true) marcarModoPrueba();
           var showMenu  = /\[MOSTRAR_MENU\]/.test(d.text);

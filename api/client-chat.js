@@ -286,8 +286,8 @@ export default async function handler(req, res) {
       return res.status(200).json({
         error:   'inactive',
         message: client.language === 'en'
-          ? 'This service is temporarily unavailable.'
-          : 'Este servicio no está disponible temporalmente.',
+          ? 'This assistant is temporarily out of service. Please contact the business directly.'
+          : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio.',
       });
     }
 

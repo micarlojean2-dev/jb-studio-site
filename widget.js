@@ -1202,8 +1202,8 @@ function extractBooking(text, menu) {
         hideTyping();
         if (d.error === 'inactive') {
           addMsg('bot', d.message || (cfg.language === 'en'
-            ? 'This service is temporarily unavailable.'
-            : 'Este servicio no está disponible temporalmente.'));
+            ? 'This assistant is temporarily out of service. Please contact the business directly.'
+            : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio.'));
         } else if (d.text) {
           var showMenu   = /\[MOSTRAR_MENU\]/.test(d.text);
           var cleanText  = CORE.limpiarMarcadores(d.text);
