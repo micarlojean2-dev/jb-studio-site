@@ -722,6 +722,25 @@ window.JBChatCore = (function () {
              /^(popular|destacado|favorito)$/i.test(String(item.etiqueta || '').trim());
     }
 
+  // ── Copys del catálogo (tarjetas de servicio + galería general) ───────────
+  // Única fuente para el texto que widget.js y asistente.html renderizan;
+  // evita que las dos copias del DOM diverjan en el wording (como pasó con
+  // CORRECCION_RE). [BLOQUE-1-GALERIA]
+  function galleryHeading(lang) {
+    return lang === 'en' ? 'Business gallery' : 'Galería del negocio';
+  }
+
+  function bookServiceLabel(lang) {
+    return lang === 'en' ? 'Book this service' : 'Reservar este servicio';
+  }
+
+  function bookServiceMessage(nombre, lang, isRestaurant) {
+    var en = lang === 'en';
+    var nom = nombre || (isRestaurant ? (en ? 'this dish' : 'este plato') : (en ? 'this service' : 'este servicio'));
+    if (en) return (isRestaurant ? 'I want to book this dish: ' : 'I want to book: ') + nom;
+    return (isRestaurant ? 'Quiero reservar este plato: ' : 'Quiero reservar: ') + nom;
+  }
+
   function iconFor(nombre) {
       var t = String(nombre || '');
       for (var i = 0; i < ICON_RULES.length; i++) {
@@ -868,6 +887,9 @@ window.JBChatCore = (function () {
     valorValido: valorValido,
     pareceReserva: pareceReserva,
     isPopular: isPopular,
+    galleryHeading: galleryHeading,
+    bookServiceLabel: bookServiceLabel,
+    bookServiceMessage: bookServiceMessage,
     iconFor: iconFor,
     hexToRgba: hexToRgba,
     nextMissingIndex: nextMissingIndex,

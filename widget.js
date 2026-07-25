@@ -258,6 +258,7 @@
     '.jbw-card-img{width:52px;height:52px;border-radius:15px;object-fit:cover;',
     'margin-bottom:8px;display:block;background:#f2f2f4;}',
     '.jbw-card-no-image{justify-content:center;min-height:100px;padding:18px 12px;}',
+    '.jbw-gallery-heading{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8a8f98;margin:2px 0 8px;}',
     '.jbw-gallery{width:100%;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:4px 0;}',
     '.jbw-gallery img{width:100%;aspect-ratio:1.35;object-fit:cover;border-radius:12px;background:#f2f2f4;}',
     '.jbw-gallery-more{border:0;background:none;color:var(--jbw-color,#1a4a2e);font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 0;}',
@@ -266,6 +267,7 @@
     '.jbw-card-badge{font-size:10px;font-weight:600;margin-top:5px;padding:3px 8px;',
     'border-radius:20px;background:#fff5e0;color:#8a5a00;}',
     '.jbw-card-desc{font-size:11px;color:#6b6f76;line-height:1.4;margin-top:6px;}',
+    '.jbw-card-cta{font-size:11px;font-weight:700;margin-top:8px;}',
     '.jbw-quick{display:flex;flex-wrap:wrap;gap:7px;padding:2px 0 2px 34px;}',
     '.jbw-quick-btn{font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;',
     'background:#fff;border:1.5px solid rgba(0,0,0,.08);border-radius:20px;padding:8px 13px;',
@@ -507,13 +509,15 @@
         card.appendChild(desc);
       }
 
+      var cta = document.createElement('div');
+      cta.className = 'jbw-card-cta';
+      cta.style.color = cfg.color;
+      cta.textContent = CORE.bookServiceLabel(cfg.language);
+      card.appendChild(cta);
+
       card.addEventListener('click', function () {
         if (inp.disabled) return;
-        var restaurant = cfg.templateId === 'restaurant';
-        var nom = item.nombre || (restaurant ? 'este plato' : 'este servicio');
-        send(cfg.language === 'en'
-          ? (restaurant ? 'I am interested in this menu item: ' : 'I am interested in the service: ') + nom
-          : (restaurant ? 'Me interesa este plato: ' : 'Me interesa el servicio: ') + nom);
+        send(CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant'));
       });
 
       row.appendChild(card);
@@ -529,6 +533,10 @@
     if (!images.length) return;
     var wrap = document.createElement('div');
     wrap.className = 'jbw-cards-wrap';
+    var heading = document.createElement('div');
+    heading.className = 'jbw-gallery-heading';
+    heading.textContent = CORE.galleryHeading(cfg.language);
+    wrap.appendChild(heading);
     var grid = document.createElement('div');
     grid.className = 'jbw-gallery';
     var shown = 4;

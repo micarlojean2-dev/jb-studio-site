@@ -139,6 +139,8 @@
       padding: 3px 8px; border-radius: 20px; background: #fff5e0; color: #8a5a00;
     }
     .a-card-desc { font-size: 11.5px; color: #6b6f76; line-height: 1.4; margin-top: 6px; }
+    .a-card-cta { font-size: 11.5px; font-weight: 700; margin-top: 8px; }
+    .a-gallery-heading { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #8a8f98; margin: 2px 0 8px; }
     .a-gallery { width: 100%; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 4px 0; }
     .a-gallery img { width: 100%; aspect-ratio: 1.35; object-fit: cover; border-radius: 12px; background: #f2f2f4; }
     .a-gallery-more { border: 0; background: none; color: var(--a-accent, #1a4a2e); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 6px 0; }
@@ -580,15 +582,17 @@
         card.appendChild(desc);
       }
 
+      var cta = document.createElement('div');
+      cta.className = 'a-card-cta';
+      cta.style.color = cfg.color;
+      cta.textContent = CORE.bookServiceLabel(cfg.language);
+      card.appendChild(cta);
+
       // Todo el bloque es el botón: tocar en cualquier punto continúa la
       // conversación sin que el cliente escriba nada.
       card.addEventListener('click', function () {
         if (inp.disabled) return;
-        var restaurant = cfg.templateId === 'restaurant';
-        var nom = item.nombre || (restaurant ? 'este plato' : 'este servicio');
-        send(cfg.language === 'en'
-          ? (restaurant ? 'I am interested in this menu item: ' : 'I am interested in the service: ') + nom
-          : (restaurant ? 'Me interesa este plato: ' : 'Me interesa el servicio: ') + nom);
+        send(CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant'));
       });
 
       row.appendChild(card);
@@ -604,6 +608,10 @@
     if (!images.length) return;
     var wrap = document.createElement('div');
     wrap.className = 'a-cards-wrap';
+    var heading = document.createElement('div');
+    heading.className = 'a-gallery-heading';
+    heading.textContent = CORE.galleryHeading(cfg.language);
+    wrap.appendChild(heading);
     var grid = document.createElement('div');
     grid.className = 'a-gallery';
     var shown = 4;
