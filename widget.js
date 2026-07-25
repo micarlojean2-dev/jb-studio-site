@@ -1132,8 +1132,14 @@ function extractBooking(text, menu) {
        recordFoodRequest(t, lang);
 
       if (!traidos.length && CORRECCION_RE.test(t)) {
+        var campoEncontrado = false;
         for (var ci = 0; ci < CAMPO_MENCIONADO.length; ci++) {
-          if (CAMPO_MENCIONADO[ci][0].test(t)) { delete bookingData[CAMPO_MENCIONADO[ci][1]]; break; }
+          if (CAMPO_MENCIONADO[ci][0].test(t)) { delete bookingData[CAMPO_MENCIONADO[ci][1]]; campoEncontrado = true; break; }
+        }
+        // Sin campo mencionado, "prefiero"/"mejor" es la respuesta al campo pendiente, no una corrección vacía. [BUG-CORRECCION-PENDIENTE]
+        if (!campoEncontrado && bookingPending && BARE_OK[bookingPending] &&
+            !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
+          bookingData[bookingPending] = bookingPending === 'specialRequests' && /^(no|ninguna|ninguno)$/i.test(t.trim()) ? '' : t;
         }
       } else if (!traidos.length && bookingPending && BARE_OK[bookingPending] &&
                  !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
