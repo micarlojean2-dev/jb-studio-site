@@ -716,6 +716,17 @@ window.JBChatCore = (function () {
       if (field === 'telefono') return t.replace(/\D/g, '').length >= 7;
       if (field === 'contacto') return EMAIL_RE2.test(t) || t.replace(/\D/g, '').length >= 7;
       if (field === 'personas') return /\d|\b(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/i.test(t);
+      if (field === 'nombre') {
+        // Una pregunta, una confirmación ("sí, todo correcto") o un "no" aislado
+        // no son un nombre real: sin esto, se guardaban tal cual como el
+        // "Nombre" del cliente cuando esos textos llegaban con "nombre" como
+        // campo pendiente. [BUG-NOMBRE-PENDIENTE]
+        var s = String(t || '').trim();
+        if (!s || /[?¿]/.test(s)) return false;
+        if (/^(no|ninguno|ninguna)$/i.test(s)) return false;
+        if (PRICE_QUESTION_RE.test(s) || esConfirmacion(s)) return false;
+        return true;
+      }
       return true;
     }
 
