@@ -367,9 +367,12 @@ const MENU_EXPLICIT = /(men[uú]|carta|cat[aá]logo|foto|im[aá]gen)/i;
 const CLOSING_INTENT = /\b(eso\s+(?:es|era)\s+todo|nada\s+m[aá]s|ya\s+no|no\s+quiero|no\s+gracias|listo|perfecto|gracias|hasta\s+luego|adi[oó]s|chao|bye|thanks?|thank\s+you|that\s+(?:is|s)\s+all|nothing\s+else|no\s+more|s[ií],?\s+confirm|confirmo|confirmar)\b/i;
 
 async function callProvider(provider, messages, systemPrompt, client, clientId, bookingActive) {
+  // 420 truncated real replies mid-sentence, including mid-marker (the model
+  // writes [MOSTRAR_MENU] itself per the prompt), leaving raw "[MOSTR" visible
+  // to the customer. [BUG-TRUNCATED-MARKER]
   const data = provider === 'deepseek'
-    ? await callDeepSeek(messages, systemPrompt, 420)
-    : await callAnthropic(messages, systemPrompt, 420);
+    ? await callDeepSeek(messages, systemPrompt, 600)
+    : await callAnthropic(messages, systemPrompt, 600);
 
   let text = '';
   if (provider === 'deepseek') {
