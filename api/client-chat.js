@@ -86,6 +86,14 @@ function restaurantNormalPreference(client, messages) {
   return /\b(?:sin|without|no|hold|leave\s+out|extra|more|less|m[aá]s|poc[ao]|poquit[ao]|little|light|doble|double|salsa\s+aparte|sauce\s+on\s+the\s+side|bien\s+cocid|well\s+done|t[eé]rmino\s+medio|medium\s+rare|picante|spicy)\b/i.test(text);
 }
 
+// Idioma fijado por el negocio, no por el modelo ni por quien escribe: se usa
+// tanto en el prompt base como al reforzarlo durante una reserva activa.
+function langDirectiveFor(client) {
+  return client.language === 'en'
+    ? 'LANGUAGE: Always reply in English, in every message, regardless of the language the customer writes in. Never switch languages.'
+    : 'IDIOMA: Responde SIEMPRE en español, en todos los mensajes, sin importar en qué idioma te escriban. Nunca cambies de idioma.';
+}
+
 function buildSystemPrompt(basePrompt, client, media) {
   const tz   = tzOf(client);
   const now  = new Date();
@@ -101,12 +109,10 @@ function buildSystemPrompt(basePrompt, client, media) {
   // hereden también los chatbots creados antes de este cambio. El prompt del
   // cliente (datos, precios, reglas del negocio) se concatena debajo y manda
   // sobre los hechos; esto solo fija el tono.
-  // Idioma fijado por el negocio, no por el modelo ni por quien escribe: la
-  // interfaz genera los textos críticos (resumen, botones, avisos) en este mismo
-  // idioma, y una respuesta del modelo en otro idioma rompería la experiencia.
-  const langDirective = client.language === 'en'
-    ? 'LANGUAGE: Always reply in English, in every message, regardless of the language the customer writes in. Never switch languages.'
-    : 'IDIOMA: Responde SIEMPRE en español, en todos los mensajes, sin importar en qué idioma te escriban. Nunca cambies de idioma.';
+  // La interfaz genera los textos críticos (resumen, botones, avisos) en el
+  // idioma del negocio, y una respuesta del modelo en otro idioma rompería la
+  // experiencia.
+  const langDirective = langDirectiveFor(client);
 
   const header = `${langDirective}
 
@@ -314,7 +320,7 @@ export default async function handler(req, res) {
         : '(todavía nada)';
       systemPrompt += `
 
-${langDirective}
+${langDirectiveFor(client)}
 
 ESTÁS AYUDANDO A AGENDAR UNA CITA AHORA MISMO.
 
@@ -430,4 +436,4 @@ export function menuDecision(lastUserMsg, { bookingActive, catalogEnabled } = {}
   return !bookingActive && MENU_INTENT.test(msg) && !CLOSING_INTENT.test(msg);
 }
 
-export const __test = { menuDecision, resolveDeepseekModel };
+export const __test = { menuDecision, resolveDeepseekModel, langDirectiveFor };
