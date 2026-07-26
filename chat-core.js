@@ -168,7 +168,10 @@ window.JBChatCore = (function () {
   // frontera), así que "quiero modificar" no entraba en modo modificar. [BUG-MODIFY]
   var MODIFY_TRIGGERS = /(modific|modify|c[aá]mbi|reprogram|reagenda|mover|mueve|otra hora|otro d[ií]a|otra fecha|change|reschedul|move)/i;
 
-  var INTENT_RE = /\b(quiero|quisiera|necesito|me\s+gustar[ií]a|puedo|ap[uú]ntame|ag[eé]ndame|d[ae]me)\b/i;
+  // Spanish-only before: "I want a manicure on Sunday" named a real service
+  // and date but never matched, so pareceReserva() fell through to free chat
+  // instead of the structured booking flow. [BUG-INTENT-EN]
+  var INTENT_RE = /\b(quiero|quisiera|necesito|me\s+gustar[ií]a|puedo|ap[uú]ntame|ag[eé]ndame|d[ae]me|i\s+want|i\s?'?d\s+like|i\s+need|can\s+i|book\s+me)\b/i;
 
   var CORRECCION_RE = /(me\s+equivoqu[eé]|cambiar|corregir|est[aá]\s+mal|mejor|en realidad|prefiero)/i;
 
