@@ -749,6 +749,21 @@ window.JBChatCore = (function () {
     return (isRestaurant ? 'Quiero reservar este plato: ' : 'Quiero reservar: ') + nom;
   }
 
+  // Pregunta de "petición especial" del paso de reserva. Vivía duplicada en
+  // widget.js y asistente.html; el branch de barbería y el general (belleza)
+  // nunca tuvieron versión en inglés, así que un cliente en inglés recibía la
+  // pregunta en español seguida solo de la frase final traducida — un mensaje
+  // mezclando los dos idiomas. [BUG-BOOKING-LANG]
+  function specialRequestsQuestion(templateId, lang) {
+    var en = lang === 'en';
+    var ask = templateId === 'restaurant'
+      ? (en ? 'Do you have any allergy, intolerance, table preference, or special request?' : '¿Tienes alguna alergia, intolerancia, preferencia de mesa o petición especial?')
+      : templateId === 'barber'
+        ? (en ? 'Do you have any style, design, sensitivity, or special request?' : '¿Tienes alguna preferencia de estilo, diseño, sensibilidad o petición especial?')
+        : (en ? 'Do you have any sensitivity, allergy, pregnancy, injury, or special request?' : '¿Tienes alguna sensibilidad, alergia, embarazo, lesión o petición especial?');
+    return ask + (en ? ' Write "No" if you do not have one.' : ' Escribe "No" si no tienes ninguna.');
+  }
+
   function iconFor(nombre) {
       var t = String(nombre || '');
       for (var i = 0; i < ICON_RULES.length; i++) {
@@ -898,6 +913,7 @@ window.JBChatCore = (function () {
     galleryHeading: galleryHeading,
     bookServiceLabel: bookServiceLabel,
     bookServiceMessage: bookServiceMessage,
+    specialRequestsQuestion: specialRequestsQuestion,
     iconFor: iconFor,
     hexToRgba: hexToRgba,
     nextMissingIndex: nextMissingIndex,

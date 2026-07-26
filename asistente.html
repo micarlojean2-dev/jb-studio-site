@@ -872,12 +872,7 @@ function extractBooking(text, menu) {
     // The model never speaks for a complete booking; only the POST decides it.
     if (completo) { showBookingSummary(); return; }
     if (bookingPending === 'specialRequests') {
-      var requestQuestion = cfg.templateId === 'restaurant'
-        ? (lang === 'en' ? 'Do you have any allergy, intolerance, table preference, or special request?' : '¿Tienes alguna alergia, intolerancia, preferencia de mesa o petición especial?')
-        : cfg.templateId === 'barber'
-          ? '¿Tienes alguna preferencia de estilo, diseño, sensibilidad o petición especial?'
-          : '¿Tienes alguna sensibilidad, alergia, embarazo, lesión o petición especial?';
-      addMsg('bot', requestQuestion + (lang === 'en' ? ' Write "No" if you do not have one.' : ' Escribe "No" si no tienes ninguna.'));
+      addMsg('bot', CORE.specialRequestsQuestion(cfg.templateId, lang));
       return;
     }
     busy = true; inp.disabled = true; snd.disabled = true;
