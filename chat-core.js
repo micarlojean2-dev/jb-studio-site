@@ -172,6 +172,11 @@ window.JBChatCore = (function () {
 
   var CORRECCION_RE = /(me\s+equivoqu[eé]|cambiar|corregir|est[aá]\s+mal|mejor|en realidad|prefiero)/i;
 
+  // Preguntar el precio/duración de un servicio no es elegirlo: sin esto,
+  // "cuánto cuesta el tratamiento facial" durante una reserva de Manicura
+  // cambiaba el servicio en curso solo por nombrar el otro. [BUG-PRECIO-SERVICIO]
+  var PRICE_QUESTION_RE = /cu[aá]nto\s+(?:cuesta|vale|sale|dura)|qu[eé]\s+precio|price|how\s+much|how\s+long/i;
+
   var CAMPO_MENCIONADO = [
       [/hora|horario/i, 'hora'], [/fecha|d[ií]a/i, 'fecha'], [/personas?|somos/i, 'personas'],
       [/servicio/i, 'servicio'], [/correo|email/i, 'email'], [/tel[eé]fono|n[uú]mero/i, 'telefono'],
@@ -477,7 +482,7 @@ window.JBChatCore = (function () {
         }
       });
       var elegido = exacto || porPalabra;
-      if (elegido) out.servicio = elegido;
+      if (elegido && !PRICE_QUESTION_RE.test(t)) out.servicio = elegido;
     }
 
     var f = extraerFecha(t, lang);
