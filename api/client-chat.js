@@ -1,5 +1,8 @@
 import { Redis } from '@upstash/redis';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
+import { initSentry, captureApiException } from '../lib/sentry.js';
+
+initSentry();
 
 const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -235,6 +238,7 @@ async function trackUsage(clientId, inputTokens, outputTokens, estimatedCost) {
     await redis.set(key, current, { ex: 90 * 24 * 60 * 60 });
   } catch (err) {
     console.error('[api/client-chat] usage tracking error:', err.message);
+    captureApiException(err, { clientId, feature: 'redis', route: '/api/client-chat' });
   }
 }
 
@@ -346,6 +350,7 @@ IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, d
 
   } catch (err) {
     console.error('[api/client-chat]', err.message);
+    captureApiException(err, { clientId, feature: 'chat', route: '/api/client-chat' });
     return res.status(500).json({ error: 'Service error' });
   }
 }

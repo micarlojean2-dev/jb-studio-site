@@ -1,4 +1,7 @@
 import { Redis } from '@upstash/redis';
+import { initSentry, captureApiException } from '../lib/sentry.js';
+
+initSentry();
 // Cargado con import() dinámico a propósito: Vercel transpila este archivo a
 // CommonJS, y un import estático del módulo ESM (.mjs) se convierte en require()
 // -> ERR_REQUIRE_ESM en runtime (rompía GET /api/clients con 500). import()
@@ -310,6 +313,7 @@ export default async function handler(req, res) {
       });
     } catch (err) {
       console.error('[api/clients] preview-token:', err.message);
+      captureApiException(err, { clientId: id, feature: 'client_panel', route: '/api/clients?action=preview-token' });
       return res.status(500).json({ error: 'Database error' });
     }
   }
@@ -328,6 +332,7 @@ export default async function handler(req, res) {
       return res.status(200).json(clients);
     } catch (err) {
       console.error('[api/clients] GET:', err.message);
+      captureApiException(err, { feature: 'client_panel', route: '/api/clients' });
       return res.status(500).json({ error: 'Database error' });
     }
   }
@@ -372,6 +377,7 @@ export default async function handler(req, res) {
         template = await getOfficialTemplate(String(templateId));
       } catch (err) {
         console.error('[api/clients] template:', err.message);
+        captureApiException(err, { clientId: id, feature: 'client_panel', route: '/api/clients' });
         return res.status(500).json({ error: 'Template configuration error' });
       }
       if (!template || String(templateVersion) !== template.version) {
@@ -526,6 +532,7 @@ export default async function handler(req, res) {
       return res.status(201).json(client);
     } catch (err) {
       console.error('[api/clients] POST:', err.message);
+      captureApiException(err, { clientId: id, feature: 'client_panel', route: '/api/clients' });
       return res.status(500).json({ error: 'Database error' });
     }
   }
@@ -589,6 +596,7 @@ export default async function handler(req, res) {
       return res.status(200).json(client);
     } catch (err) {
       console.error('[api/clients] PUT:', err.message);
+      captureApiException(err, { clientId: id, feature: 'client_panel', route: '/api/clients' });
       return res.status(500).json({ error: 'Database error' });
     }
   }
@@ -605,6 +613,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ deleted: true });
     } catch (err) {
       console.error('[api/clients] DELETE:', err.message);
+      captureApiException(err, { clientId: id, feature: 'client_panel', route: '/api/clients' });
       return res.status(500).json({ error: 'Database error' });
     }
   }

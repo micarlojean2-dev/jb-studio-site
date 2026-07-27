@@ -1,4 +1,7 @@
 import { Redis } from '@upstash/redis';
+import { initSentry, captureApiException } from '../lib/sentry.js';
+
+initSentry();
 
 const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -74,6 +77,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error('[api/reservations-list]', err.message);
+    captureApiException(err, { clientId, feature: 'client_panel', route: '/api/reservations-list' });
     return res.status(500).json({ error: 'Database error' });
   }
 }
