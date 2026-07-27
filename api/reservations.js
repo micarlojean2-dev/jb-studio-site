@@ -3,6 +3,9 @@ import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { registrarCambio } from '../lib/changes.js';
 import { Resend } from 'resend';
 import { randomUUID, createHash } from 'node:crypto';
+import { initSentry, captureApiException, captureApiMessage } from '../lib/sentry.js';
+
+initSentry();
 
 const redis  = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -363,7 +366,11 @@ async function sendReservationEmails(client, reservation, type, deps) {
       if (r && r.error) { result.customer.error = r.error.message || 'send failed'; }
       else { result.customer.sent = true; result.customer.messageId = resendMessageId(r); }
     } catch (e) { result.customer.error = e.message || 'send threw'; }
-    if (result.customer.error) console.error(`[api/reservations] customer email failed for ${reservation.clientId}:`, result.customer.error);
+    if (result.customer.error) {
+      console.error(`[api/reservations] customer email failed for ${reservation.clientId}:`, result.customer.error);
+      captureApiMessage(`Resend customer email failed: ${result.customer.error}`,
+        { clientId: reservation.clientId, feature: 'email_customer', route: '/api/reservations' });
+    }
   }
 
   if (recipients.length) {
@@ -376,7 +383,11 @@ async function sendReservationEmails(client, reservation, type, deps) {
         else { result.owners.sent = true; const id = resendMessageId(r); if (id) result.owners.messageIds.push(id); }
       } catch (e) { result.owners.error = e.message || 'send threw'; }
     }
-    if (result.owners.error) console.error(`[api/reservations] owner email failed for ${reservation.clientId}:`, result.owners.error);
+    if (result.owners.error) {
+      console.error(`[api/reservations] owner email failed for ${reservation.clientId}:`, result.owners.error);
+      captureApiMessage(`Resend owner email failed: ${result.owners.error}`,
+        { clientId: reservation.clientId, feature: 'email_owner', route: '/api/reservations' });
+    }
   }
   return result;
 }
@@ -655,6 +666,7 @@ async function runDigest(dry, testDeps) {
       // Falla: no se toca nada. Los eventos siguen en cola, se reintenta el
       // próximo ciclo. Sin duplicar (cada cambio se encoló una sola vez).
       console.error('[digest]', cid, e.message);
+      captureApiException(e, { clientId: cid, feature: 'email_owner', route: '/api/reservations?cron=digest' });
       fallidos++;
     }
   }
@@ -716,6 +728,7 @@ export default async function handler(req, res) {
       });
     } catch (err) {
       console.error('[api/reservations] audit:', err.message);
+      captureApiException(err, { feature: 'redis', route: '/api/reservations?cron=audit' });
       return res.status(500).json({ error: 'Audit failed' });
     }
   }
@@ -732,6 +745,7 @@ export default async function handler(req, res) {
       return res.status(200).json(result);
     } catch (err) {
       console.error('[api/reservations] digest:', err.message);
+      captureApiException(err, { feature: 'email_owner', route: '/api/reservations?cron=digest' });
       return res.status(500).json({ error: 'Digest failed' });
     }
   }
@@ -777,6 +791,7 @@ export default async function handler(req, res) {
       });
     } catch (err) {
       console.error('[api/reservations] backfill:', err.message);
+      captureApiException(err, { clientId: cid, feature: 'redis', route: '/api/reservations?cron=backfill' });
       return res.status(500).json({ error: 'Backfill failed' });
     }
   }
@@ -942,6 +957,7 @@ export default async function handler(req, res) {
       lockAcquired = got === 'OK' || got === true;
     } catch (e) {
       console.error('[api/reservations] idempotency lock error:', e.message);
+      captureApiException(e, { clientId, feature: 'redis', route: '/api/reservations' });
       lockAcquired = true;   // Redis lock unavailable: fall through, do not block a real booking
     }
     if (!lockAcquired) {
@@ -975,6 +991,7 @@ export default async function handler(req, res) {
       existentes = existentesConKey;
     } catch (e) {
       console.error('[api/reservations] disponibilidad, no se pudo leer:', e.message);
+      captureApiException(e, { clientId, feature: 'redis', route: '/api/reservations' });
       existentes = null;
     }
 
@@ -1027,7 +1044,11 @@ export default async function handler(req, res) {
     const emailResult = await sendReservationEmails(client, reservation, 'created');
     // La reserva ya está guardada; si el aviso no se encoló, se registra sin
     // ocultarlo y el backend lo reporta abajo (sin confirmación falsa).
-    if (!aviso.ok) console.error(`[api/reservations] reserva ${key} guardada pero el aviso NO quedó en cola:`, aviso.error);
+    if (!aviso.ok) {
+      console.error(`[api/reservations] reserva ${key} guardada pero el aviso NO quedó en cola:`, aviso.error);
+      captureApiMessage('Reservation saved but change-notification enqueue failed',
+        { clientId, feature: 'redis', route: '/api/reservations' });
+    }
 
     return res.status(201).json({
       ok: true,
@@ -1048,6 +1069,10 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error('[api/reservations]', err.message);
+    captureApiException(err, {
+      clientId, feature: action === 'reschedule' ? 'reservation_update' : 'reservation_create',
+      route: '/api/reservations',
+    });
     return res.status(500).json({ error: 'Database error' });
   }
 }

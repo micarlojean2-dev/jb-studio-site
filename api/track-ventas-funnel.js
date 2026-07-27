@@ -1,6 +1,9 @@
 import { sendMikeTelegram } from './ventas-chat.js';
 import { Resend } from 'resend';
 import { Redis } from '@upstash/redis';
+import { initSentry, captureApiException } from '../lib/sentry.js';
+
+initSentry();
 
 const FROM = 'reservas@jbstudio.app';
 const DEMO_EMAIL_LIMIT = 2;
@@ -205,6 +208,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Invalid track type' });
   } catch (err) {
     console.error('[api/track-ventas-funnel]', err?.message || err);
+    captureApiException(err, { feature: 'ventas_funnel', route: '/api/track-ventas-funnel' });
     return res.status(200).json({ ok: false });
   }
 }

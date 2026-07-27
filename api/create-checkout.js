@@ -1,5 +1,8 @@
 import Stripe from 'stripe';
 import { Redis } from '@upstash/redis';
+import { initSentry, captureApiException } from '../lib/sentry.js';
+
+initSentry();
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -90,6 +93,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ url: session.url, sessionId: session.id });
   } catch (err) {
     console.error('[api/create-checkout]', err.message);
+    captureApiException(err, { clientId, feature: 'billing', route: '/api/create-checkout' });
     return res.status(500).json({ error: err.message });
   }
 }

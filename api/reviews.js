@@ -5,6 +5,9 @@
 // DELETE /api/reviews?id=X&token=Y            → eliminar review (admin)
 
 import { Redis } from '@upstash/redis';
+import { initSentry, captureApiException } from '../lib/sentry.js';
+
+initSentry();
 
 // Fase 4.3: estaba usando KV_REST_API_URL/TOKEN, que no existen como
 // variables de entorno en este proyecto de Vercel (mismo bug ya corregido en
@@ -104,6 +107,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error('[api/reviews]', err.message);
+    captureApiException(err, { feature: 'reviews', route: '/api/reviews' });
     return res.status(500).json({ error: 'Server error' });
   }
 }

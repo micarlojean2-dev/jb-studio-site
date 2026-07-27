@@ -1,6 +1,9 @@
 import { Redis }  from '@upstash/redis';
 import { registrarCambio } from '../lib/changes.js';
 import { Resend } from 'resend';
+import { initSentry, captureApiException, captureApiMessage } from '../lib/sentry.js';
+
+initSentry();
 
 const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -114,7 +117,11 @@ export default async function handler(req, res) {
       type: 'cancelled', reservationId: matchKey,
       nombre: match.nombre, servicio: match.servicio, fecha: match.fecha, hora: match.hora,
     });
-    if (!aviso.ok) console.error(`[api/cancel-reservation] cancelación ${matchKey} guardada pero el aviso NO quedó en cola:`, aviso.error);
+    if (!aviso.ok) {
+      console.error(`[api/cancel-reservation] cancelación ${matchKey} guardada pero el aviso NO quedó en cola:`, aviso.error);
+      captureApiMessage('Cancellation saved but change-notification enqueue failed',
+        { clientId, feature: 'redis', route: '/api/cancel-reservation' });
+    }
 
     // Notify immediately when mail is configured. Failure does not undo a
     // cancellation because the slot must be released regardless. The outcome is
@@ -151,13 +158,18 @@ export default async function handler(req, res) {
           } catch (e) { email.owners.error = e.message; }
         }
       }
-      if (email.customer.error || email.owners.error) console.error(`[api/cancel-reservation] email error for ${clientId}:`, email.customer.error || email.owners.error);
+      if (email.customer.error || email.owners.error) {
+        console.error(`[api/cancel-reservation] email error for ${clientId}:`, email.customer.error || email.owners.error);
+        captureApiMessage(`Resend cancellation email failed: ${email.customer.error || email.owners.error}`,
+          { clientId, feature: email.customer.error ? 'email_customer' : 'email_owner', route: '/api/cancel-reservation' });
+      }
     }
 
     return res.status(200).json({ found: true, key: matchKey, aviso: { encolado: aviso.ok }, email, emailWarning: email.warning || null });
 
   } catch (err) {
     console.error('[api/cancel-reservation]', err.message);
+    captureApiException(err, { clientId, feature: 'reservation_cancel', route: '/api/cancel-reservation' });
     return res.status(500).json({ error: 'Database error' });
   }
 }

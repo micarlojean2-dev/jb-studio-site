@@ -7,6 +7,9 @@ async function getOfficialTemplate(id) {
   return _templatesMod.getOfficialTemplate(id);
 }
 import { CREATOR_DRAFT_SCHEMA, OPENAI_CREATOR_INSTRUCTIONS } from '../lib/creator-schema.js';
+import { initSentry, captureApiException } from '../lib/sentry.js';
+
+initSentry();
 
 const IP_STORE = new Map();
 const HOUR_MS = 60 * 60 * 1000;
@@ -509,6 +512,7 @@ export default async function handler(req, res) {
       template = await getOfficialTemplate(String(templateId));
     } catch (err) {
       console.error('[api/generate-client-config] template:', err.message);
+      captureApiException(err, { feature: 'client_panel', route: '/api/generate-client-config' });
       return res.status(500).json({ error: 'No se pudo cargar la plantilla solicitada.' });
     }
     if (!template) return res.status(400).json({ error: 'Unknown or inactive template' });
@@ -587,6 +591,7 @@ export default async function handler(req, res) {
     return res.status(200).json(config);
   } catch (err) {
     console.error('[api/generate-client-config]', err.message);
+    captureApiException(err, { feature: 'client_panel', route: '/api/generate-client-config' });
     return res.status(500).json({ error: 'Error generating configuration. Please try again.' });
   }
 }

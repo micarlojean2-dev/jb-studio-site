@@ -13,6 +13,75 @@
   var CORE, RESUMEN_ICONOS, RESUMEN_LABEL, BOOKING_STEPS, CANCEL_STEPS, CORRECCION_RE, CAMPO_MENCIONADO;
   var SESS = 'jbw_' + clientId;
 
+  // Monitoreo aislado (Sentry): corre embebido en el sitio de un negocio
+  // cliente, así que nunca usa Sentry.init()/Loader normal (instalarían
+  // window.onerror y instrumentarían fetch/XHR de TODA la página anfitriona).
+  // En su lugar arma un BrowserClient+Scope propio con integrations:[] (patrón
+  // oficial "Multiple Sentry Instances"), que nunca se registra como cliente
+  // global de window.Sentry — aislado de cualquier Sentry que el sitio ya
+  // tenga. Best-effort siempre: si el DSN falta, el bundle no carga (CSP,
+  // adblocker) o algo falla, el widget sigue funcionando igual.
+  var WIDGET_VERSION = '1.0.0';
+  var WIDGET_SENTRY_DSN = 'https://01798dd3dcf929fe3a2800b6b3c4e47e@o4511805847633920.ingest.us.sentry.io/4511805885186048';
+  var WIDGET_ERROR_CAP = 5;   // por carga de página: no inundar el plan gratuito por un fallo en bucle
+  var widgetScope = null;
+  var widgetErrorCount = 0;
+  var widgetErrorSeen = {};
+
+  (function initWidgetSentry() {
+    if (!WIDGET_SENTRY_DSN || WIDGET_SENTRY_DSN.indexOf('__WIDGET_SENTRY_DSN__') !== -1) return;
+    try {
+      var s = document.createElement('script');
+      s.src = 'https://browser.sentry-cdn.com/10.68.0/bundle.min.js'; // build bundle, no Loader
+      s.crossOrigin = 'anonymous';
+      s.async = true;
+      s.onload = function () {
+        try {
+          if (!window.Sentry || !window.Sentry.BrowserClient) return;
+          var client = new window.Sentry.BrowserClient({
+            dsn: WIDGET_SENTRY_DSN,
+            transport: window.Sentry.makeFetchTransport,
+            stackParser: window.Sentry.defaultStackParser,
+            integrations: [],
+            sendDefaultPii: false,
+            tracesSampleRate: 0,
+            environment: 'production',
+            beforeSend: function (event) {
+              if (event.request) { delete event.request.cookies; delete event.request.data; }
+              event.user = undefined;
+              return event;
+            },
+          });
+          widgetScope = new window.Sentry.Scope();
+          widgetScope.setClient(client);
+          client.init();
+          widgetScope.setTag('runtime', 'browser');
+          widgetScope.setTag('widget_version', WIDGET_VERSION);
+          widgetScope.setTag('domain', window.location.hostname);
+          widgetScope.setTag('client_id', clientId);
+          widgetScope.setTag('chatbot_id', clientId); // mismo id: no hay chatbot_id separado en este proyecto
+        } catch (e) { widgetScope = null; }
+      };
+      s.onerror = function () { widgetScope = null; };
+      var inject = function () { document.head.appendChild(s); };
+      if ('requestIdleCallback' in window) window.requestIdleCallback(inject, { timeout: 3000 });
+      else setTimeout(inject, 0);
+    } catch (e) { /* el monitoreo nunca debe romper el widget */ }
+  })();
+
+  function captureWidgetError(err, feature) {
+    if (!widgetScope || widgetErrorCount >= WIDGET_ERROR_CAP) return;
+    try {
+      var sig = feature + ':' + String((err && err.message) || err).slice(0, 120);
+      if (widgetErrorSeen[sig]) return;   // no dupliques la misma falla repetida en esta sesión
+      widgetErrorSeen[sig] = true;
+      widgetErrorCount++;
+      widgetScope.setTag('feature', feature);
+      if (typeof cfg !== 'undefined' && cfg && cfg.templateId) widgetScope.setTag('business_type', cfg.templateId);
+      widgetScope.captureException(err instanceof Error ? err : new Error(String(err)));
+    } catch (e) { /* el monitoreo nunca debe romper el widget */ }
+  }
+
   // El motor compartido vive en jbstudio.app, el mismo origen del que este
   // widget ya depende para /api/client-config y /api/client-chat: no añade
   // un punto de fallo nuevo. Si no carga, no pintamos nada — mejor ausente
@@ -389,7 +458,7 @@
         applyPosition(d.widgetPosition === 'bottom-left' ? 'left' : 'right');
       }
     })
-    .catch(function () {});
+    .catch(function (err) { captureWidgetError(err, 'chatbot_loader'); });
 
   // ── Render helpers ───────────────────────────────────────────────────────
   function addMsg(role, text) {
@@ -593,7 +662,8 @@
             : 'No encontramos una reserva con esos datos. Verifica el email/teléfono y la fecha e intenta de nuevo.');
         }
       })
-      .catch(function () {
+      .catch(function (err) {
+        captureWidgetError(err, 'reservation_cancel');
         hideTyping();
         addMsg('bot', lang === 'en'
           ? "Sorry, that didn't go through 😅 Mind trying again?"
@@ -851,7 +921,8 @@ function extractBooking(text, menu) {
         msgs.push({ role: 'assistant', content: txt });
         save();
       })
-      .catch(function () {
+      .catch(function (err) {
+        captureWidgetError(err, 'chat');
         hideTyping();
         addMsg('bot', lang === 'en' ? "Sorry, that didn't go through 😅 Mind trying again?" : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
       })
@@ -954,7 +1025,8 @@ function extractBooking(text, menu) {
           : 'No pudimos guardar tu solicitud 😕 Tus datos siguen aquí, ¿lo intentamos de nuevo?');
         showBookingSummary();
       })
-      .catch(function () {
+      .catch(function (err) {
+        captureWidgetError(err, 'reservation_create');
         addMsg('bot', lang === 'en'
           ? "Sorry, that didn't go through 😅 Your details are still here — try again?"
           : 'Uy, no se envió 😅 Tus datos siguen aquí, ¿lo intentamos otra vez?');
@@ -1010,7 +1082,7 @@ function extractBooking(text, menu) {
         addMsg('bot', T.cancelled);
         activeReservation = null; dupAttempts = 0; spamUntil = 0; modifyMode = false; saveReserva();
       } else addMsg('bot', T.cancelFail);
-    }).catch(function () { hideTyping(); addMsg('bot', T.netFail); })
+    }).catch(function (err) { captureWidgetError(err, 'reservation_cancel'); hideTyping(); addMsg('bot', T.netFail); })
     .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
   }
 
@@ -1040,7 +1112,7 @@ function extractBooking(text, menu) {
         } else if (d.ok === false && d.motivo) {
           addMsg('bot', T.modifyUnavail + (d.mensaje || '') + (d.alternativa ? (T.closest + d.alternativa) : ''));
         } else addMsg('bot', T.modifyFail);
-      }).catch(function () { hideTyping(); addMsg('bot', T.netFail); })
+      }).catch(function (err) { captureWidgetError(err, 'reservation_update'); hideTyping(); addMsg('bot', T.netFail); })
       .finally(function () { modifyMode = false; busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
   }
 
@@ -1228,7 +1300,8 @@ function extractBooking(text, menu) {
             : 'Perdona, no te entendí bien 😅 ¿Me lo repites?');
         }
       })
-      .catch(function () {
+      .catch(function (err) {
+        captureWidgetError(err, 'chat');
         hideTyping();
         addMsg('bot', cfg.language === 'en'
           ? "Sorry, that didn't go through 😅 Mind trying again?"

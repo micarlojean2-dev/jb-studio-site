@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  <script src="/sentry-init.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Asistente virtual</title>
@@ -245,7 +246,7 @@
     }
 </style>
 </head>
-<body>
+<body data-sentry-page="chatbot_loader">
 
   <div id="a-loading" style="display:flex;flex:1;flex-direction:column;">
     <div id="a-state"><div class="a-spinner"></div><span>Cargando asistente…</span></div>
@@ -318,6 +319,7 @@
   var CORRECCION_RE = CORE.CORRECCION_RE, CAMPO_MENCIONADO = CORE.CAMPO_MENCIONADO;
 
   var clientId = resolveClientId();
+  window.__JB_CLIENT_ID__ = clientId;
 
   // Token de vista previa del admin: permite conversar con un chatbot que
   // todavía no ha pagado. Es temporal (15 min), server-side y sirve solo para

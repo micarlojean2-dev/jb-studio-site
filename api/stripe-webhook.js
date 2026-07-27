@@ -1,5 +1,8 @@
 import Stripe from 'stripe';
 import { Redis } from '@upstash/redis';
+import { initSentry, captureApiException } from '../lib/sentry.js';
+
+initSentry();
 
 // Disable Vercel's body parser — Stripe needs the raw body to verify signature
 export const config = { api: { bodyParser: false } };
@@ -159,6 +162,7 @@ async function updateClient(clientId, patch) {
     return client;
   } catch (err) {
     console.error(`[stripe-webhook] Redis update failed for ${clientId}:`, err.message);
+    captureApiException(err, { clientId, feature: 'billing', route: '/api/stripe-webhook' });
     return null;
   }
 }
@@ -228,7 +232,10 @@ async function maybeWelcome(clientId) {
       await sendWelcome(c, clientId);
       await updateClient(clientId, { bienvenidaEnviada: new Date().toISOString() });
     }
-  } catch (e) { console.error('[stripe-webhook] welcome:', e.message); }
+  } catch (e) {
+    console.error('[stripe-webhook] welcome:', e.message);
+    captureApiException(e, { clientId, feature: 'email_owner', route: '/api/stripe-webhook' });
+  }
 }
 
 export default async function handler(req, res) {
@@ -255,6 +262,7 @@ export default async function handler(req, res) {
     isNewEvent = await markEventProcessed(event.id);
   } catch (err) {
     console.error('[stripe-webhook] idempotency check failed:', err.message);
+    captureApiException(err, { feature: 'redis', route: '/api/stripe-webhook' });
     // Si Redis falla aquí, seguimos procesando de todas formas — es mejor
     // arriesgar un reproceso raro que perder el evento por completo.
   }
@@ -287,7 +295,10 @@ export default async function handler(req, res) {
             const sub = await stripe.subscriptions.retrieve(subscriptionId);
             await updateClient(clientId, subscriptionPatch(sub));
             await maybeWelcome(clientId);
-          } catch (e) { console.error('[stripe-webhook] checkout sub sync:', e.message); }
+          } catch (e) {
+            console.error('[stripe-webhook] checkout sub sync:', e.message);
+            captureApiException(e, { clientId, feature: 'billing', route: '/api/stripe-webhook' });
+          }
         }
         console.log(`[stripe-webhook] Client ${clientId} checkout completed`);
         break;
@@ -324,7 +335,10 @@ export default async function handler(req, res) {
           const sub = await stripe.subscriptions.retrieve(subscriptionId);
           await updateClient(clientId, subscriptionPatch(sub));
           await maybeWelcome(clientId);
-        } catch (e) { console.error('[stripe-webhook] invoice.paid sub sync:', e.message); }
+        } catch (e) {
+          console.error('[stripe-webhook] invoice.paid sub sync:', e.message);
+          captureApiException(e, { clientId, feature: 'billing', route: '/api/stripe-webhook' });
+        }
         console.log(`[stripe-webhook] Client ${clientId} invoice paid`);
         break;
       }
@@ -373,6 +387,7 @@ export default async function handler(req, res) {
     }
   } catch (err) {
     console.error('[stripe-webhook] Handler error:', err.message);
+    captureApiException(err, { feature: 'billing', route: '/api/stripe-webhook', extra: { eventType: event?.type } });
     // Devuelve 200 igual — Stripe reintenta ante respuestas no-2xx y eso
     // podría producir un loop de reintentos sobre un error que no se va a
     // resolver solo. El evento ya quedó marcado como procesado arriba.

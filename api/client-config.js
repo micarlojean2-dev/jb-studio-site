@@ -1,6 +1,9 @@
 import { Redis } from '@upstash/redis';
 import { createHash, randomUUID } from 'node:crypto';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
+import { initSentry, captureApiException } from '../lib/sentry.js';
+
+initSentry();
 
 // Este archivo aloja DOS handlers independientes para no superar el límite de
 // funciones serverless del proyecto (12): el config público (GET, sin auth) y
@@ -114,6 +117,7 @@ export function createClientConfigHandler({ redis } = {}) {
     return res.status(200).json(out);
   } catch (err) {
     console.error('[api/client-config]', err.message);
+    captureApiException(err, { clientId: id, feature: 'chatbot_loader', route: '/api/client-config' });
     return res.status(500).json({ error: 'Service error' });
   }
   };
@@ -303,6 +307,7 @@ export function createClientImagesHandler({ redis: store, fetchImpl = fetch, env
       return res.status(405).json({ error: 'Method not allowed' });
     } catch (err) {
       console.error('[api/client-images]', err.message);
+      captureApiException(err, { clientId, feature: 'client_panel', route: '/api/client-images' });
       return res.status(500).json({ error: 'Image service error' });
     }
   };

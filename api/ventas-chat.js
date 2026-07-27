@@ -1,5 +1,8 @@
 import { Resend } from 'resend';
 import { Redis } from '@upstash/redis';
+import { initSentry, captureApiException } from '../lib/sentry.js';
+
+initSentry();
 
 // ── In-memory rate limit: 30 req/IP/hour ──────────────────────────────────
 const ipStore = new Map();
@@ -1264,6 +1267,7 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error('[api/ventas-chat]', err.message);
+    captureApiException(err, { feature: 'chat', route: '/api/ventas-chat' });
     return res.status(500).json({ error: 'Error del servicio' });
   }
 }
