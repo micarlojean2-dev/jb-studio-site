@@ -690,8 +690,9 @@ export default async function handler(req, res) {
   // TEMPORAL — solo para verificar la integración de Sentry en Preview.
   // Se elimina en cuanto se confirme que el evento llegó. [SENTRY-TEST]
   if (req.method === 'GET' && req.query?.cron === 'sentry-test') {
-    const secret = process.env.CRON_SECRET;
-    if (!secret || (req.headers.authorization || '') !== `Bearer ${secret}`) {
+    // Secreto de un solo uso generado para esta prueba, no una env var
+    // persistente: se elimina junto con este bloque entero. [SENTRY-TEST]
+    if (req.headers['x-sentry-test-secret'] !== '8b2725f23d95671d2d60876d3c916166005666a4a52ff344') {
       return res.status(401).json({ error: 'Unauthorized' });
     }
     captureApiException(new Error('Sentry test — backend (api/reservations)'), {
