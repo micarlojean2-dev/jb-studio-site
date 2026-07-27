@@ -1,67 +1,60 @@
 /* JB Studio — Sentry para las páginas propias de la plataforma.
  *
- * Este archivo usa el Loader Script global de Sentry, que instala
- * window.onerror/onunhandledrejection para TODA la página — correcto aquí
- * porque cada página que lo carga (admin.html, asistente.html, chatbot.html,
- * reservas.html, index.html, ventas.html, preview.html, etc.) es 100% mía.
+ * Estas páginas (admin.html, asistente.html, chatbot.html, reservas.html,
+ * index.html, ventas.html, preview.html, vista-previa.html, cancel.html,
+ * success.html) son 100% mías, así que el comportamiento normal de
+ * Sentry.init() (capturar todo error/rechazo de promesa de la página) es
+ * correcto aquí — a diferencia de widget.js, que corre embebido en sitios de
+ * terceros y por eso usa su propia instrumentación aislada (ver el bloque
+ * "Monitoreo aislado" al inicio de widget.js).
  *
- * widget.js NO usa este archivo ni el Loader Script: tiene su propia
- * instrumentación aislada (ver el bloque "Monitoreo aislado" al principio de
- * widget.js) porque ese script corre embebido en sitios de terceros, donde
- * un Loader global capturaría errores ajenos al sitio del cliente y podría
- * chocar con un Sentry que el negocio ya tenga instalado.
+ * Sin bundler ni build de JS en este proyecto, se carga el mismo bundle CDN
+ * de Sentry que usa widget.js (versión fija, ya verificada) y se llama
+ * Sentry.init() directamente con el DSN — más simple que el Loader Script y
+ * sin depender de una segunda credencial.
  *
- * Un solo archivo compartido por las páginas propias — no hay bundler ni
- * build de JS en este proyecto, así que se usa el Loader Script oficial de
- * Sentry (recomendado para sitios sin bundler) en vez del SDK npm.
- *
- * Sin SENTRY_LOADER_URL configurada, este archivo no hace nada: la página
- * sigue funcionando exactamente igual, solo que sin monitoreo.
+ * Si algo falla al cargar o inicializar, la página sigue funcionando igual:
+ * todo esto es best-effort y nunca debe romper nada.
  */
 (function () {
-  // Reemplazar por la URL real del "Loader Script" del proyecto de Sentry
-  // (Sentry → Settings → Projects → [proyecto] → Client Keys (DSN) → Loader
-  // Script). No es un secreto: está diseñada para vivir en código de
-  // navegador, igual que un DSN público.
-  var SENTRY_LOADER_URL = '__SENTRY_LOADER_URL__';
+  var SENTRY_DSN = 'https://01798dd3dcf929fe3a2800b6b3c4e47e@o4511805847633920.ingest.us.sentry.io/4511805885186048';
 
-  if (!SENTRY_LOADER_URL || SENTRY_LOADER_URL.indexOf('__SENTRY_LOADER_URL__') !== -1) return;
+  try {
+    var host = window.location.hostname;
+    var environment = /(^|\.)jbstudio\.app$/.test(host) ? 'production'
+      : /\.vercel\.app$/.test(host) ? 'preview'
+      : 'development';
 
-  // environment: la página está servida por Vercel (o corre local sin
-  // ninguno de estos hosts). No hay variable de entorno inyectable en HTML
-  // estático, así que se infiere del propio hostname.
-  var host = window.location.hostname;
-  var environment = /(^|\.)jbstudio\.app$/.test(host) ? 'production'
-    : /\.vercel\.app$/.test(host) ? 'preview'
-    : 'development';
-
-  var script = document.createElement('script');
-  script.src = SENTRY_LOADER_URL;
-  script.crossOrigin = 'anonymous';
-  script.onload = function () {
-    if (!window.Sentry || typeof window.Sentry.onLoad !== 'function') return;
-    window.Sentry.onLoad(function () {
-      window.Sentry.init({
-        environment: environment,
-        sendDefaultPii: false,
-        tracesSampleRate: environment === 'production' ? 0.05 : 0,
-        beforeSend: function (event) {
-          // No conversaciones, prompts, ni datos de clientes: solo errores
-          // técnicos del propio código de la página.
-          if (event.request) {
-            delete event.request.cookies;
-            delete event.request.data;
-          }
-          event.user = undefined;
-          return event;
-        },
-      });
-      window.Sentry.setTag('runtime', 'browser');
-      var page = document.body && document.body.getAttribute('data-sentry-page');
-      if (page) window.Sentry.setTag('feature', page);
-      var clientId = window.__JB_CLIENT_ID__;
-      if (clientId) window.Sentry.setTag('client_id', clientId);
-    });
-  };
-  document.head.appendChild(script);
+    var script = document.createElement('script');
+    script.src = 'https://browser.sentry-cdn.com/10.68.0/bundle.min.js';
+    script.crossOrigin = 'anonymous';
+    script.onload = function () {
+      try {
+        if (!window.Sentry || typeof window.Sentry.init !== 'function') return;
+        window.Sentry.init({
+          dsn: SENTRY_DSN,
+          environment: environment,
+          sendDefaultPii: false,
+          tracesSampleRate: environment === 'production' ? 0.05 : 0,
+          beforeSend: function (event) {
+            // No conversaciones, prompts, ni datos de clientes: solo errores
+            // técnicos del propio código de la página.
+            if (event.request) {
+              delete event.request.cookies;
+              delete event.request.data;
+            }
+            event.user = undefined;
+            return event;
+          },
+        });
+        window.Sentry.setTag('runtime', 'browser');
+        var page = document.body && document.body.getAttribute('data-sentry-page');
+        if (page) window.Sentry.setTag('feature', page);
+        var clientId = window.__JB_CLIENT_ID__;
+        if (clientId) window.Sentry.setTag('client_id', clientId);
+      } catch (e) { /* el monitoreo nunca debe romper la página */ }
+    };
+    script.onerror = function () { /* CDN bloqueado o sin red: sin monitoreo, página normal */ };
+    document.head.appendChild(script);
+  } catch (e) { /* el monitoreo nunca debe romper la página */ }
 })();
