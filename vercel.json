@@ -7,6 +7,10 @@
       "destination": "/api/client-config?__scope=images"
     },
     {
+      "source": "/api/health",
+      "destination": "/api/client-config?__scope=health"
+    },
+    {
       "source": "/ventas",
       "destination": "/ventas.html"
     },

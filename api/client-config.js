@@ -5,11 +5,12 @@ import { initSentry, captureApiException } from '../lib/sentry.js';
 
 initSentry();
 
-// Este archivo aloja DOS handlers independientes para no superar el límite de
-// funciones serverless del proyecto (12): el config público (GET, sin auth) y
-// la gestión admin de imágenes (auth por token, CORS restringido). El default
-// export despacha a uno u otro; no comparten CORS ni autenticación. Las
-// llamadas admin llegan reescritas desde /api/client-images (ver vercel.json).
+// Este archivo aloja TRES handlers independientes para no superar el límite de
+// funciones serverless del proyecto (12): el config público (GET, sin auth), la
+// gestión admin de imágenes (auth por token, CORS restringido) y el health check
+// (GET público, sin datos de clientes). El default export despacha a uno u otro;
+// no comparten CORS ni autenticación. Las llamadas llegan reescritas desde
+// /api/client-images y /api/health (ver vercel.json).
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
 
 // Fase 3: estaba usando KV_REST_API_URL/TOKEN, que no existen como variables
@@ -313,14 +314,51 @@ export function createClientImagesHandler({ redis: store, fetchImpl = fetch, env
   };
 }
 
+const HEALTH_TIMEOUT_MS = 1500;
+
+function createHealthHandler({ redis } = {}) {
+  const store = redis || new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  });
+  return async function handler(req, res) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).json({ error: 'Method not allowed' });
+
+    let redisUp = false;
+    try {
+      await Promise.race([
+        store.ping(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Redis ping timeout')), HEALTH_TIMEOUT_MS)),
+      ]);
+      redisUp = true;
+    } catch (err) {
+      captureApiException(err, { feature: 'redis', route: '/api/health' });
+    }
+
+    if (!redisUp) return res.status(503).json({ ok: false, services: { app: 'up', redis: 'down' } });
+    if (req.method === 'HEAD') return res.status(200).end();
+    return res.status(200).json({ ok: true, services: { app: 'up', redis: 'up' } });
+  };
+}
+
 let productionHandler;
 let imagesHandler;
+let healthHandler;
 export default async function handler(req, res) {
-  // Las peticiones admin de imágenes entran reescritas con __scope=images
-  // (vercel.json). El resto es el config público, intacto.
+  // Las peticiones admin de imágenes entran reescritas con __scope=images y el
+  // health check con __scope=health (vercel.json). El resto es el config
+  // público, intacto.
   if (req.query?.__scope === 'images') {
     if (!imagesHandler) imagesHandler = createClientImagesHandler();
     return imagesHandler(req, res);
+  }
+  if (req.query?.__scope === 'health') {
+    if (!healthHandler) healthHandler = createHealthHandler();
+    return healthHandler(req, res);
   }
   if (!productionHandler) productionHandler = createClientConfigHandler();
   return productionHandler(req, res);
