@@ -11,11 +11,13 @@ SDKs distintos:
   límite de 12 y el proyecto ya usa las 12).
 - **Páginas propias** (`admin.html`, `asistente.html`, `chatbot.html`,
   `reservas.html`, `index.html`, `ventas.html`, `preview.html`,
-  `vista-previa.html`, `cancel.html`, `success.html`): el **Loader Script
-  oficial de Sentry**, cargado por `sentry-init.js` — mecanismo recomendado
-  para sitios sin bundler. Estas páginas son 100% mías, así que el
-  comportamiento normal del Loader (capturar todo error de la página) es
-  correcto aquí.
+  `vista-previa.html`, `cancel.html`, `success.html`): `sentry-init.js` carga
+  el mismo bundle CDN que `widget.js` (sin bundler propio en el proyecto) y
+  llama `Sentry.init()` normal con el DSN — estas páginas son 100% mías, así
+  que el comportamiento estándar (capturar todo error/rechazo de promesa de
+  esa página) es correcto aquí. Un único bundle CDN cubre ambos casos de uso
+  (páginas propias e instrumentación aislada del widget), sin depender de una
+  segunda credencial (el Loader Script hubiera necesitado su propia URL).
 - **`widget.js`** (el script embebible que corre en los sitios de los
   negocios clientes, no en jbstudio.app): **NO** usa el Loader Script ni
   `Sentry.init()` normal — ambos instalarían `window.onerror` /
@@ -44,15 +46,12 @@ SDKs distintos:
 
 **No hace falta crear `NEXT_PUBLIC_SENTRY_DSN`** — no es Next.js. No hay
 ningún paso de build que pueda inyectar una env var en un archivo HTML/JS
-estático, así que dos valores (ninguno secreto — un DSN está diseñado para
-vivir en código de navegador) van escritos directamente en el código:
+estático, así que el mismo DSN (no es secreto — está diseñado para vivir en
+código de navegador) está escrito directamente en dos archivos:
 
-- `sentry-init.js` (línea `SENTRY_LOADER_URL`) — la URL del **Loader
-  Script**, para las páginas propias.
-- `widget.js` (línea `WIDGET_SENTRY_DSN`, dentro del bloque "Monitoreo
-  aislado") — el **DSN crudo** (`https://<key>@oXXXX.ingest.../<project>`),
-  para el cliente aislado del widget embebido. Es un valor distinto en forma
-  al Loader Script aunque venga de la misma pantalla de Sentry.
+- `sentry-init.js` (variable `SENTRY_DSN`) — páginas propias.
+- `widget.js` (variable `WIDGET_SENTRY_DSN`, dentro del bloque "Monitoreo
+  aislado") — cliente aislado del widget embebido.
 
 ### En qué entornos de Vercel
 
@@ -67,31 +66,29 @@ Si `SENTRY_DSN` no existe, `lib/sentry.js` no llama a `Sentry.init()` — la
 plataforma sigue funcionando exactamente igual, sin monitoreo, sin lanzar
 ningún error por la variable faltante.
 
-## 2. Lo que necesito que hagas tú (no puedo crearlo yo)
+## 2. Estado (completado 2026-07-26)
 
-1. Crea una cuenta/organización en https://sentry.io si no tienes una.
-2. Crea un proyecto nuevo: plataforma **Node.js** (para el backend). Puedes
-   usar el mismo proyecto para el frontend o crear uno "Browser JavaScript"
-   aparte — con uno solo alcanza para empezar.
-3. Copia el **DSN** (Settings → Projects → [proyecto] → Client Keys (DSN)) y
-   dímelo, o pégalo tú directamente en tres lugares:
-   - En Vercel (Project Settings → Environment Variables): `SENTRY_DSN` = el
-     DSN, en Production + Preview + Development.
-   - En `/widget.js`, línea `WIDGET_SENTRY_DSN = '__WIDGET_SENTRY_DSN__'`:
-     reemplaza el placeholder por el DSN exacto.
-4. Copia la URL del **Loader Script** (misma pantalla, sección "Loader
-   Script") y reemplaza el placeholder `__SENTRY_LOADER_URL__` en
-   `/sentry-init.js` (línea con `SENTRY_LOADER_URL`) por esa URL exacta.
-5. (Recomendado, para source maps y releases automáticos) Instala la
-   integración oficial **Sentry** desde Vercel → tu proyecto → Settings →
-   Integrations → busca "Sentry" → Add Integration → conecta con tu cuenta de
-   Sentry y selecciona el proyecto. Esto crea `SENTRY_ORG`, `SENTRY_PROJECT` y
-   `SENTRY_AUTH_TOKEN` en Vercel automáticamente, sin que yo ni tú los
-   copiemos a mano. El token nunca llega al navegador: la integración lo usa
-   solo durante el build, del lado de Vercel.
+DSN recibido y configurado en:
+- Vercel → `SENTRY_DSN` (Production, Preview, Development) — verificado con
+  `vercel env ls`, valor encriptado, nunca mostrado en texto plano.
+- `/widget.js` → `WIDGET_SENTRY_DSN`.
+- `/sentry-init.js` → `SENTRY_DSN` (mismo valor).
 
-Avísame cuando el DSN esté en Vercel y el Loader Script actualizado en el
-archivo — hago el deploy y las pruebas de inmediato.
+`SENTRY_ORG`, `SENTRY_PROJECT` y `SENTRY_AUTH_TOKEN` — **NO configurados
+todavía**, a propósito: quedan pendientes de confirmar el método oficial de
+source maps para esta arquitectura (no-Next.js) antes de tocarlos.
+
+Pendiente, opcional (recomendado para source maps y releases automáticos):
+instalar la integración oficial **Sentry** desde Vercel → tu proyecto →
+Settings → Integrations → busca "Sentry" → Add Integration → conecta con tu
+cuenta de Sentry y selecciona el proyecto. Esto crearía `SENTRY_ORG`,
+`SENTRY_PROJECT` y `SENTRY_AUTH_TOKEN` en Vercel automáticamente — pero no se
+activa hasta confirmar que sigue siendo el método correcto para subir source
+maps en un proyecto sin Next.js.
+
+Fuente de verdad de las decisiones sobre source maps: pendiente. Cuando se
+confirme el método, esta sección se actualiza antes de tocar ninguna de esas
+tres variables.
 
 ## 3. Privacidad
 
