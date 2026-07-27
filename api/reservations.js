@@ -687,20 +687,6 @@ export default async function handler(req, res) {
   // Auditoría de clientes. Protegida con el mismo secreto del cron y de solo
   // lectura: no toca ningún dato. Sirve para ver de un vistazo qué negocios no
   // pueden tomar reservas y por qué, sin tener que abrir el panel.
-  // TEMPORAL — solo para verificar la integración de Sentry en Preview.
-  // Se elimina en cuanto se confirme que el evento llegó. [SENTRY-TEST]
-  if (req.method === 'GET' && req.query?.cron === 'sentry-test') {
-    // Secreto de un solo uso generado para esta prueba, no una env var
-    // persistente: se elimina junto con este bloque entero. [SENTRY-TEST]
-    if (req.headers['x-sentry-test-secret'] !== '8b2725f23d95671d2d60876d3c916166005666a4a52ff344') {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    captureApiException(new Error('Sentry test — backend (api/reservations)'), {
-      clientId: 'sentry-test-client', feature: 'reservation_create', route: '/api/reservations?cron=sentry-test',
-    });
-    return res.status(200).json({ ok: true, sentryTest: true });
-  }
-
   if (req.method === 'GET' && req.query?.cron === 'audit') {
     const secret = process.env.CRON_SECRET;
     if (!secret || (req.headers.authorization || '') !== `Bearer ${secret}`) {
