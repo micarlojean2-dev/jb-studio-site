@@ -316,18 +316,6 @@ export function createClientImagesHandler({ redis: store, fetchImpl = fetch, env
 
 const HEALTH_TIMEOUT_MS = 1500;
 
-// TEMPORAL [BETTERSTACK-DRILL]: mientras este bloque exista, /api/health
-// responde 503 de forma incondicional (para que el propio monitor de Better
-// Stack, sin cabeceras especiales, detecte la caída). Solo afecta a este
-// endpoint — el resto del sitio, el chat, las reservas y el widget siguen
-// intactos. Protegido por control de despliegue: activarlo/desactivarlo
-// requiere un commit + deploy a producción, no un parámetro público. Se
-// retira inmediatamente después de la prueba controlada.
-const DRILL_ACTIVE = true;
-function isDrillRequest() {
-  return DRILL_ACTIVE;
-}
-
 function createHealthHandler({ redis } = {}) {
   const store = redis || new Redis({
     url: process.env.UPSTASH_REDIS_REST_URL,
@@ -339,12 +327,6 @@ function createHealthHandler({ redis } = {}) {
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
     if (req.method === 'OPTIONS') return res.status(204).end();
     if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).json({ error: 'Method not allowed' });
-
-    if (isDrillRequest()) {
-      const err = new Error('Controlled Better Stack outage drill (synthetic, temporary — no real dependency failure)');
-      captureApiException(err, { feature: 'health_check', route: '/api/health' });
-      return res.status(503).json({ ok: false, services: { app: 'up', redis: 'unknown' }, drill: true });
-    }
 
     let redisUp = false;
     try {
