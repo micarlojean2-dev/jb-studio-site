@@ -82,15 +82,6 @@
     } catch (e) { /* el monitoreo nunca debe romper el widget */ }
   }
 
-  // TEMPORAL — verificación de Sentry en producción vía el pipeline real
-  // (BrowserClient aislado + captureWidgetError). Se retira junto con esta
-  // sección en cuanto se confirme el evento. [SENTRY-TEST]
-  if (/[?&]sentrytest=1(&|$)/.test(me.src)) {
-    setTimeout(function () {
-      captureWidgetError(new Error('Sentry test — widget production (widget.js)'), 'chat');
-    }, 1500);
-  }
-
   // El motor compartido vive en jbstudio.app, el mismo origen del que este
   // widget ya depende para /api/client-config y /api/client-chat: no añade
   // un punto de fallo nuevo. Si no carga, no pintamos nada — mejor ausente
