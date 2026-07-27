@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis';
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 
@@ -316,18 +316,16 @@ export function createClientImagesHandler({ redis: store, fetchImpl = fetch, env
 
 const HEALTH_TIMEOUT_MS = 1500;
 
-// TEMPORAL [BETTERSTACK-DRILL]: gatilla una caída sintética de /api/health,
-// protegida por un token de un solo uso (hash fijado abajo, sin el valor real
-// en el repo), para comprobar que Better Stack y Sentry detectan un 503 real.
-// Se retira inmediatamente después de la prueba controlada — no afecta a
-// ningún otro endpoint ni depende realmente de Redis.
-const DRILL_TOKEN_HASH = '7fa5f9788c75ded7bbd6f1783ab62fdb1b844987665d7973aa4a0aecb4b96c94';
-function isDrillRequest(req) {
-  const token = req.headers?.['x-health-drill-token'];
-  if (typeof token !== 'string' || !token) return false;
-  const hash = createHash('sha256').update(token).digest();
-  const expected = Buffer.from(DRILL_TOKEN_HASH, 'hex');
-  return hash.length === expected.length && timingSafeEqual(hash, expected);
+// TEMPORAL [BETTERSTACK-DRILL]: mientras este bloque exista, /api/health
+// responde 503 de forma incondicional (para que el propio monitor de Better
+// Stack, sin cabeceras especiales, detecte la caída). Solo afecta a este
+// endpoint — el resto del sitio, el chat, las reservas y el widget siguen
+// intactos. Protegido por control de despliegue: activarlo/desactivarlo
+// requiere un commit + deploy a producción, no un parámetro público. Se
+// retira inmediatamente después de la prueba controlada.
+const DRILL_ACTIVE = true;
+function isDrillRequest() {
+  return DRILL_ACTIVE;
 }
 
 function createHealthHandler({ redis } = {}) {
@@ -342,7 +340,7 @@ function createHealthHandler({ redis } = {}) {
     if (req.method === 'OPTIONS') return res.status(204).end();
     if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).json({ error: 'Method not allowed' });
 
-    if (isDrillRequest(req)) {
+    if (isDrillRequest()) {
       const err = new Error('Controlled Better Stack outage drill (synthetic, temporary — no real dependency failure)');
       captureApiException(err, { feature: 'health_check', route: '/api/health' });
       return res.status(503).json({ ok: false, services: { app: 'up', redis: 'unknown' }, drill: true });
