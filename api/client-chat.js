@@ -10,12 +10,9 @@ const redis = new Redis({
 });
 
 // ── In-memory rate limit (30 req/IP/hour) ──────────────────────────────────
-// TEMPORAL [QA-LOAD-TEST]: subido de 30 a 1000 solo para la comparativa de
-// chatbots QA de esta sesión (4 agentes de prueba comparten una misma IP de
-// salida). Revertir a 30 inmediatamente después de terminar las pruebas.
 const ipStore = new Map();
 const HOUR_MS = 60 * 60 * 1000;
-const RPH     = 1000;
+const RPH     = 30;
 
 function checkRateLimit(ip) {
   const now = Date.now();
