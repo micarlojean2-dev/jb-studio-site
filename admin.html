@@ -3544,7 +3544,9 @@ LÍMITES ESTRICTOS:
           </td>
           <td><span class="ct-category">${escHTML(categoria)}</span></td>
           <td>${PLAN_NAME}<span class="ct-subline">${PLAN_PRICE_LABEL}</span></td>
-          <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>${
+          <td>${c.active
+            ? `<a class="ct-link ct-view-bot" href="/asistente/${encodeURIComponent(c.id)}" target="_blank" rel="noopener noreferrer">Ver chatbot</a>`
+            : `<button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>`}${
             faltaConfigCliente(c).length
               ? `<button type="button" class="ct-link ct-setup" data-cid="${escHTML(c.id)}" title="Faltan: ${escHTML(faltaConfigCliente(c).join(', '))}" style="color:#a01b1b;display:block;margin-top:4px">⚠️ Completar</button>`
               : ''
@@ -3576,7 +3578,9 @@ LÍMITES ESTRICTOS:
           </div>
           <div class="cc-health"><span>Salud del asistente</span><strong>Sin monitoreo</strong></div>
           <div class="cc-actions">
-            <button type="button" class="cc-btn-secondary ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>
+            ${c.active
+              ? `<a class="cc-btn-secondary ct-view-bot" href="/asistente/${encodeURIComponent(c.id)}" target="_blank" rel="noopener noreferrer">Ver chatbot</a>`
+              : `<button type="button" class="cc-btn-secondary ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>`}
             <button type="button" class="cc-btn-primary ct-manage" data-cid="${escHTML(c.id)}">Administrar</button>
           </div>
         </div>`;
@@ -3600,7 +3604,7 @@ LÍMITES ESTRICTOS:
           if (c) abrirSetup(c);
         });
       });
-      clientsListEl.querySelectorAll('.ct-view-bot').forEach(btn => {
+      clientsListEl.querySelectorAll('button.ct-view-bot').forEach(btn => {
         btn.addEventListener('click', () => {
           const c = clientsCache.find(x => x.id === btn.dataset.cid);
           if (c) openChatbotPreview(c);
