@@ -16,9 +16,12 @@ const FROM = 'reservas@jbstudio.app';
 const APP_URL = 'https://jbstudio.app';
 
 // ── Rate limit: 5 reservas/IP/hora ──────────────────────────────────────────
+// TEMPORAL [QA-LOAD-TEST]: subido de 5 a 200 solo para la comparativa de
+// chatbots QA de esta sesión (varios agentes de prueba comparten una misma
+// IP de salida). Revertir a 5 inmediatamente después de terminar las pruebas.
 const ipStore = new Map();
 const HOUR_MS = 60 * 60 * 1000;
-const RPH     = 5;
+const RPH     = 200;
 
 function checkRateLimit(ip) {
   const now = Date.now();
