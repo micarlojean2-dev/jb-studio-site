@@ -3287,20 +3287,33 @@ LÍMITES ESTRICTOS:
         : `/asistente/${cid}`;
 
       const w = window.open(base, '_blank');
-      if (!w) return;
+      if (!w) {
+        alert('El navegador bloqueó la pestaña del chatbot. Permite las ventanas emergentes e inténtalo de nuevo.');
+        return;
+      }
+
+      // An active chatbot needs no preview token; keep the synchronous open
+      // tied directly to the click so popup blockers cannot reject it.
+      if (c.active) return;
 
       fetch('/api/clients?action=preview-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
         body: JSON.stringify({ id: c.id }),
       })
-        .then(r => r.json())
+        .then(r => {
+          if (!r.ok) throw new Error('No se pudo generar el token de vista previa.');
+          return r.json();
+        })
         .then(d => {
-          if (!d || !d.previewToken) return;
+          if (!d || !d.previewToken) throw new Error('No se pudo generar el token de vista previa.');
           const sep = base.indexOf('?') === -1 ? '?' : '&';
           w.location.replace(`${base}${sep}preview=${d.previewToken}`);
         })
-        .catch(() => {});
+        .catch(err => {
+          w.close();
+          alert(err.message || 'No se pudo abrir la vista previa del chatbot.');
+        });
     }
 
     let clientsCache = [];
