@@ -1,0 +1,49 @@
+{
+  "version": "1.0.0",
+  "createdAt": "2026-07-28",
+  "sourceOperation": "Limpieza total de chatbots QA + plantilla maestra reutilizable",
+  "sourceCommit": "62e9bfb",
+  "originClient": {
+    "id": "bella-vita-beauty-studio-qa",
+    "businessName": "Bella Vita Beauty Studio QA",
+    "note": "Cliente QA de prueba, no un negocio real. Ganó una comparativa de 25 escenarios contra otros 3 chatbots QA de producción — ver scoring-results.md."
+  },
+  "testsWon": {
+    "totalScore": "104/140",
+    "runnerUp": "bella-luna-spa (103/140)",
+    "scenarioCount": 25,
+    "dimensionsScored": 14,
+    "wonOn": ["reservas", "reprogramacion", "cancelacion", "anti-duplicado", "seguimiento-instrucciones", "memoria"],
+    "knownWeakness": "bilingüe (1/10) — compartida con 2 de los otros 3 chatbots, es un problema de código (api/client-chat.js langDirectiveFor), no de este cliente en particular"
+  },
+  "files": [
+    { "name": "README.md", "sha256": "0c93f5d71006fe1cd0f8fa5816eafb3de18ba26bb461343eb3354d2da9c4ba7e" },
+    { "name": "prompt-example-sanitized.txt", "sha256": "83092fe537aaf0a409868b6d071528a63a0002ee2cf6c98f8b5d799000c150eb" },
+    { "name": "template-config.json", "sha256": "faea4b0163f33d32650af5bbe79c98a140ba935bcd4ee55af51e0fcf2f315ead" },
+    { "name": "scoring-results.md", "sha256": "d0af1d774893aac7df3b6a02cfd69ab5dd0b8e0640bff9bdde960d4020482638" }
+  ],
+  "requiredFields": [
+    "businessName", "prompt", "menu", "businessHours", "timezone",
+    "language", "plan", "features", "ownerEmail", "phoneNumber"
+  ],
+  "optionalFields": [
+    "templateId", "templateVersion", "templateData", "color", "secondaryColor",
+    "style", "displayMode", "widgetPosition", "address", "holidays",
+    "minNoticeHours", "capacityPerSlot", "reservationIntervalMinutes",
+    "notificationEmails", "languages", "primaryLanguage"
+  ],
+  "knownDeadFields": [
+    "billingDay", "trialEnabled", "trialDays",
+    "note: confirmados sin efecto en runtime en auditoría previa de pagos (2026-07-27), se guardan pero nada los lee en origin/main"
+  ],
+  "rawBackupLocation": {
+    "note": "Backup completo (con datos personales e IDs de Stripe reales de test-mode) de los 4 clientes comparados, NUNCA en este repositorio.",
+    "path": "~/jb-studio-backups/2026-07-28/ (máquina local de Mike, permisos 700)",
+    "files": [
+      "client-{barberia-prueba,bella-luna-spa,bella-vita-beauty-studio-qa,sabor-urbano-demo}.json",
+      "reservations-{...}.json",
+      "client-images-{...}.json",
+      "changes-{...}.json"
+    ]
+  }
+}

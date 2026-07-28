@@ -1,0 +1,70 @@
+{
+  "_comment": "Plantilla estructural sanitizada, derivada del cliente ganador de la comparativa (bella-vita-beauty-studio-qa, 2026-07-28). Sin datos personales, sin IDs de Stripe, sin tokens. Rellenar los {{marcadores}} al crear un negocio real.",
+
+  "templateId": null,
+  "templateVersion": null,
+  "_templateId_note": "El ganador NO usa el sistema de plantillas oficiales (lib/assistant-templates.mjs: spa/restaurant/barber) — fue creado con el formulario genérico (prompt + menu libres). Si el negocio nuevo es de tipo spa/restaurant/barber, usar en su lugar POST /api/clients con templateId+templateVersion+templateData del catálogo oficial (templates/{spa,restaurant,barber}/) en vez de esta plantilla genérica.",
+
+  "businessName": "{{BUSINESS_NAME}}",
+  "businessType": "{{BUSINESS_TYPE}}",
+  "plan": "pro",
+  "language": "es",
+  "languages": ["es", "en"],
+  "primaryLanguage": "es",
+  "_language_note": "languages[]/primaryLanguage se guardan pero NO se leen en runtime (campo write-only confirmado en auditoría previa) — solo el escalar 'language' importa. Dejar 'es' salvo que el negocio nuevo sea nativamente en inglés.",
+
+  "color": "{{PRIMARY_COLOR}}",
+  "secondaryColor": "{{SECONDARY_COLOR}}",
+  "style": "{{STYLE_ADJECTIVE}}",
+  "displayMode": "fullscreen",
+  "widgetPosition": "bottom-right",
+
+  "address": "{{BUSINESS_ADDRESS}}",
+  "timezone": "{{IANA_TIMEZONE}}",
+  "businessHours": {
+    "monday":    { "enabled": true,  "unknown": false, "ranges": [{ "start": "{{OPEN}}", "end": "{{CLOSE}}" }] },
+    "tuesday":   { "enabled": true,  "unknown": false, "ranges": [{ "start": "{{OPEN}}", "end": "{{CLOSE}}" }] },
+    "wednesday": { "enabled": true,  "unknown": false, "ranges": [{ "start": "{{OPEN}}", "end": "{{CLOSE}}" }] },
+    "thursday":  { "enabled": true,  "unknown": false, "ranges": [{ "start": "{{OPEN}}", "end": "{{CLOSE}}" }] },
+    "friday":    { "enabled": true,  "unknown": false, "ranges": [{ "start": "{{OPEN}}", "end": "{{CLOSE}}" }] },
+    "saturday":  { "enabled": true,  "unknown": false, "ranges": [{ "start": "{{OPEN}}", "end": "{{CLOSE}}" }] },
+    "sunday":    { "enabled": false, "unknown": false, "ranges": [] }
+  },
+
+  "menu": [
+    { "nombre": "{{SERVICE_NAME}}", "precio": "{{PRICE}}", "descripcion": "", "imagen": "", "duracion": "{{DURATION_MIN}} min" }
+  ],
+  "_menu_note": "Repetir un objeto por servicio. El ganador tenía 3 servicios y 0 imágenes (imagen:'' en los 3) — la Fase 2 confirmó que el bot admite honestamente 'no tengo fotos' en vez de inventarlas cuando el campo está vacío, así que dejarlo vacío es seguro si el negocio real todavía no tiene fotos.",
+
+  "features": {
+    "faq": true,
+    "prices": true,
+    "catalog": true,
+    "reservations": true,
+    "leads": true,
+    "emailNotifications": true,
+    "cancellation": true,
+    "rescheduling": true
+  },
+  "_features_note": "Estos 8 flags están topados por 'plan' (sanitizeFeatures en api/clients.js) — con plan:'pro' los 8 pueden ser true. No son específicos de este negocio, son genéricos para cualquier cliente Pro.",
+
+  "minNoticeHours": 0,
+  "capacityPerSlot": 1,
+  "reservationIntervalMinutes": 30,
+  "holidays": [],
+
+  "billingDay": 1,
+  "trialEnabled": false,
+  "trialDays": 7,
+  "_trial_note": "CONFIRMADO EN AUDITORÍA PREVIA (sesión de pagos): trialEnabled/trialDays se guardan al crear el cliente pero NINGÚN código los lee después — son datos muertos en la rama de producción actual (origin/main). No tienen efecto real sobre el comportamiento del chatbot. Dejarlos con estos valores por consistencia con el resto de los clientes, pero no asumir que activan un trial real.",
+
+  "notificationEmails": [],
+
+  "ownerName": "{{OWNER_NAME}}",
+  "ownerEmail": "{{OWNER_EMAIL}}",
+  "phoneCountry": "{{ISO_COUNTRY}}",
+  "phoneCountryCode": "{{PHONE_COUNTRY_CODE}}",
+  "phoneNumber": "{{PHONE_NUMBER}}",
+  "whatsapp": "{{WHATSAPP_FULL_NUMBER}}",
+  "_pii_note": "Estos 6 campos SIEMPRE deben venir del negocio real al crear el cliente — nunca copiar valores del cliente de prueba usado para esta plantilla (fueron datos ficticios de QA, pero el patrón de campo es real)."
+}
