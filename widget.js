@@ -318,7 +318,7 @@
     '.jbw-card{display:flex;flex-direction:column;align-items:center;text-align:center;',
     'gap:2px;width:100%;font-family:inherit;cursor:pointer;background:#fff;',
     'border:1.5px solid rgba(0,0,0,.06);border-radius:18px;padding:16px 12px 14px;',
-    'min-height:124px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.05);',
+    'min-height:172px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.05);',
     'transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s,border-color .18s;',
     'opacity:0;animation:jbw-card-in .34s cubic-bezier(.22,1,.36,1) forwards;}',
     '@keyframes jbw-card-in{from{opacity:0;transform:translateY(10px) scale(.97);}to{opacity:1;transform:none;}}',
@@ -327,8 +327,8 @@
     '.jbw-card:active{transform:translateY(-1px) scale(.97);}',
     '.jbw-card-ico{width:52px;height:52px;border-radius:15px;margin-bottom:8px;',
     'display:flex;align-items:center;justify-content:center;font-size:25px;}',
-    '.jbw-card-img{width:52px;height:52px;border-radius:15px;object-fit:cover;',
-    'margin-bottom:8px;display:block;background:#f2f2f4;}',
+    '.jbw-card-img{width:100px;height:100px;border-radius:15px;object-fit:cover;',
+    'margin-bottom:10px;display:block;background:#f2f2f4;}',
     '.jbw-card-no-image{justify-content:center;min-height:100px;padding:18px 12px;}',
     '.jbw-gallery-heading{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8a8f98;margin:2px 0 8px;}',
     '.jbw-gallery{width:100%;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:4px 0;}',
@@ -592,6 +592,7 @@
 
       card.addEventListener('click', function () {
         if (inp.disabled) return;
+        if (wrap.parentNode) wrap.remove();
         send(CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant'));
       });
 
@@ -1274,11 +1275,9 @@ function extractBooking(text, menu) {
       // escrito nunca debe confirmarla por su cuenta (puede ser una respuesta
       // apresurada sin haber revisado bien el resumen). Se pide que use el
       // botón en vez de dar la reserva por hecha. [BUG-CONFIRMACION-TEXTO]
-      if (bookingReview && CORE.esConfirmacion(t)) {
+      if (bookingReview) {
         addMsg('user', t);
-        addMsg('bot', lang === 'en'
-          ? 'Please tap the "✅ Yes, confirm it" button above to confirm your reservation 😊'
-          : 'Para confirmar tu cita, toca el botón "✅ Sí, confirmar cita" de arriba 😊');
+        showBookingSummary();
         return;
       }
       bookingReview = false;
