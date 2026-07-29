@@ -3,7 +3,7 @@
 // flash the menu; an explicit request must. [BUG-3]
 import assert from 'node:assert/strict';
 const { __test } = await import('../api/client-chat.js');
-const { menuDecision } = __test;
+const { menuDecision, galleryDecision } = __test;
 
 let count = 0;
 function check(v, m) { assert.ok(v, m); count++; }
@@ -13,9 +13,28 @@ const shows = (msg, opts) => menuDecision(msg, Object.assign({ catalogEnabled: t
 // ofrecen, o el equivalente de un botón de catálogo)
 for (const msg of [
   'quiero ver el menú', '¿me muestras la carta?',
-  '¿qué platillos tienen?', 'can I see the menu?', 'muéstrame las fotos', '¿tienen catálogo?',
+  '¿qué platillos tienen?', 'can I see the menu?', '¿tienen catálogo?',
   'what do you have?', 'quiero ver los servicios', '¿qué servicios ofrecen?', '¿qué venden?',
 ]) check(shows(msg) === true, `shows for: ${msg}`);
+
+// Regression: asking for photos/the gallery/the place is a DIFFERENT request
+// from the service catalog — it must show only the gallery, never force the
+// whole catalog open by itself. Before, "foto"/"imagen" lived inside
+// MENU_EXPLICIT, so a bare photo request also flashed all the service cards;
+// and "quiero ver el lugar" / "enséñame la galería" matched nothing at all,
+// so the assistant showed no photos even when 5 real images existed.
+// [BUG-FOTOS-GALERIA]
+for (const msg of [
+  'muéstrame las fotos del spa', 'quiero ver el lugar', '¿tienen imágenes?',
+  'enséñame la galería', 'quiero ver fotos de los servicios', 'muéstrame las fotos',
+  'quiero conocer el spa',
+]) check(galleryDecision(msg) === true, `gallery shows for: ${msg}`);
+for (const msg of [
+  'quiero ver el menú', 'quiero ver los servicios', '¿cuánto cuesta el masaje?', 'hola buenas',
+]) check(galleryDecision(msg) === false, `gallery hides for: ${msg}`);
+// A bare photo request no longer flags the service catalog by itself.
+check(shows('muéstrame las fotos') === false, 'bare photo request does not open the full catalog');
+check(shows('¿tienen imágenes?') === false, 'bare image request does not open the full catalog');
 
 // Should NOT show (closing / confirmation / refusal / unrelated) — the classic
 // post-confirmation "disfruta tu Hamburguesa Clásica" case lives in assistant

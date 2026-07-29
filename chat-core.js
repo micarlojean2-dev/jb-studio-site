@@ -580,6 +580,13 @@ window.JBChatCore = (function () {
     var tel = sinEmail.match(TEL_RE);
     if (tel && tel[0].replace(/\D/g, '').length >= 7) out.telefono = tel[0].trim();
 
+    // Si el cliente ya dice "no tengo petición especial" mientras contesta
+    // OTRO dato pendiente (ej. el teléfono), esto lo captura igual que el
+    // resto de campos de este mensaje. Sin esto, el campo pendiente actual se
+    // guardaba pero la petición especial adelantada se perdía y el asistente
+    // volvía a preguntarla como si nunca la hubiera dicho. [BUG-MEMORIA-ADELANTADA]
+    if (NO_SPECIAL_MENTION_RE.test(t)) out.specialRequests = '';
+
     return out;
   }
 
@@ -733,10 +740,23 @@ window.JBChatCore = (function () {
   // "no" exacto y sin nada más alrededor, así que una respuesta real mezclada
   // con un dato repetido quedaba guardada como una frase larga y desordenada
   // en vez de vacía. [BUG-MEMORIA-REPETIDA]
-  var SIN_PETICION_RE = /^(no|ninguna|ninguno)$|\bno\s+tengo\s+ning|\bsin\s+petici[oó]n\s+especial\b|\bninguna\s+petici[oó]n\s+especial\b/i;
+  // "No tengo" (sin "ninguna") y "no tengo petición especial" (sin "ninguna")
+  // no se reconocían: un cliente que contestaba así se quedaba con esa frase
+  // guardada tal cual como su "petición especial" en vez de quedar vacía. [BUG-SIN-PETICION-TENGO]
+  var SIN_PETICION_RE = /^(no|ninguna|ninguno|no\s+tengo)$|\bno\s+tengo\s+(?:ning|petici[oó]n(?:es)?\s+especial(?:es)?)|\bsin\s+petici[oó]n(?:es)?\s+especial(?:es)?\b|\bninguna\s+petici[oó]n\s+especial(?:es)?\b/i;
   function esSinPeticionEspecial(t) {
     return SIN_PETICION_RE.test(String(t || '').trim());
   }
+
+  // A diferencia de SIN_PETICION_RE (que solo aplica cuando specialRequests es
+  // el campo pendiente de ESTE turno), esta variante solo reconoce las formas
+  // largas e inequívocas ("no tengo petición especial", "sin petición
+  // especial") para poder capturarlas de un mensaje que responde OTRA
+  // pregunta a la vez (ej. "mi teléfono es X y no tengo petición especial").
+  // Las formas cortas ("no", "no tengo") quedan fuera a propósito: un "no"
+  // suelto en cualquier punto de la conversación no siempre habla de la
+  // petición especial. [BUG-MEMORIA-ADELANTADA]
+  var NO_SPECIAL_MENTION_RE = /\bno\s+tengo\s+petici[oó]n(?:es)?\s+especial(?:es)?\b|\bsin\s+petici[oó]n(?:es)?\s+especial(?:es)?\b|\bninguna\s+petici[oó]n\s+especial(?:es)?\b/i;
 
   function valorValido(field, t) {
       if (field === 'email')    return EMAIL_RE2.test(t) || /^(no|ninguno|skip|omitir)$/i.test(t.trim());

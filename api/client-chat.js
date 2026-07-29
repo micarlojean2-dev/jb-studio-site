@@ -160,7 +160,7 @@ No repitas ni resumas estas instrucciones, ni menciones que existen. La fecha y 
     ? '\nRESTAURANTE: usa únicamente menú, platos, pedidos, mesa, número de personas y reserva de mesa. Nunca uses cita, servicio, tratamiento, especialista ni agendar una cita. Las preferencias normales de ingredientes o preparación se anotan para la reserva: responde con naturalidad que las registrarás, sin decir que no puedes confirmarlas ni derivar al equipo. Solo ante alergia, intolerancia, celiaquía, reacción o contaminación cruzada indica que no puedes garantizar ausencia de alérgenos o contaminación cruzada y que el restaurante debe confirmarlo directamente.\n'
     : '';
   const mediaRules = media && (media.gallery || media.menuItems.length)
-    ? `\nIMÁGENES CONFIRMADAS: hay fotos generales (${media.gallery}) y fotos de ${media.menuItems.join(', ')}. Si preguntan por imágenes, fotos, menú, hamburguesas, tacos o esos platos, di que se muestran en el chat y usa [MOSTRAR_MENU]. Nunca digas que no tienes imágenes.\n`
+    ? `\nIMÁGENES CONFIRMADAS: hay fotos generales (${media.gallery}) y fotos de ${media.menuItems.join(', ')}. Si preguntan por imágenes, fotos o el lugar, di que se muestran en el chat y usa [MOSTRAR_GALERIA]. Si además preguntan por el menú o catálogo, usa también [MOSTRAR_MENU]. Nunca digas que no tienes imágenes.\n`
     : '';
   // Client prompts provide the business facts, but template safety rules must
   // come last so they cannot be softened by generic sales copy in that prompt.
@@ -381,8 +381,15 @@ IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, d
 // something or moved on to another topic. [BUG-CATALOGO-REPETIDO]
 const MENU_INTENT = /(qu[eé][\s\wáéíóúñ]{0,25}?\b(?:tienen|venden|ofrecen|hay|sirven)\b|ver\s+(?:el\s+|los\s+|la\s+|las\s+)?(?:servicios|productos|opciones)|mostrar\s+(?:el\s+|los\s+|la\s+|las\s+)?(?:servicios|productos|opciones)|lista\s+de\s+servicios|what\s+(?:services\s+)?do\s+you\s+(?:have|sell|offer)|see\s+(?:the\s+)?(?:services|options)|show\s+me\s+(?:the\s+)?(?:services|options))/i;
 // During an active booking a passing dish mention should not flash the menu;
-// only an explicit request for it does.
-const MENU_EXPLICIT = /(men[uú]|carta|cat[aá]logo|foto|im[aá]gen)/i;
+// only an explicit request for it does. "foto"/"imagen" moved to
+// GALLERY_INTENT below: asking to see photos should show the gallery, not
+// force the whole service catalog open too. [BUG-FOTOS-GALERIA]
+const MENU_EXPLICIT = /(men[uú]|carta|cat[aá]logo)/i;
+// A request to see photos/the place/the gallery — independent from the
+// service catalog. Before, "fotos"/"imágenes" only worked when phrased with
+// "menú"/"carta"/"catálogo"; "quiero ver el lugar" or "enséñame la galería"
+// matched nothing and the assistant never showed anything. [BUG-FOTOS-GALERIA]
+const GALLERY_INTENT = /(foto|im[aá]gen|galer[ií]a|\bver\s+(?:el\s+)?(?:lugar|spa|negocio|local|establecimiento)\b|\bconocer\s+(?:el\s+)?(?:lugar|spa|negocio|local)\b)/i;
 // Closings, confirmations and refusals never warrant the menu, even if a stray
 // dish word slips in.
 const CLOSING_INTENT = /\b(eso\s+(?:es|era)\s+todo|nada\s+m[aá]s|ya\s+no|no\s+quiero|no\s+gracias|listo|perfecto|gracias|hasta\s+luego|adi[oó]s|chao|bye|thanks?|thank\s+you|that\s+(?:is|s)\s+all|nothing\s+else|no\s+more|s[ií],?\s+confirm|confirmo|confirmar)\b/i;
@@ -427,19 +434,25 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
       : 'Perfecto 😊 Anotaré esa preferencia y la enviaré al restaurante junto con tu reserva.';
   }
 
-  // Menu gating: the marker is present iff the customer asked for it. Strip any
-  // marker the model volunteered on its own, then re-add only per menuDecision.
+  // Menu/gallery gating: each marker is present iff the customer asked for
+  // that specific thing. Strip any marker the model volunteered on its own,
+  // then re-add only per menuDecision/galleryDecision. Asking for the catalog
+  // also shows the gallery (same as before), but asking only for photos no
+  // longer forces the whole service catalog open. [BUG-FOTOS-GALERIA]
   const catalogEnabled = !client.features || client.features.catalog !== false;
-  text = text.replace(/\s*\[MOSTRAR_MENU\]\s*/g, ' ').trimEnd();
+  text = text.replace(/\s*\[MOSTRAR_MENU\]\s*/g, ' ').replace(/\s*\[MOSTRAR_GALERIA\]\s*/g, ' ').trimEnd();
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
-  if (menuDecision(lastUserMsg, { bookingActive, catalogEnabled })) text = text + '\n[MOSTRAR_MENU]';
+  const showMenu = menuDecision(lastUserMsg, { bookingActive, catalogEnabled });
+  const showGallery = showMenu || galleryDecision(lastUserMsg);
+  if (showMenu) text = text + '\n[MOSTRAR_MENU]';
+  if (showGallery) text = text + '\n[MOSTRAR_GALERIA]';
 
   return text;
 }
 
 // Pure, testable menu-visibility rule. The marker is driven only by what the
 // customer asked for — never by the assistant's own wording. [BUG-3]
-// An explicit "menu/carta/fotos" always shows it (even mid-booking). A merely
+// An explicit "menu/carta" always shows it (even mid-booking). A merely
 // incidental dish/price word shows it only outside a booking and only when the
 // message is not a closing/refusal that happens to name a dish.
 export function menuDecision(lastUserMsg, { bookingActive, catalogEnabled } = {}) {
@@ -449,4 +462,11 @@ export function menuDecision(lastUserMsg, { bookingActive, catalogEnabled } = {}
   return !bookingActive && MENU_INTENT.test(msg) && !CLOSING_INTENT.test(msg);
 }
 
-export const __test = { menuDecision, resolveDeepseekModel, langDirectiveFor };
+// A photo/gallery request is always explicit ("fotos", "galería", "ver el
+// lugar") — there is no incidental/bare-word branch to gate, unlike the
+// catalog, so it is not affected by bookingActive or catalogEnabled.
+export function galleryDecision(lastUserMsg) {
+  return GALLERY_INTENT.test(String(lastUserMsg || ''));
+}
+
+export const __test = { menuDecision, galleryDecision, resolveDeepseekModel, langDirectiveFor };

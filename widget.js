@@ -1301,11 +1301,15 @@ function extractBooking(text, menu) {
             ? 'This assistant is temporarily out of service. Please contact the business directly.'
             : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio.'));
         } else if (d.text) {
-          var showMenu   = /\[MOSTRAR_MENU\]/.test(d.text);
+          var showMenu    = /\[MOSTRAR_MENU\]/.test(d.text);
+          var showGallery = /\[MOSTRAR_GALERIA\]/.test(d.text);
           var cleanText  = CORE.limpiarMarcadores(d.text);
           if (cleanText) addMsg('bot', cleanText);
-          if (showMenu) { renderMenu(); renderGallery(); }
-          // La acción interna (mostrar menú) ya se extrajo de d.text; al
+          // Pedir fotos ya no fuerza el catálogo completo: cada marcador
+          // controla solo su propio bloque. [BUG-FOTOS-GALERIA]
+          if (showMenu) renderMenu();
+          if (showGallery) renderGallery();
+          // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
           // historial va solo el texto limpio, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: cleanText });
           save();

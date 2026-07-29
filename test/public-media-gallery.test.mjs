@@ -9,6 +9,10 @@ for (const file of ['asistente.html', 'widget.js']) {
   assert.match(source, /cfg\.media && Array\.isArray\(cfg\.media\.gallery\)/, `${file} uses only the public gallery projection`);
   assert.match(source, /var shown = 4;/, `${file} initially limits the gallery to four images`);
   assert.match(source, /Ver más fotos/, `${file} includes a see-more affordance`);
-  assert.match(source, /if \(showMenu\) \{ renderMenu\(\); renderGallery\(\); \}/, `${file} renders confirmed media only on the menu trigger`);
+  // Asking for photos no longer forces the whole service catalog open, and
+  // asking for the catalog no longer requires also asking for photos: each
+  // marker controls its own block. [BUG-FOTOS-GALERIA]
+  assert.match(source, /if \(showMenu\) renderMenu\(\);/, `${file} renders the catalog only on its own trigger`);
+  assert.match(source, /if \(showGallery\) renderGallery\(\);/, `${file} renders confirmed media only on its own trigger`);
 }
 console.log('Public assistants render confirmed gallery previews on the menu trigger');

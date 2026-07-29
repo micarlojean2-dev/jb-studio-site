@@ -39,6 +39,26 @@ console.log('1. Shared chat requirements and extraction');
   ok(cut.servicio === 'Corte' && cut.barberPreference === 'Ana', 'barber extracts configured preference');
   ok(CORE.CAMPO_MENCIONADO.some(([re, field]) => field === 'barberPreference' && re.test('cambiar barbero')),
     'barber preference can be cleared during a pre-submit change');
+
+  // Regression: answering the CURRENT pending field (e.g. teléfono) and
+  // pre-answering specialRequests in the same message must capture both —
+  // before, the extra "no tengo petición especial" was silently dropped and
+  // the assistant asked the special-request question again as if the
+  // customer had never answered it. [BUG-MEMORIA-ADELANTADA]
+  const spa = {};
+  const withPhone = CORE.extractBooking('Mi teléfono es 2067421261 y no tengo petición especial.', [], hours, 'es', spa);
+  ok(withPhone.telefono === '2067421261' && withPhone.specialRequests === '',
+    'phone + pre-answered specialRequests are both captured from one message');
+  const onlyPhone = CORE.extractBooking('Mi teléfono es 2067421261', [], hours, 'es', spa);
+  ok(onlyPhone.telefono === '2067421261' && onlyPhone.specialRequests === undefined,
+    'specialRequests is left undefined when not mentioned');
+
+  // esSinPeticionEspecial must also recognize "no tengo" (without "ninguna")
+  // as a standalone reply, and "no tengo petición especial" as an embedded
+  // phrase — both used to fall through and get stored as literal text.
+  ok(CORE.esSinPeticionEspecial('No tengo') === true, '"No tengo" alone means no special request');
+  ok(CORE.esSinPeticionEspecial('no tengo petición especial') === true,
+    '"no tengo petición especial" (without "ninguna") means no special request');
 }
 
 console.log('2. Server-side persona validation');
