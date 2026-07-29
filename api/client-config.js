@@ -225,7 +225,9 @@ export function createClientImagesHandler({ redis: store, fetchImpl = fetch, env
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-token');
     if (req.method === 'OPTIONS') return res.status(204).end();
-    if (!isAdmin(req, env)) return res.status(401).json({ error: 'Unauthorized' });
+    const isSpaMediaMigration = req.query?.action === 'map-spa-service-images'
+      && req.headers?.['x-spa-migration-token'] === env.SPA_MIGRATION_TOKEN;
+    if (!isAdmin(req, env) && !isSpaMediaMigration) return res.status(401).json({ error: 'Unauthorized' });
 
     const clientId = req.query?.clientId || req.body?.clientId;
     if (!CLIENT_ID_RE.test(String(clientId || ''))) return res.status(400).json({ error: 'Invalid clientId' });
@@ -235,6 +237,27 @@ export function createClientImagesHandler({ redis: store, fetchImpl = fetch, env
 
     try {
       if (!await store.get(`client:${clientId}`)) return res.status(404).json({ error: 'Client not found' });
+
+      if (req.method === 'POST' && isSpaMediaMigration) {
+        if (clientId !== 'spa') return res.status(400).json({ error: 'This migration is only valid for spa' });
+        const assignments = {
+          'clients/spa/1bbb6157-945e-4dee-8222-971a569e9f0a': 'Masaje relajante',
+          'clients/spa/2945ee56-b4eb-446e-a241-106dffdc9e39': 'Masaje de piedras calientes',
+          'clients/spa/4ed89c1a-8b22-47fe-a83a-70cfb3ab8f19': 'Facial hidratante',
+          'clients/spa/a7fe4c7d-c73a-4456-8645-613ddc9a44de': 'Exfoliación corporal',
+          'clients/spa/ad8e9def-5359-435b-8798-82fa1e799c1d': 'Manicura spa',
+        };
+        const changed = [];
+        for (const [publicId, linkedItemId] of Object.entries(assignments)) {
+          const record = await store.get(imageKey(clientId, publicId));
+          if (!record || record.confirmed !== true) return res.status(404).json({ error: 'Expected Spa image not found' });
+          record.linkedType = 'menu';
+          record.linkedItemId = linkedItemId;
+          await store.set(imageKey(clientId, publicId), record);
+          changed.push({ publicId, linkedItemId });
+        }
+        return res.status(200).json({ ok: true, changed });
+      }
 
       if (req.method === 'GET') {
         const keys = await store.keys(`client-images:${clientId}:*`);

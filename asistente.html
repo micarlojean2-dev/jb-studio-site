@@ -1473,13 +1473,12 @@ function extractBooking(text, menu) {
           if (d.preview === true) marcarModoPrueba();
           var showMenu    = /\[MOSTRAR_MENU\]/.test(d.text);
           var showGallery = /\[MOSTRAR_GALERIA\]/.test(d.text);
-          var showServicePhotos = /\[MOSTRAR_SERVICIOS_CON_FOTOS\]/.test(d.text);
           var cleanText = CORE.limpiarMarcadores(d.text);
           if (cleanText) addMsg('bot', cleanText);
           // Pedir fotos ya no fuerza el catálogo completo: cada marcador
           // controla solo su propio bloque. [BUG-FOTOS-GALERIA]
-          if (showServicePhotos) renderServicesWithPhotos();
-          else { if (showMenu) renderMenu(); if (showGallery) renderGallery(); }
+          if (showMenu) renderMenu();
+          if (showGallery) renderGallery();
           // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
           // historial va solo el texto limpio, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: cleanText });
