@@ -562,11 +562,11 @@
       name.textContent = item.nombre || 'Servicio';
       card.appendChild(name);
 
-      if (item.precio) {
+      if (item.precio || item.duracion) {
         var price = document.createElement('div');
         price.className = 'jbw-card-price';
         price.style.color = cfg.color;
-        price.textContent = item.precio;
+        price.textContent = [item.precio, item.duracion].filter(Boolean).join(' · ');
         card.appendChild(price);
       }
 

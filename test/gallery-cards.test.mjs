@@ -8,6 +8,7 @@ for (const file of ['asistente.html', 'widget.js']) {
   assert.match(source, /Galería del Spa/, `${file} labels unlinked images clearly`);
   assert.match(source, /entry\.item && entry\.item\.precio/, `${file} renders a linked service price`);
   assert.match(source, /entry\.item && entry\.item\.duracion/, `${file} renders a linked service duration`);
+  assert.match(source, /\[item\.precio, item\.duracion\]\.filter\(Boolean\)\.join\(' · '\)/, `${file} shows duration in normal service cards`);
 }
 
 const chat = readFileSync('api/client-chat.js', 'utf8');
@@ -17,4 +18,4 @@ for (const file of ['asistente.html', 'widget.js']) {
   assert.doesNotMatch(readFileSync(file, 'utf8'), /renderServicesWithPhotos/, `${file} has no positional service-photo renderer`);
 }
 
-console.log('gallery-cards.test.mjs: 13 checks passed');
+console.log('gallery-cards.test.mjs: 15 checks passed');
