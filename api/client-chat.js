@@ -385,6 +385,7 @@ const MENU_INTENT = /(qu[eé][\s\wáéíóúñ]{0,25}?\b(?:tienen|venden|ofrecen
 // GALLERY_INTENT below: asking to see photos should show the gallery, not
 // force the whole service catalog open too. [BUG-FOTOS-GALERIA]
 const MENU_EXPLICIT = /(men[uú]|carta|cat[aá]logo)/i;
+const SERVICE_PHOTO_INTENT = /(?:servicios?|tratamientos?).{0,30}(?:fotos?|im[aá]genes?)|(?:fotos?|im[aá]genes?).{0,30}(?:servicios?|tratamientos?)/i;
 // A request to see photos/the place/the gallery — independent from the
 // service catalog. Before, "fotos"/"imágenes" only worked when phrased with
 // "menú"/"carta"/"catálogo"; "quiero ver el lugar" or "enséñame la galería"
@@ -439,11 +440,15 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
   // then re-add only per markerDecisions. Catalog and gallery are independent:
   // a catalog request must not open the gallery. [BUG-GALERIA-CATALOGO]
   const catalogEnabled = !client.features || client.features.catalog !== false;
-  text = text.replace(/\s*\[MOSTRAR_MENU\]\s*/g, ' ').replace(/\s*\[MOSTRAR_GALERIA\]\s*/g, ' ').trimEnd();
+  text = text.replace(/\s*\[MOSTRAR_MENU\]\s*/g, ' ').replace(/\s*\[MOSTRAR_GALERIA\]\s*/g, ' ').replace(/\s*\[MOSTRAR_SERVICIOS_CON_FOTOS\]\s*/g, ' ').trimEnd();
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
+  const showServicePhotos = SERVICE_PHOTO_INTENT.test(lastUserMsg);
   const { showMenu, showGallery } = markerDecisions(lastUserMsg, { bookingActive, catalogEnabled });
-  if (showMenu) text = text + '\n[MOSTRAR_MENU]';
-  if (showGallery) text = text + '\n[MOSTRAR_GALERIA]';
+  if (showServicePhotos) text = text + '\n[MOSTRAR_SERVICIOS_CON_FOTOS]';
+  else {
+    if (showMenu) text = text + '\n[MOSTRAR_MENU]';
+    if (showGallery) text = text + '\n[MOSTRAR_GALERIA]';
+  }
 
   return text;
 }
