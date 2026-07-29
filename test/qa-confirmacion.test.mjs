@@ -27,7 +27,7 @@ console.log('H1. Confirmaciones claras → true');
  // "todo está correcto" (con "está") no se reconocía, solo "todo correcto"/
  // "todo bien" — caía a "corrección" y regeneraba el resumen entero con un
  // segundo par de botones en vez de pedir usar el botón real. [BUG-CONFIRMACION-VARIANTE]
- 'todo está correcto', 'está correcto']
+  'todo está correcto', 'está correcto', 'confírmame la cita']
   .forEach((t) => ok(C(t) === true, `"${t}" confirma`));
 
 console.log('H2. Negaciones y correcciones → false (jamás confirma)');

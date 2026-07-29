@@ -934,7 +934,7 @@ window.JBChatCore = (function () {
   // reconocía: caía al mismo camino que un dato nuevo, lo que dejaba el
   // resumen sin responder con el aviso de "toca el botón" — en su lugar volvía
   // a mostrar el resumen entero. [BUG-CONFIRMACION-VARIANTE]
-  var CONFIRMACIONES = /^(si|si todo correcto|si todo bien|si esta bien|si correcto|si confirma|si confirmar|si confirmo|si adelante|si dale|confirmar|confirma|confirma la cita|confirmo|confirmo la cita|todo correcto|todo esta correcto|todo bien|todo esta bien|esta bien|esta correcto|correcto|adelante|dale|de acuerdo|ok|okay|listo|perfecto|si por favor)$/;
+  var CONFIRMACIONES = /^(si|si todo correcto|si todo bien|si esta bien|si correcto|si confirma|si confirmar|si confirmo|si adelante|si dale|confirmar|confirma|confirma la cita|confirmame la cita|confirmo|confirmo la cita|todo correcto|todo esta correcto|todo bien|todo esta bien|esta bien|esta correcto|correcto|adelante|dale|de acuerdo|ok|okay|listo|perfecto|si por favor)$/;
   function esConfirmacion(t) {
     var s = String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
