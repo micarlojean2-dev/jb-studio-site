@@ -332,7 +332,10 @@
     '.jbw-card-no-image{justify-content:center;min-height:100px;padding:18px 12px;}',
     '.jbw-gallery-heading{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8a8f98;margin:2px 0 8px;}',
     '.jbw-gallery{width:100%;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:4px 0;}',
-    '.jbw-gallery img{width:100%;aspect-ratio:1.35;object-fit:cover;border-radius:12px;background:#f2f2f4;}',
+    '.jbw-gallery-card{overflow:hidden;border:1px solid rgba(0,0,0,.07);border-radius:12px;background:#fff;}',
+    '.jbw-gallery-card img{width:100%;aspect-ratio:1.35;object-fit:cover;display:block;background:#f2f2f4;}',
+    '.jbw-gallery-copy{padding:8px 9px 9px;}.jbw-gallery-name{font-size:12px;font-weight:700;line-height:1.3;color:#16181d;}',
+    '.jbw-gallery-meta{margin-top:3px;color:#6b6f76;font-size:11px;line-height:1.3;}',
     '.jbw-gallery-more{border:0;background:none;color:var(--jbw-color,#1a4a2e);font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 0;}',
     '.jbw-card-name{font-size:13px;font-weight:650;line-height:1.3;color:#16181d;}',
     '.jbw-card-price{font-size:14.5px;font-weight:700;margin-top:4px;}',
@@ -608,7 +611,11 @@
   }
 
   function renderGallery() {
-    var images = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
+    var generalImages = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
+    var serviceImages = (Array.isArray(cfg.menu) ? cfg.menu : []).filter(function (item) {
+      return item && item.imagen && generalImages.indexOf(item.imagen) === -1;
+    }).map(function (item) { return { url: item.imagen, item: item }; });
+    var images = generalImages.map(function (url) { return { url: url, item: null }; }).concat(serviceImages);
     if (!images.length) return;
     var wrap = document.createElement('div');
     wrap.className = 'jbw-cards-wrap';
@@ -620,12 +627,24 @@
     grid.className = 'jbw-gallery';
     var shown = 4;
     function appendImages(limit) {
-      images.slice(grid.children.length, limit).forEach(function (url) {
+      images.slice(grid.children.length, limit).forEach(function (entry) {
+        var card = document.createElement('div');
+        card.className = 'jbw-gallery-card';
         var image = document.createElement('img');
-        image.src = url;
-        image.alt = cfg.language === 'en' ? 'Gallery image' : 'Imagen de galería';
+        image.src = entry.url;
+        image.alt = entry.item && entry.item.nombre ? entry.item.nombre : (cfg.language === 'en' ? 'Spa gallery' : 'Galería del Spa');
         image.loading = 'lazy';
-        grid.appendChild(image);
+        card.appendChild(image);
+        var copy = document.createElement('div');
+        copy.className = 'jbw-gallery-copy';
+        var name = document.createElement('div');
+        name.className = 'jbw-gallery-name';
+        name.textContent = entry.item && entry.item.nombre ? entry.item.nombre : (cfg.language === 'en' ? 'Spa gallery' : 'Galería del Spa');
+        copy.appendChild(name);
+        var meta = [entry.item && entry.item.precio, entry.item && entry.item.duracion].filter(Boolean).join(' · ');
+        if (meta) { var details = document.createElement('div'); details.className = 'jbw-gallery-meta'; details.textContent = meta; copy.appendChild(details); }
+        card.appendChild(copy);
+        grid.appendChild(card);
       });
     }
     appendImages(shown);
