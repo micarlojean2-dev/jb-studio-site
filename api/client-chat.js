@@ -436,14 +436,12 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
 
   // Menu/gallery gating: each marker is present iff the customer asked for
   // that specific thing. Strip any marker the model volunteered on its own,
-  // then re-add only per menuDecision/galleryDecision. Asking for the catalog
-  // also shows the gallery (same as before), but asking only for photos no
-  // longer forces the whole service catalog open. [BUG-FOTOS-GALERIA]
+  // then re-add only per markerDecisions. Catalog and gallery are independent:
+  // a catalog request must not open the gallery. [BUG-GALERIA-CATALOGO]
   const catalogEnabled = !client.features || client.features.catalog !== false;
   text = text.replace(/\s*\[MOSTRAR_MENU\]\s*/g, ' ').replace(/\s*\[MOSTRAR_GALERIA\]\s*/g, ' ').trimEnd();
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
-  const showMenu = menuDecision(lastUserMsg, { bookingActive, catalogEnabled });
-  const showGallery = showMenu || galleryDecision(lastUserMsg);
+  const { showMenu, showGallery } = markerDecisions(lastUserMsg, { bookingActive, catalogEnabled });
   if (showMenu) text = text + '\n[MOSTRAR_MENU]';
   if (showGallery) text = text + '\n[MOSTRAR_GALERIA]';
 
@@ -469,4 +467,11 @@ export function galleryDecision(lastUserMsg) {
   return GALLERY_INTENT.test(String(lastUserMsg || ''));
 }
 
-export const __test = { menuDecision, galleryDecision, resolveDeepseekModel, langDirectiveFor };
+export function markerDecisions(lastUserMsg, options) {
+  return {
+    showMenu: menuDecision(lastUserMsg, options),
+    showGallery: galleryDecision(lastUserMsg),
+  };
+}
+
+export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor };

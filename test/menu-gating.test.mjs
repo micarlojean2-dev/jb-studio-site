@@ -3,7 +3,7 @@
 // flash the menu; an explicit request must. [BUG-3]
 import assert from 'node:assert/strict';
 const { __test } = await import('../api/client-chat.js');
-const { menuDecision, galleryDecision } = __test;
+const { menuDecision, galleryDecision, markerDecisions } = __test;
 
 let count = 0;
 function check(v, m) { assert.ok(v, m); count++; }
@@ -35,6 +35,8 @@ for (const msg of [
 // A bare photo request no longer flags the service catalog by itself.
 check(shows('muéstrame las fotos') === false, 'bare photo request does not open the full catalog');
 check(shows('¿tienen imágenes?') === false, 'bare image request does not open the full catalog');
+const catalogOnly = markerDecisions('quiero ver los servicios', { catalogEnabled: true });
+check(catalogOnly.showMenu === true && catalogOnly.showGallery === false, 'catalog request renders only the catalog');
 
 // Should NOT show (closing / confirmation / refusal / unrelated) — the classic
 // post-confirmation "disfruta tu Hamburguesa Clásica" case lives in assistant
