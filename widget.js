@@ -191,7 +191,7 @@
       bookingStep = restoredBooking.bookingStep || 0;
       bookingData = restoredBooking.bookingData || {};
       bookingPending = restoredBooking.bookingPending || null;
-      bookingReview = !!restoredBooking.bookingReview;
+      bookingReview = !!(restoredBooking.awaitingConfirmation || restoredBooking.bookingReview);
       horaPendiente = restoredBooking.horaPendiente || null;
     }
   } catch (e) {}
@@ -200,7 +200,7 @@
   function save() {
     try {
       sessionStorage.setItem(SESS, JSON.stringify(msgs.slice(-60)));
-      if (bookingStep) sessionStorage.setItem(BOOKING_SESS, JSON.stringify({ bookingStep: bookingStep, bookingData: bookingData, bookingPending: bookingPending, bookingReview: bookingReview, horaPendiente: horaPendiente, language: cfg.language }));
+      if (bookingStep) sessionStorage.setItem(BOOKING_SESS, JSON.stringify({ bookingStep: bookingStep, bookingData: bookingData, bookingPending: bookingPending, bookingReview: bookingReview, awaitingConfirmation: bookingReview, horaPendiente: horaPendiente, language: cfg.language }));
       else sessionStorage.removeItem(BOOKING_SESS);
     } catch (e) {}
   }
@@ -999,6 +999,7 @@ function extractBooking(text, menu) {
     // cliente: siempre debe forzar. [BUG-SCROLL-GALERIA]
     CORE.irAlFondo(msgsEl, true);
     bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva
+    save();
   }
 
   function submitBooking() {

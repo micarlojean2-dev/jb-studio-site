@@ -16,6 +16,8 @@ const src = readFileSync(join(__dirname, '..', 'chat-core.js'), 'utf8');
 const win = {};
 new Function('window', src)(win);
 const CORE = win.JBChatCore;
+const assistant = readFileSync(join(__dirname, '..', 'asistente.html'), 'utf8');
+const widget = readFileSync(join(__dirname, '..', 'widget.js'), 'utf8');
 
 let fallos = 0;
 const ok = (cond, msg) => { if (cond) console.log('  ✓', msg); else { console.error('  ✗', msg); fallos++; } };
@@ -53,6 +55,12 @@ console.log('H5. "no" nunca cuela como confirmación aunque contenga letras de "
 {
   ok(C('no ok') === false, '"no ok" → false (gana la negación)');
   ok(C('no, cambialo') === false, '"no, cambialo" → false');
+}
+
+console.log('H6. El modo de confirmación se conserva al recargar');
+for (const [name, source] of [['asistente', assistant], ['widget', widget]]) {
+  ok(source.includes('awaitingConfirmation: bookingReview'), `${name} persiste awaitingConfirmation`);
+  ok(source.includes('bookingReview = true;   // solo el botón') && source.includes('bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva\n    save();'), `${name} guarda el resumen mostrado`);
 }
 
 console.log(fallos === 0 ? '\n✅ QA confirmación: todas pasan' : `\n❌ QA confirmación: ${fallos} fallo(s)`);
