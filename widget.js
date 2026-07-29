@@ -157,6 +157,7 @@
   var bookingStep = 0;   // 0 = idle, >0 = en modo reserva (DeepSeek conduce)
   var bookingPending = null;   // campo que DeepSeek está pidiendo ahora
   var bookingReview = false;   // el resumen final está a la vista, esperando confirmación
+  var resumenBotones = null;   // botones del resumen activo, para no dejar un par duplicado
   var submitting = false;      // evita envíos duplicados de la reserva
   var bookingData = {};
 
@@ -594,7 +595,14 @@
 
     wrap.appendChild(row);
     msgsEl.appendChild(wrap);
-    CORE.irAlFondo(msgsEl, );
+    // "estaAlFondo" mide contra el scrollHeight actual: justo tras crecer con
+    // este bloque, el usuario que ya estaba al fondo del mensaje de texto
+    // anterior deja de estarlo respecto al nuevo alto, así que el scroll
+    // "inteligente" (pensado para no interrumpir a quien lee arriba) se
+    // negaba a bajar — el bloque quedaba renderizado pero fuera de vista.
+    // Esto es una reacción directa al propio mensaje del cliente, igual que
+    // el "role === 'user'" de addMsg: siempre debe forzar. [BUG-SCROLL-GALERIA]
+    CORE.irAlFondo(msgsEl, true);
   }
 
   function renderGallery() {
@@ -628,12 +636,15 @@
       more.addEventListener('click', function () {
         appendImages(images.length);
         more.remove();
-        CORE.irAlFondo(msgsEl, );
+        CORE.irAlFondo(msgsEl, true);
       });
       wrap.appendChild(more);
     }
     msgsEl.appendChild(wrap);
-    CORE.irAlFondo(msgsEl, );
+    // Mismo motivo que en renderMenu(): reacción directa al mensaje del
+    // cliente, la galería recién agregada es la que debe quedar visible.
+    // [BUG-SCROLL-GALERIA]
+    CORE.irAlFondo(msgsEl, true);
   }
 
   // ── Submit cancel request to /api/cancel-reservation ────────────────────
@@ -936,6 +947,15 @@ function extractBooking(text, menu) {
   // aquí, no cuando el dueño intenta llamar y el número no existe.
   function showBookingSummary() {
     var lang = cfg.language === 'en' ? 'en' : 'es';
+    // Si el mensaje del cliente no fue ni una confirmación clara ni una
+    // corrección reconocida (ej. "todo está correcto" antes de ampliar
+    // CONFIRMACIONES), el flujo caía aquí de nuevo con el resumen ya visible
+    // y su par de botones aún en pantalla: se agregaba un SEGUNDO resumen con
+    // un SEGUNDO par de botones, sin quitar el primero. Se quita el anterior
+    // antes de mostrar uno nuevo para que solo exista un botón real a la vez.
+    // [BUG-RESUMEN-DUPLICADO]
+    if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
+
     var lineas = CORE.summaryFields(cfg).concat(['contacto'])
       .filter(function (k) { return bookingData[k]; })
       .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + CORE.summaryLabel(cfg, k, lang) + ': ' + bookingData[k]; });
@@ -948,6 +968,7 @@ function extractBooking(text, menu) {
 
     var wrap = document.createElement('div');
     wrap.className = 'jbw-quick';
+    resumenBotones = wrap;
     [{ label: lang === 'en' ? '✅ Yes, confirm it' : '✅ Sí, confirmar cita', ok: true },
      { label: lang === 'en' ? '✏️ I want to change something' : '✏️ Quiero cambiar algo', ok: false }
     ].forEach(function (a, i) {
@@ -958,6 +979,7 @@ function extractBooking(text, menu) {
       b.style.animationDelay = (i * 60) + 'ms';
       b.addEventListener('click', function () {
         wrap.remove();
+        if (resumenBotones === wrap) resumenBotones = null;
         addMsg('user', a.label);
         if (a.ok) { submitBooking(); return; }
         bookingStep = 1;
@@ -968,7 +990,12 @@ function extractBooking(text, menu) {
       wrap.appendChild(b);
     });
     msgsEl.appendChild(wrap);
-    CORE.irAlFondo(msgsEl, );
+    // Mismo bug que la galería: el resumen (potencialmente varias líneas) ya
+    // hizo crecer el contenedor antes de que estos botones se agreguen, así
+    // que el scroll "inteligente" podía negarse a bajar y dejar el botón
+    // real de confirmación fuera de vista. Reacción directa al mensaje del
+    // cliente: siempre debe forzar. [BUG-SCROLL-GALERIA]
+    CORE.irAlFondo(msgsEl, true);
     bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva
   }
 
@@ -1178,6 +1205,8 @@ function extractBooking(text, menu) {
         bookingStep = 0;
         bookingData = {};
         bookingReview = false;
+        if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
+        resumenBotones = null;
         addMsg('user', t);
         addMsg('bot', lang === 'en'
           ? 'Reservation cancelled. Is there anything else I can help with?'

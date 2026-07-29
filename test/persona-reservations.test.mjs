@@ -95,5 +95,27 @@ console.log('2. Server-side persona validation');
     'backend rejects starts outside the configured reservation interval');
 }
 
+console.log('3. Booking summary renders visibly and never duplicates its buttons');
+{
+  // Regression, found by physically scrolling the real chat: the summary
+  // text can grow the container past what the passive "smart scroll" (which
+  // only follows if you're already within 80px of the bottom) considers
+  // "already at the bottom", so the confirm/change buttons rendered
+  // completely below the fold — visible in the DOM, invisible to the
+  // customer. And if the customer's reply wasn't recognized as either a
+  // clear confirmation or a clear correction (e.g. "todo está correcto"
+  // before CONFIRMACIONES was widened), the flow re-called
+  // showBookingSummary() with the FIRST button pair still on screen,
+  // stacking a second, confusing pair. [BUG-SCROLL-GALERIA] [BUG-RESUMEN-DUPLICADO]
+  for (const file of ['asistente.html', 'widget.js']) {
+    const source = readFileSync(join(root, file), 'utf8');
+    const summaryFn = source.match(/function showBookingSummary\(\)[\s\S]*?\n  \}/)[0];
+    ok(/irAlFondo\(msgsEl, true\)/.test(summaryFn),
+      `${file} showBookingSummary() forces the real confirm button into view`);
+    ok(/resumenBotones/.test(summaryFn) && /resumenBotones\.remove\(\)/.test(summaryFn),
+      `${file} showBookingSummary() removes a stale button pair before showing a new one`);
+  }
+}
+
 if (failures) process.exit(1);
 console.log('✅ Persona reservation rules verified');

@@ -23,7 +23,11 @@ const C = (t) => CORE.esConfirmacion(t);
 
 console.log('H1. Confirmaciones claras → true');
 ['sí', 'si', 'confirmo', 'confirmar', 'dale', 'correcto', 'ok', 'okay', 'perfecto',
- 'listo', 'de acuerdo', 'adelante', 'sí confirmo', 'sí, todo correcto', 'todo bien', 'sí por favor']
+ 'listo', 'de acuerdo', 'adelante', 'sí confirmo', 'sí, todo correcto', 'todo bien', 'sí por favor',
+ // "todo está correcto" (con "está") no se reconocía, solo "todo correcto"/
+ // "todo bien" — caía a "corrección" y regeneraba el resumen entero con un
+ // segundo par de botones en vez de pedir usar el botón real. [BUG-CONFIRMACION-VARIANTE]
+ 'todo está correcto', 'está correcto']
   .forEach((t) => ok(C(t) === true, `"${t}" confirma`));
 
 console.log('H2. Negaciones y correcciones → false (jamás confirma)');

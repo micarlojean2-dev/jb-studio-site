@@ -930,7 +930,11 @@ window.JBChatCore = (function () {
   // ¿El mensaje es una confirmación natural del resumen ("sí", "todo
   // correcto", "confirmar")? Se normaliza (sin acentos ni puntuación) y se
   // rechaza si hay señales de cambio, para que "sí, mejor a la 1" NO confirme.
-  var CONFIRMACIONES = /^(si|si todo correcto|si todo bien|si esta bien|si correcto|si confirma|si confirmar|si confirmo|si adelante|si dale|confirmar|confirma|confirma la cita|confirmo|confirmo la cita|todo correcto|todo bien|todo esta bien|esta bien|correcto|adelante|dale|de acuerdo|ok|okay|listo|perfecto|si por favor)$/;
+  // "todo está correcto" (con "está", no solo "correcto"/"bien") no se
+  // reconocía: caía al mismo camino que un dato nuevo, lo que dejaba el
+  // resumen sin responder con el aviso de "toca el botón" — en su lugar volvía
+  // a mostrar el resumen entero. [BUG-CONFIRMACION-VARIANTE]
+  var CONFIRMACIONES = /^(si|si todo correcto|si todo bien|si esta bien|si correcto|si confirma|si confirmar|si confirmo|si adelante|si dale|confirmar|confirma|confirma la cita|confirmo|confirmo la cita|todo correcto|todo esta correcto|todo bien|todo esta bien|esta bien|esta correcto|correcto|adelante|dale|de acuerdo|ok|okay|listo|perfecto|si por favor)$/;
   function esConfirmacion(t) {
     var s = String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
