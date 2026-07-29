@@ -39,13 +39,24 @@ window.JBChatCore = (function () {
   // "this Friday"/"tomorrow" no se capturaban como fecha y una reserva en inglés
   // no podía completarse nunca (el flujo se quedaba pidiendo la fecha). El
   // backend (parseFechaISO) ya normaliza estos mismos términos en inglés.
+  // "Dentro de dos semanas" / "en 3 días" / "next week" nunca coincidían: el
+  // cliente lo daba por dicho, el flujo seguía preguntando otros campos como
+  // si esa fecha ya estuviera guardada (el modelo la "confirmaba" en su
+  // respuesta sin que quedara capturada de verdad) y terminaba atascado
+  // pidiendo la fecha de nuevo al final, como si nunca la hubiera dado.
+  // [BUG-FECHA-RELATIVA]
+  var NUM_TXT_RE = '\\d{1,2}|un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|one|two|three|four|five|six|seven|eight|nine|ten|a';
   var FECHA_TEXTO_RE = new RegExp(
     '(pasado\\s+ma(?:ñ|n)ana|ma(?:ñ|n)ana|hoy|' +
     'day\\s+after\\s+tomorrow|tomorrow|today|' +
     '(?:este|el|pr(?:ó|o)ximo|this|next)\\s+(?:lunes|martes|mi(?:é|e)rcoles|jueves|viernes|s(?:á|a)bado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|' +
     '(?:lunes|martes|mi(?:é|e)rcoles|jueves|viernes|s(?:á|a)bado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|' +
     '\\d{1,2}\\s+de\\s+(?:' + MES_NOM + ')(?:\\s+de\\s+\\d{4})?|' +
-    '(?:' + MES_NOM + ')\\s+\\d{1,2}\\b)', 'i');
+    '(?:' + MES_NOM + ')\\s+\\d{1,2}\\b|' +
+    '(?:dentro\\s+de|en)\\s+(?:' + NUM_TXT_RE + ')\\s+(?:d[ií]as?|semanas?|mes(?:es)?)|' +
+    'in\\s+(?:' + NUM_TXT_RE + ')\\s+(?:days?|weeks?|months?)|' +
+    '(?:la\\s+)?(?:pr(?:ó|o)xima\\s+semana|semana\\s+que\\s+viene)|next\\s+week|' +
+    '(?:el\\s+)?(?:pr(?:ó|o)ximo\\s+mes|mes\\s+que\\s+viene)|next\\s+month)', 'i');
 
   var FECHA_ISO_RE = /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/;
 
@@ -168,9 +179,17 @@ window.JBChatCore = (function () {
   // frontera), así que "quiero modificar" no entraba en modo modificar. [BUG-MODIFY]
   var MODIFY_TRIGGERS = /(modific|modify|c[aá]mbi|reprogram|reagenda|mover|mueve|otra hora|otro d[ií]a|otra fecha|change|reschedul|move)/i;
 
-  var INTENT_RE = /\b(quiero|quisiera|necesito|me\s+gustar[ií]a|puedo|ap[uú]ntame|ag[eé]ndame|d[ae]me)\b/i;
+  // Spanish-only before: "I want a manicure on Sunday" named a real service
+  // and date but never matched, so pareceReserva() fell through to free chat
+  // instead of the structured booking flow. [BUG-INTENT-EN]
+  var INTENT_RE = /\b(quiero|quisiera|necesito|me\s+gustar[ií]a|puedo|ap[uú]ntame|ag[eé]ndame|d[ae]me|i\s+want|i\s?'?d\s+like|i\s+need|can\s+i|book\s+me)\b/i;
 
   var CORRECCION_RE = /(me\s+equivoqu[eé]|cambiar|corregir|est[aá]\s+mal|mejor|en realidad|prefiero)/i;
+
+  // Preguntar el precio/duración de un servicio no es elegirlo: sin esto,
+  // "cuánto cuesta el tratamiento facial" durante una reserva de Manicura
+  // cambiaba el servicio en curso solo por nombrar el otro. [BUG-PRECIO-SERVICIO]
+  var PRICE_QUESTION_RE = /cu[aá]nto\s+(?:cuesta|vale|sale|dura)|qu[eé]\s+precio|price|how\s+much|how\s+long/i;
 
   var CAMPO_MENCIONADO = [
       [/hora|horario/i, 'hora'], [/fecha|d[ií]a/i, 'fecha'], [/personas?|somos/i, 'personas'],
@@ -431,13 +450,19 @@ window.JBChatCore = (function () {
     return Array.isArray(staff) ? staff : [];
   }
 
+  // Orden fijo: primero lo que define LA CITA (qué, cuándo), después los
+  // datos de contacto de quien la pide. Antes se pedía nombre/teléfono/correo
+  // antes que servicio/fecha/hora, así que alguien que ya había dicho
+  // "quiero reservar el masaje el viernes" volvía a que le preguntaran su
+  // nombre antes de seguir con lo que ya había dicho — se sentía como que el
+  // asistente "olvidaba" lo que acababa de escribir. [BUG-ORDEN-RESERVA]
   function bookingRequirements(cfg, data) {
     var template = templateId(cfg);
     var required = template === 'restaurant'
-        ? ['nombre', 'contacto', 'email', 'fecha', 'hora', 'personas', 'specialRequests']
+        ? ['fecha', 'hora', 'personas', 'nombre', 'contacto', 'email', 'specialRequests']
       : template === 'barber'
-        ? ['nombre', 'contacto', 'email', 'fecha', 'hora', 'servicio', 'specialRequests']
-        : ['nombre', 'telefono', 'email', 'fecha', 'hora', 'servicio', 'specialRequests'];
+        ? ['servicio', 'fecha', 'hora', 'nombre', 'contacto', 'email', 'specialRequests']
+        : ['servicio', 'fecha', 'hora', 'nombre', 'telefono', 'email', 'specialRequests'];
     return required.filter(function (field) {
       if (field === 'contacto') return !(data.telefono || data.email || data.contacto);
       if (field === 'specialRequests') return data.specialRequests === undefined;
@@ -477,7 +502,7 @@ window.JBChatCore = (function () {
         }
       });
       var elegido = exacto || porPalabra;
-      if (elegido) out.servicio = elegido;
+      if (elegido && !PRICE_QUESTION_RE.test(t)) out.servicio = elegido;
     }
 
     var f = extraerFecha(t, lang);
@@ -703,11 +728,32 @@ window.JBChatCore = (function () {
     return lines.filter(Boolean).join(' · ');
   }
 
+  // "No tengo ninguna petición especial, por cierto mi correo es X" debe
+  // limpiarse a '' igual que un "no" aislado — antes solo se reconocía el
+  // "no" exacto y sin nada más alrededor, así que una respuesta real mezclada
+  // con un dato repetido quedaba guardada como una frase larga y desordenada
+  // en vez de vacía. [BUG-MEMORIA-REPETIDA]
+  var SIN_PETICION_RE = /^(no|ninguna|ninguno)$|\bno\s+tengo\s+ning|\bsin\s+petici[oó]n\s+especial\b|\bninguna\s+petici[oó]n\s+especial\b/i;
+  function esSinPeticionEspecial(t) {
+    return SIN_PETICION_RE.test(String(t || '').trim());
+  }
+
   function valorValido(field, t) {
       if (field === 'email')    return EMAIL_RE2.test(t) || /^(no|ninguno|skip|omitir)$/i.test(t.trim());
       if (field === 'telefono') return t.replace(/\D/g, '').length >= 7;
       if (field === 'contacto') return EMAIL_RE2.test(t) || t.replace(/\D/g, '').length >= 7;
       if (field === 'personas') return /\d|\b(un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/i.test(t);
+      if (field === 'nombre') {
+        // Una pregunta, una confirmación ("sí, todo correcto") o un "no" aislado
+        // no son un nombre real: sin esto, se guardaban tal cual como el
+        // "Nombre" del cliente cuando esos textos llegaban con "nombre" como
+        // campo pendiente. [BUG-NOMBRE-PENDIENTE]
+        var s = String(t || '').trim();
+        if (!s || /[?¿]/.test(s)) return false;
+        if (/^(no|ninguno|ninguna)$/i.test(s)) return false;
+        if (PRICE_QUESTION_RE.test(s) || esConfirmacion(s)) return false;
+        return true;
+      }
       return true;
     }
 
@@ -721,6 +767,40 @@ window.JBChatCore = (function () {
       return item.popular === true || item.destacado === true ||
              /^(popular|destacado|favorito)$/i.test(String(item.etiqueta || '').trim());
     }
+
+  // ── Copys del catálogo (tarjetas de servicio + galería general) ───────────
+  // Única fuente para el texto que widget.js y asistente.html renderizan;
+  // evita que las dos copias del DOM diverjan en el wording (como pasó con
+  // CORRECCION_RE). [BLOQUE-1-GALERIA]
+  function galleryHeading(lang) {
+    return lang === 'en' ? 'Business gallery' : 'Galería del negocio';
+  }
+
+  function bookServiceLabel(lang) {
+    return lang === 'en' ? 'Book this service' : 'Reservar este servicio';
+  }
+
+  function bookServiceMessage(nombre, lang, isRestaurant) {
+    var en = lang === 'en';
+    var nom = nombre || (isRestaurant ? (en ? 'this dish' : 'este plato') : (en ? 'this service' : 'este servicio'));
+    if (en) return (isRestaurant ? 'I want to book this dish: ' : 'I want to book: ') + nom;
+    return (isRestaurant ? 'Quiero reservar este plato: ' : 'Quiero reservar: ') + nom;
+  }
+
+  // Pregunta de "petición especial" del paso de reserva. Vivía duplicada en
+  // widget.js y asistente.html; el branch de barbería y el general (belleza)
+  // nunca tuvieron versión en inglés, así que un cliente en inglés recibía la
+  // pregunta en español seguida solo de la frase final traducida — un mensaje
+  // mezclando los dos idiomas. [BUG-BOOKING-LANG]
+  function specialRequestsQuestion(templateId, lang) {
+    var en = lang === 'en';
+    var ask = templateId === 'restaurant'
+      ? (en ? 'Do you have any allergy, intolerance, table preference, or special request?' : '¿Tienes alguna alergia, intolerancia, preferencia de mesa o petición especial?')
+      : templateId === 'barber'
+        ? (en ? 'Do you have any style, design, sensitivity, or special request?' : '¿Tienes alguna preferencia de estilo, diseño, sensibilidad o petición especial?')
+        : (en ? 'Do you have any sensitivity, allergy, pregnancy, injury, or special request?' : '¿Tienes alguna sensibilidad, alergia, embarazo, lesión o petición especial?');
+    return ask + (en ? ' Write "No" if you do not have one.' : ' Escribe "No" si no tienes ninguna.');
+  }
 
   function iconFor(nombre) {
       var t = String(nombre || '');
@@ -841,6 +921,7 @@ window.JBChatCore = (function () {
 
   return {
     esConfirmacion: esConfirmacion,
+    esSinPeticionEspecial: esSinPeticionEspecial,
     BOOKING_STEPS: BOOKING_STEPS,
     CANCEL_STEPS: CANCEL_STEPS,
     RESUMEN_ICONOS: RESUMEN_ICONOS,
@@ -868,6 +949,10 @@ window.JBChatCore = (function () {
     valorValido: valorValido,
     pareceReserva: pareceReserva,
     isPopular: isPopular,
+    galleryHeading: galleryHeading,
+    bookServiceLabel: bookServiceLabel,
+    bookServiceMessage: bookServiceMessage,
+    specialRequestsQuestion: specialRequestsQuestion,
     iconFor: iconFor,
     hexToRgba: hexToRgba,
     nextMissingIndex: nextMissingIndex,

@@ -9,11 +9,12 @@ let count = 0;
 function check(v, m) { assert.ok(v, m); count++; }
 const shows = (msg, opts) => menuDecision(msg, Object.assign({ catalogEnabled: true }, opts));
 
-// Should SHOW (user actually asked)
+// Should SHOW (user actually asked to browse: pide servicios, pregunta qué
+// ofrecen, o el equivalente de un botón de catálogo)
 for (const msg of [
-  'quiero ver el menú', '¿me muestras la carta?', '¿cuánto cuesta la hamburguesa?',
+  'quiero ver el menú', '¿me muestras la carta?',
   '¿qué platillos tienen?', 'can I see the menu?', 'muéstrame las fotos', '¿tienen catálogo?',
-  'what do you have?', 'how much is it?',
+  'what do you have?', 'quiero ver los servicios', '¿qué servicios ofrecen?', '¿qué venden?',
 ]) check(shows(msg) === true, `shows for: ${msg}`);
 
 // Should NOT show (closing / confirmation / refusal / unrelated) — the classic
@@ -24,6 +25,17 @@ for (const msg of [
   'ya no quiero nada más', 'no quiero postre', 'sí, confirmar', 'listo, gracias',
   '¿dónde están ubicados?', 'que tengan buen día',
 ]) check(shows(msg) === false, `hides for: ${msg}`);
+
+// Regression: a follow-up question about the ALREADY-CHOSEN item ("precio",
+// "servicio", "tratamiento" are generic words that show up naturally in any
+// such follow-up) must NOT re-show the whole catalog — only a genuine
+// "show me the catalog" request does. Bug reproduced live: asking "¿cuánto
+// dura ese servicio?" right after picking one re-flashed all the service
+// cards. [BUG-CATALOGO-REPETIDO]
+for (const msg of [
+  '¿cuánto cuesta la hamburguesa?', 'how much is it?', '¿cuánto dura ese servicio?',
+  '¿y el precio?', 'ese tratamiento me interesa', 'quiero saber más de ese producto',
+]) check(shows(msg) === false, `does not re-show catalog for follow-up: ${msg}`);
 
 // Mid-booking: an incidental dish mention does not flash the menu; an explicit
 // menu request still does.

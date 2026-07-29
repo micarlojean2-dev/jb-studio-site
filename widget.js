@@ -327,6 +327,7 @@
     '.jbw-card-img{width:52px;height:52px;border-radius:15px;object-fit:cover;',
     'margin-bottom:8px;display:block;background:#f2f2f4;}',
     '.jbw-card-no-image{justify-content:center;min-height:100px;padding:18px 12px;}',
+    '.jbw-gallery-heading{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8a8f98;margin:2px 0 8px;}',
     '.jbw-gallery{width:100%;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:4px 0;}',
     '.jbw-gallery img{width:100%;aspect-ratio:1.35;object-fit:cover;border-radius:12px;background:#f2f2f4;}',
     '.jbw-gallery-more{border:0;background:none;color:var(--jbw-color,#1a4a2e);font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 0;}',
@@ -335,6 +336,7 @@
     '.jbw-card-badge{font-size:10px;font-weight:600;margin-top:5px;padding:3px 8px;',
     'border-radius:20px;background:#fff5e0;color:#8a5a00;}',
     '.jbw-card-desc{font-size:11px;color:#6b6f76;line-height:1.4;margin-top:6px;}',
+    '.jbw-card-cta{font-size:11px;font-weight:700;margin-top:8px;}',
     '.jbw-quick{display:flex;flex-wrap:wrap;gap:7px;padding:2px 0 2px 34px;}',
     '.jbw-quick-btn{font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;',
     'background:#fff;border:1.5px solid rgba(0,0,0,.08);border-radius:20px;padding:8px 13px;',
@@ -576,13 +578,15 @@
         card.appendChild(desc);
       }
 
+      var cta = document.createElement('div');
+      cta.className = 'jbw-card-cta';
+      cta.style.color = cfg.color;
+      cta.textContent = CORE.bookServiceLabel(cfg.language);
+      card.appendChild(cta);
+
       card.addEventListener('click', function () {
         if (inp.disabled) return;
-        var restaurant = cfg.templateId === 'restaurant';
-        var nom = item.nombre || (restaurant ? 'este plato' : 'este servicio');
-        send(cfg.language === 'en'
-          ? (restaurant ? 'I am interested in this menu item: ' : 'I am interested in the service: ') + nom
-          : (restaurant ? 'Me interesa este plato: ' : 'Me interesa el servicio: ') + nom);
+        send(CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant'));
       });
 
       row.appendChild(card);
@@ -598,6 +602,10 @@
     if (!images.length) return;
     var wrap = document.createElement('div');
     wrap.className = 'jbw-cards-wrap';
+    var heading = document.createElement('div');
+    heading.className = 'jbw-gallery-heading';
+    heading.textContent = CORE.galleryHeading(cfg.language);
+    wrap.appendChild(heading);
     var grid = document.createElement('div');
     grid.className = 'jbw-gallery';
     var shown = 4;
@@ -886,12 +894,7 @@ function extractBooking(text, menu) {
     // The model never speaks for a complete booking; only the POST decides it.
     if (completo) { showBookingSummary(); return; }
     if (bookingPending === 'specialRequests') {
-      var requestQuestion = cfg.templateId === 'restaurant'
-        ? (lang === 'en' ? 'Do you have any allergy, intolerance, table preference, or special request?' : '¿Tienes alguna alergia, intolerancia, preferencia de mesa o petición especial?')
-        : cfg.templateId === 'barber'
-          ? '¿Tienes alguna preferencia de estilo, diseño, sensibilidad o petición especial?'
-          : '¿Tienes alguna sensibilidad, alergia, embarazo, lesión o petición especial?';
-      addMsg('bot', requestQuestion + (lang === 'en' ? ' Write "No" if you do not have one.' : ' Escribe "No" si no tienes ninguna.'));
+      addMsg('bot', CORE.specialRequestsQuestion(cfg.templateId, lang));
       return;
     }
     busy = true; inp.disabled = true; snd.disabled = true;
@@ -966,7 +969,7 @@ function extractBooking(text, menu) {
     });
     msgsEl.appendChild(wrap);
     CORE.irAlFondo(msgsEl, );
-    bookingReview = true;   // el cliente puede confirmar por botón o por texto
+    bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva
   }
 
   function submitBooking() {
@@ -1181,10 +1184,15 @@ function extractBooking(text, menu) {
           : 'Reserva cancelada. ¿Hay algo más en lo que pueda ayudarte?');
         return;
       }
-      // Confirmación por texto en el resumen final → crea la reserva de verdad.
+      // La reserva SOLO se crea con el botón "✅ Sí, confirmar cita": un "sí"
+      // escrito nunca debe confirmarla por su cuenta (puede ser una respuesta
+      // apresurada sin haber revisado bien el resumen). Se pide que use el
+      // botón en vez de dar la reserva por hecha. [BUG-CONFIRMACION-TEXTO]
       if (bookingReview && CORE.esConfirmacion(t)) {
         addMsg('user', t);
-        submitBooking();
+        addMsg('bot', lang === 'en'
+          ? 'Please tap the "✅ Yes, confirm it" button above to confirm your reservation 😊'
+          : 'Para confirmar tu cita, toca el botón "✅ Sí, confirmar cita" de arriba 😊');
         return;
       }
       bookingReview = false;
@@ -1203,13 +1211,29 @@ function extractBooking(text, menu) {
        if (notasU.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasU);
        recordFoodRequest(t, lang);
 
-      if (!traidos.length && CORRECCION_RE.test(t)) {
+      // Antes se exigía "nada se extrajo en este mensaje" (!traidos.length)
+      // para aceptar el texto libre como respuesta al dato pendiente. Si el
+      // cliente repetía un dato YA capturado en la misma frase donde
+      // contestaba lo que se le pedía ("mi correo es X, como ya te dije, y no
+      // tengo ninguna petición especial"), esa repetición SÍ se detectaba
+      // (traidos.length > 0 por el correo), así que la respuesta real
+      // quedaba descartada y el asistente repetía la misma pregunta sin fin
+      // — el cliente sentía que "no lo escuchaba". Ahora solo importa si el
+      // dato pendiente EN SÍ sigue sin capturarse. [BUG-MEMORIA-REPETIDA]
+      var pendienteSinCapturar = bookingPending && traidos.indexOf(bookingPending) === -1;
+      if (pendienteSinCapturar && CORRECCION_RE.test(t)) {
+        var campoEncontrado = false;
         for (var ci = 0; ci < CAMPO_MENCIONADO.length; ci++) {
-          if (CAMPO_MENCIONADO[ci][0].test(t)) { delete bookingData[CAMPO_MENCIONADO[ci][1]]; break; }
+          if (CAMPO_MENCIONADO[ci][0].test(t)) { delete bookingData[CAMPO_MENCIONADO[ci][1]]; campoEncontrado = true; break; }
         }
-      } else if (!traidos.length && bookingPending && BARE_OK[bookingPending] &&
+        // Sin campo mencionado, "prefiero"/"mejor" es la respuesta al campo pendiente, no una corrección vacía. [BUG-CORRECCION-PENDIENTE]
+        if (!campoEncontrado && BARE_OK[bookingPending] &&
+            !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
+          bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
+        }
+      } else if (pendienteSinCapturar && BARE_OK[bookingPending] &&
                  !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
-         bookingData[bookingPending] = bookingPending === 'specialRequests' && /^(no|ninguna|ninguno)$/i.test(t.trim()) ? '' : t;
+         bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
       }
 
        if (amb) { preguntarHoraAmbigua(amb, lang); return; }
@@ -1274,8 +1298,8 @@ function extractBooking(text, menu) {
         hideTyping();
         if (d.error === 'inactive') {
           addMsg('bot', d.message || (cfg.language === 'en'
-            ? 'This service is temporarily unavailable.'
-            : 'Este servicio no está disponible temporalmente.'));
+            ? 'This assistant is temporarily out of service. Please contact the business directly.'
+            : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio.'));
         } else if (d.text) {
           var showMenu   = /\[MOSTRAR_MENU\]/.test(d.text);
           var cleanText  = CORE.limpiarMarcadores(d.text);

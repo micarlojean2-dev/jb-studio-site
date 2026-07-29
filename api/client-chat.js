@@ -89,6 +89,14 @@ function restaurantNormalPreference(client, messages) {
   return /\b(?:sin|without|no|hold|leave\s+out|extra|more|less|m[aá]s|poc[ao]|poquit[ao]|little|light|doble|double|salsa\s+aparte|sauce\s+on\s+the\s+side|bien\s+cocid|well\s+done|t[eé]rmino\s+medio|medium\s+rare|picante|spicy)\b/i.test(text);
 }
 
+// Idioma fijado por el negocio, no por el modelo ni por quien escribe: se usa
+// tanto en el prompt base como al reforzarlo durante una reserva activa.
+function langDirectiveFor(client) {
+  return client.language === 'en'
+    ? 'LANGUAGE: Always reply in English, in every message, regardless of the language the customer writes in. Never switch languages.'
+    : 'IDIOMA: Responde SIEMPRE en español, en todos los mensajes, sin importar en qué idioma te escriban. Nunca cambies de idioma.';
+}
+
 function buildSystemPrompt(basePrompt, client, media) {
   const tz   = tzOf(client);
   const now  = new Date();
@@ -104,12 +112,10 @@ function buildSystemPrompt(basePrompt, client, media) {
   // hereden también los chatbots creados antes de este cambio. El prompt del
   // cliente (datos, precios, reglas del negocio) se concatena debajo y manda
   // sobre los hechos; esto solo fija el tono.
-  // Idioma fijado por el negocio, no por el modelo ni por quien escribe: la
-  // interfaz genera los textos críticos (resumen, botones, avisos) en este mismo
-  // idioma, y una respuesta del modelo en otro idioma rompería la experiencia.
-  const langDirective = client.language === 'en'
-    ? 'LANGUAGE: Always reply in English, in every message, regardless of the language the customer writes in. Never switch languages.'
-    : 'IDIOMA: Responde SIEMPRE en español, en todos los mensajes, sin importar en qué idioma te escriban. Nunca cambies de idioma.';
+  // La interfaz genera los textos críticos (resumen, botones, avisos) en el
+  // idioma del negocio, y una respuesta del modelo en otro idioma rompería la
+  // experiencia.
+  const langDirective = langDirectiveFor(client);
 
   const header = `${langDirective}
 
@@ -290,8 +296,8 @@ export default async function handler(req, res) {
       return res.status(200).json({
         error:   'inactive',
         message: client.language === 'en'
-          ? 'This service is temporarily unavailable.'
-          : 'Este servicio no está disponible temporalmente.',
+          ? 'This assistant is temporarily out of service. Please contact the business directly.'
+          : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio.',
       });
     }
 
@@ -318,6 +324,8 @@ export default async function handler(req, res) {
         : '(todavía nada)';
       systemPrompt += `
 
+${langDirectiveFor(client)}
+
 ESTÁS AYUDANDO A AGENDAR UNA CITA AHORA MISMO.
 
 Datos que ya tienes:
@@ -330,7 +338,9 @@ Cómo responder:
 - Pide SOLO el primer dato que falta de la lista, uno a la vez. No enumeres pasos ("Paso 2 de 8") ni uses listas de datos pendientes.
 - Si el cliente corrige algo (cambia hora, servicio, etc.), acéptalo con naturalidad.
 - NUNCA escribas tú el resumen ni listes los datos capturados (nombre, fecha, hora, personas, platillo, teléfono, correo, etc.): de eso se encarga la interfaz, con sus propias etiquetas y en el idioma correcto. Tú solo pides el siguiente dato.
-- Si ya no falta nada, di una frase corta como "¡Perfecto! Te muestro el resumen para confirmar" SIN listar los datos, y no lo confirmes tú.
+- CRÍTICO: la lista de "Datos que aún faltan" es la única verdad sobre qué se guardó — no lo que tú creas haber entendido. Si el primer dato que falta sigue apareciendo ahí, TODAVÍA NO se guardó, sin importar lo que el cliente haya escrito o lo que tú le hayas respondido antes: sigue pidiéndolo, no lo des por hecho ni sigas con el siguiente. Si la frase del cliente para ese dato es ambigua o no la reconoces (por ejemplo una fecha relativa poco clara), no la reformules como si ya estuviera confirmada: pide que la exprese de forma más concreta (una fecha exacta, un día de la semana, una hora con am/pm). [BUG-FECHA-RELATIVA]
+- PROHIBIDO decir "ya tenemos todo listo" o "te muestro el resumen" mientras la lista de arriba todavía tenga algún dato pendiente: eso solo es cierto cuando la lista dice "ninguno".
+- Si ya no falta nada, dilo con una frase corta y cálida (en el idioma indicado arriba) anunciando que le muestras el resumen para confirmar, SIN listar los datos, y no lo confirmes tú.
 - NUNCA digas que la cita quedó agendada o confirmada. NUNCA inventes horarios libres ni disponibilidad: eso lo revisa el negocio al confirmar.
 - PROHIBIDO afirmar cualquiera de estas cosas (aún no han ocurrido y no las controlas): "ya notificamos al equipo/negocio", "avisamos al negocio", "tu cita está confirmada", "el correo fue enviado", "te enviamos la confirmación", "la reserva fue creada/guardada". El sistema envía esos avisos por su cuenta y te lo confirmará; tú no.
 - Frase breve, sin markdown.
@@ -363,7 +373,13 @@ IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, d
 // have/sell", dish/photo words, or an explicit "show me…".
 // Stem matching, no trailing \b: in JS's ASCII \b mode a word boundary after an
 // accented vowel ("menú") never matches, so "ver el menú" silently failed.
-const MENU_INTENT = /(men[uú]|carta|cat[aá]logo|precio|cu[aá]nto\s+(?:cuesta|vale|sale)|qu[eé]\s+(?:tienen|venden|hay|ofrecen|sirven)|platillo|plato|hamburgues|tacos?|comida|bebida|postre|foto|im[aá]gen|servicio|tratamiento|producto|what\s+do\s+you\s+(?:have|sell|offer)|how\s+much|prices?)/i;
+// Only a genuine request to browse the catalog re-shows it. The previous
+// version also matched bare words like "servicio", "precio" or "tratamiento"
+// — words that show up naturally in ANY follow-up question about the service
+// the customer already picked ("¿cuánto dura ese servicio?", "¿y el precio?")
+// — so the whole catalog re-appeared after the customer had already chosen
+// something or moved on to another topic. [BUG-CATALOGO-REPETIDO]
+const MENU_INTENT = /(qu[eé][\s\wáéíóúñ]{0,25}?\b(?:tienen|venden|ofrecen|hay|sirven)\b|ver\s+(?:el\s+|los\s+|la\s+|las\s+)?(?:servicios|productos|opciones)|mostrar\s+(?:el\s+|los\s+|la\s+|las\s+)?(?:servicios|productos|opciones)|lista\s+de\s+servicios|what\s+(?:services\s+)?do\s+you\s+(?:have|sell|offer)|see\s+(?:the\s+)?(?:services|options)|show\s+me\s+(?:the\s+)?(?:services|options))/i;
 // During an active booking a passing dish mention should not flash the menu;
 // only an explicit request for it does.
 const MENU_EXPLICIT = /(men[uú]|carta|cat[aá]logo|foto|im[aá]gen)/i;
@@ -372,9 +388,12 @@ const MENU_EXPLICIT = /(men[uú]|carta|cat[aá]logo|foto|im[aá]gen)/i;
 const CLOSING_INTENT = /\b(eso\s+(?:es|era)\s+todo|nada\s+m[aá]s|ya\s+no|no\s+quiero|no\s+gracias|listo|perfecto|gracias|hasta\s+luego|adi[oó]s|chao|bye|thanks?|thank\s+you|that\s+(?:is|s)\s+all|nothing\s+else|no\s+more|s[ií],?\s+confirm|confirmo|confirmar)\b/i;
 
 async function callProvider(provider, messages, systemPrompt, client, clientId, bookingActive) {
+  // 420 truncated real replies mid-sentence, including mid-marker (the model
+  // writes [MOSTRAR_MENU] itself per the prompt), leaving raw "[MOSTR" visible
+  // to the customer. [BUG-TRUNCATED-MARKER]
   const data = provider === 'deepseek'
-    ? await callDeepSeek(messages, systemPrompt, 420)
-    : await callAnthropic(messages, systemPrompt, 420);
+    ? await callDeepSeek(messages, systemPrompt, 600)
+    : await callAnthropic(messages, systemPrompt, 600);
 
   let text = '';
   if (provider === 'deepseek') {
@@ -430,4 +449,4 @@ export function menuDecision(lastUserMsg, { bookingActive, catalogEnabled } = {}
   return !bookingActive && MENU_INTENT.test(msg) && !CLOSING_INTENT.test(msg);
 }
 
-export const __test = { menuDecision, resolveDeepseekModel };
+export const __test = { menuDecision, resolveDeepseekModel, langDirectiveFor };

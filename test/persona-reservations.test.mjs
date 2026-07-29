@@ -9,7 +9,7 @@ const src = readFileSync(join(root, 'chat-core.js'), 'utf8');
 const win = {};
 new Function('window', src)(win);
 const CORE = win.JBChatCore;
-const { validarReserva, configuredStaff, duplicateReservation, reservationTemplate } = __test;
+  const { validarReserva, configuredStaff, duplicateReservationKey, reservationTemplate } = __test;
 let failures = 0;
 const ok = (condition, message) => {
   if (condition) console.log('  ✓', message);
@@ -24,11 +24,13 @@ console.log('1. Shared chat requirements and extraction');
 {
   const restaurant = { templateId: 'restaurant' };
   const barber = { templateId: 'barber', staff: [{ id: 'ana', name: 'Ana' }] };
-  ok(CORE.bookingRequirements(restaurant, {}).join(',') === 'nombre,contacto,email,fecha,hora,personas,specialRequests',
+  // Orden: primero lo que define la cita (servicio/personas, fecha, hora),
+  // después los datos de contacto de quien la pide. [BUG-ORDEN-RESERVA]
+  ok(CORE.bookingRequirements(restaurant, {}).join(',') === 'fecha,hora,personas,nombre,contacto,email,specialRequests',
     'restaurant requires special requests before review');
-  ok(CORE.bookingRequirements(barber, {}).join(',') === 'nombre,contacto,email,fecha,hora,servicio,specialRequests',
+  ok(CORE.bookingRequirements(barber, {}).join(',') === 'servicio,fecha,hora,nombre,contacto,email,specialRequests',
     'barber requires special requests before review');
-  ok(CORE.bookingRequirements({}, {}).join(',') === 'nombre,telefono,email,fecha,hora,servicio,specialRequests',
+  ok(CORE.bookingRequirements({}, {}).join(',') === 'servicio,fecha,hora,nombre,telefono,email,specialRequests',
     'legacy Spa/Bella also requires special requests');
   const table = CORE.extractBooking('Somos 4, mesa junto a la ventana', [], hours, 'es', restaurant);
   ok(table.personas === '4' && table.tablePreference === 'mesa junto a la ventana',
@@ -60,9 +62,9 @@ console.log('2. Server-side persona validation');
   ok(validarReserva({ ...barber, __reservationBarberPreference: 'Ana' }, '2026-07-20', '10:30', 'Corte', 0, occupied).motivo === 'barbero_no_disponible',
     'same barber cannot be double-booked during the service duration');
   const same = { fechaISO: '2026-07-20', horaISO: '10:00', telefono: '+1 555 0100', email: '' };
-  ok(duplicateReservation([{ ...same, estado: 'pendiente', telefono: '15550100' }], same),
+  ok(duplicateReservationKey([{ ...same, estado: 'pendiente', telefono: '15550100' }], same) !== null,
     'same active contact/date/time is a duplicate');
-  ok(!duplicateReservation([{ ...same, estado: 'cancelada' }], same), 'cancelled reservation may be booked again');
+  ok(duplicateReservationKey([{ ...same, estado: 'cancelada' }], same) === null, 'cancelled reservation may be booked again');
   ok(validarReserva(restaurant, '2026-07-20', '10:00', '', 0, []).ok,
     'restaurant does not require a Spa service for availability validation');
   const timedRestaurant = { ...restaurant, capacityPerSlot: 1, reservationDuration: '60 min' };

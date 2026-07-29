@@ -1,8 +1,11 @@
 // QA — Categoría H: confirmación. esConfirmacion() decide si un texto libre en
-// el resumen final significa "sí, crea la reserva". Invariante de seguridad:
-// NUNCA debe devolver true ante algo ambiguo o negativo (crearía una reserva
-// que el cliente no confirmó); y SÍ ante confirmaciones claras (para que "sí"
-// funcione igual que el botón).
+// el resumen final SUENA a "sí, confírmalo" — pero un texto ya NUNCA crea la
+// reserva por sí solo, solo el botón "✅ Sí, confirmar cita" lo hace
+// [BUG-CONFIRMACION-TEXTO]; cuando esConfirmacion() da true, widget.js /
+// asistente.html solo usan eso para pedirle al cliente que toque el botón, en
+// vez de tratarlo como una corrección. Invariante de seguridad sin cambios:
+// NUNCA debe devolver true ante algo ambiguo o negativo; y SÍ ante
+// confirmaciones claras.
 // Ejecutar: node test/qa-confirmacion.test.mjs
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
