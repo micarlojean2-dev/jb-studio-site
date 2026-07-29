@@ -117,5 +117,29 @@ console.log('3. Booking summary renders visibly and never duplicates its buttons
   }
 }
 
+console.log('4. Active-reservation duplicate-attempt buttons never leak to free chat');
+{
+  // Regression, found live: after a duplicate booking attempt shows the
+  // Modificar/Cancelar/Mantener buttons, a customer who types anything else
+  // instead of tapping one fell straight through to the open-ended chat
+  // model. With no idea a reservation was already pending a decision, the
+  // model improvised its own fake "confirm with sí" loop ("¿Todo correcto?
+  // Si me dices que sí, lo proceso") that can never create a real
+  // reservation — exactly the invented-explanation failure mode.
+  // [BUG-DUPLICADO-CHAT-LIBRE]
+  for (const file of ['asistente.html', 'widget.js']) {
+    const source = readFileSync(join(root, file), 'utf8');
+    ok(/var dupPending = false;/.test(source), `${file} declares a dupPending gate`);
+    ok(/dupPending = true;/.test(source), `${file} handleDuplicateAttempt() sets dupPending`);
+    ok(/if \(dupPending\) \{/.test(source),
+      `${file} refuses to fall through to free chat while dupPending is set`);
+    const actionsFn = source.match(/function offerReservationActions\(lang\)[\s\S]*?\n  \}/)[0];
+    ok(/irAlFondo\(msgsEl, true\)/.test(actionsFn),
+      `${file} offerReservationActions() forces the real action buttons into view`);
+    ok(/accionesBotones/.test(actionsFn) && /accionesBotones\.remove\(\)/.test(actionsFn),
+      `${file} offerReservationActions() removes a stale button set before showing a new one`);
+  }
+}
+
 if (failures) process.exit(1);
 console.log('✅ Persona reservation rules verified');

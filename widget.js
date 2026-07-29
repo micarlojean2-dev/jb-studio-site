@@ -171,6 +171,8 @@
   var dupAttempts = 0;
   var spamUntil = 0;
   var modifyMode = false;
+  var dupPending = false;   // se ofrecieron los botones Modificar/Cancelar/Mantener; nada de chat libre hasta que se use uno
+  var accionesBotones = null;  // botones de la reserva activa, para no dejar un par duplicado
   try { activeReservation = JSON.parse(sessionStorage.getItem(RESERVA_SESS) || 'null'); } catch (e) {}
   function saveReserva() { try {
     if (activeReservation) sessionStorage.setItem(RESERVA_SESS, JSON.stringify(activeReservation));
@@ -1075,19 +1077,33 @@ function extractBooking(text, menu) {
   // ── Reserva activa: acciones (idénticas a asistente.html vía chat-core) ──
   function offerReservationActions(lang) {
     var T = CORE.reservaTextos(lang);
+    // Mismo bug que el resumen de reserva: si esto se llama de nuevo (más
+    // intentos de doble reserva) con el par anterior aún en pantalla, se
+    // apilaba un segundo Modificar/Cancelar/Mantener. [BUG-RESUMEN-DUPLICADO]
+    if (accionesBotones && accionesBotones.parentNode) accionesBotones.remove();
     var wrap = document.createElement('div');
     wrap.className = 'jbw-quick';
+    accionesBotones = wrap;
     [{ label: T.modify, act: 'modify' }, { label: T.cancel, act: 'cancel' }, { label: T.keep, act: 'keep' }
     ].forEach(function (o, i) {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'jbw-quick-btn'; b.textContent = o.label; b.style.animationDelay = (i * 60) + 'ms';
-      b.addEventListener('click', function () { wrap.remove(); addMsg('user', o.label); handleReservationAction(o.act, lang); });
+      b.addEventListener('click', function () {
+        wrap.remove();
+        if (accionesBotones === wrap) accionesBotones = null;
+        addMsg('user', o.label);
+        handleReservationAction(o.act, lang);
+      });
       wrap.appendChild(b);
     });
-    msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, );
+    msgsEl.appendChild(wrap);
+    // Reacción directa al mensaje del cliente: forzar, igual que la galería y
+    // el resumen de reserva. [BUG-SCROLL-GALERIA]
+    CORE.irAlFondo(msgsEl, true);
   }
 
   function handleReservationAction(act, lang) {
+    dupPending = false;
     if (!activeReservation) return;
     var T = CORE.reservaTextos(lang);
     if (act === 'keep') { addMsg('bot', T.keepMsg); return; }
@@ -1146,6 +1162,7 @@ function extractBooking(text, menu) {
   function handleDuplicateAttempt(lang) {
     var s = CORE.duplicateAttemptState(activeReservation, dupAttempts, spamUntil, Date.now(), lang);
     dupAttempts = s.attempts; spamUntil = s.spamUntil;
+    dupPending = true;
     addMsg('bot', s.text);
     offerReservationActions(lang);
   }
@@ -1194,9 +1211,29 @@ function extractBooking(text, menu) {
     if (activeReservation && bookingStep === 0 && featureOn('reservations')) {
       var preARW = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
       var looksNewW = CORE.pareceReserva(t, preARW) || BOOKING_TRIGGERS.test(t);
-      if (CANCEL_TRIGGERS.test(t)) { addMsg('user', t); submitActiveCancel(lang); return; }
+      if (CANCEL_TRIGGERS.test(t)) {
+        dupPending = false;
+        if (accionesBotones && accionesBotones.parentNode) accionesBotones.remove();
+        accionesBotones = null;
+        addMsg('user', t); submitActiveCancel(lang); return;
+      }
       if (MODIFY_TRIGGERS.test(t)) { addMsg('user', t); handleReservationAction('modify', lang); return; }
       if (looksNewW) { addMsg('user', t); handleDuplicateAttempt(lang); return; }
+    }
+
+    // Se ofrecieron los botones Modificar/Cancelar/Mantener y el cliente
+    // escribió otra cosa en vez de tocar uno: antes esto caía directo al chat
+    // libre, y el modelo -sin saber que hay una reserva activa esperando una
+    // decisión- improvisaba su propio "resumen" y pedía un "sí" que nunca
+    // crea nada real (el flujo real ya terminó, solo faltan los botones de
+    // arriba). Se recuerda usar los botones en vez de dejarlo hablar solo.
+    // [BUG-DUPLICADO-CHAT-LIBRE]
+    if (dupPending) {
+      addMsg('user', t);
+      addMsg('bot', lang === 'en'
+        ? 'You already have an active reservation — please choose one of the options above (✏️ Modify / ❌ Cancel / ✅ Keep) 😊'
+        : 'Ya tienes una reserva activa — elige una de las opciones de arriba (✏️ Modificar / ❌ Cancelar / ✅ Mantener) 😊');
+      return;
     }
 
     // ── Active booking flow: collect next field ──────────────────────────
