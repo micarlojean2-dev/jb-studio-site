@@ -668,27 +668,6 @@
     CORE.irAlFondo(msgsEl, true);
   }
 
-  function renderServicesWithPhotos() {
-    var services = Array.isArray(cfg.menu) ? cfg.menu : [];
-    var photos = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
-    if (!services.length || !photos.length) return renderMenu();
-    var wrap = document.createElement('div'); wrap.className = 'jbw-cards-wrap';
-    var grid = document.createElement('div'); grid.className = 'jbw-gallery';
-    services.slice(0, photos.length).forEach(function (service, index) {
-      var card = document.createElement('button'); card.type = 'button'; card.className = 'jbw-gallery-card';
-      var image = document.createElement('img'); image.src = photos[index]; image.alt = service.nombre || 'Servicio'; image.loading = 'lazy'; card.appendChild(image);
-      var copy = document.createElement('div'); copy.className = 'jbw-gallery-copy';
-      var name = document.createElement('div'); name.className = 'jbw-gallery-name'; name.textContent = service.nombre || 'Servicio'; copy.appendChild(name);
-      var meta = [service.precio, service.duracion].filter(Boolean).join(' · ');
-      if (meta) { var details = document.createElement('div'); details.className = 'jbw-gallery-meta'; details.textContent = meta; copy.appendChild(details); }
-      if (service.descripcion) { var desc = document.createElement('div'); desc.className = 'jbw-gallery-meta'; desc.textContent = service.descripcion; copy.appendChild(desc); }
-      card.appendChild(copy);
-      card.addEventListener('click', function () { send(CORE.bookServiceMessage(service.nombre, cfg.language, cfg.templateId === 'restaurant')); });
-      grid.appendChild(card);
-    });
-    wrap.appendChild(grid); msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
-  }
-
   // ── Submit cancel request to /api/cancel-reservation ────────────────────
   function submitCancellation() {
     var lang = cfg.language === 'en' ? 'en' : 'es';

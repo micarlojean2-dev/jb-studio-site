@@ -11,7 +11,10 @@ for (const file of ['asistente.html', 'widget.js']) {
 }
 
 const chat = readFileSync('api/client-chat.js', 'utf8');
-assert.match(chat, /MOSTRAR_SERVICIOS_CON_FOTOS/, 'chat emits a dedicated service-photo marker');
 assert.match(chat, /SERVICE_PHOTO_INTENT/, 'chat recognizes the combined request');
+assert.match(chat, /if \(showServicePhotos\) text = text \+ '\\n\[MOSTRAR_MENU\]';/, 'combined request uses the normal menu marker');
+for (const file of ['asistente.html', 'widget.js']) {
+  assert.doesNotMatch(readFileSync(file, 'utf8'), /renderServicesWithPhotos/, `${file} has no positional service-photo renderer`);
+}
 
-console.log('gallery-cards.test.mjs: 12 checks passed');
+console.log('gallery-cards.test.mjs: 13 checks passed');

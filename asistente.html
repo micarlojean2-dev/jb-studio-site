@@ -677,32 +677,6 @@
     CORE.irAlFondo(msgsEl, true);
   }
 
-  function renderServicesWithPhotos() {
-    var services = Array.isArray(cfg.menu) ? cfg.menu : [];
-    var photos = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
-    if (!services.length || !photos.length) return renderMenu();
-    var wrap = document.createElement('div');
-    wrap.className = 'a-cards-wrap';
-    var grid = document.createElement('div');
-    grid.className = 'a-gallery';
-    services.slice(0, photos.length).forEach(function (service, index) {
-      var card = document.createElement('button');
-      card.type = 'button'; card.className = 'a-gallery-card';
-      var image = document.createElement('img');
-      image.src = photos[index]; image.alt = service.nombre || 'Servicio'; image.loading = 'lazy';
-      card.appendChild(image);
-      var copy = document.createElement('div'); copy.className = 'a-gallery-copy';
-      var name = document.createElement('div'); name.className = 'a-gallery-name'; name.textContent = service.nombre || 'Servicio'; copy.appendChild(name);
-      var meta = [service.precio, service.duracion].filter(Boolean).join(' · ');
-      if (meta) { var details = document.createElement('div'); details.className = 'a-gallery-meta'; details.textContent = meta; copy.appendChild(details); }
-      if (service.descripcion) { var desc = document.createElement('div'); desc.className = 'a-gallery-meta'; desc.textContent = service.descripcion; copy.appendChild(desc); }
-      card.appendChild(copy);
-      card.addEventListener('click', function () { send(CORE.bookServiceMessage(service.nombre, cfg.language, cfg.templateId === 'restaurant')); });
-      grid.appendChild(card);
-    });
-    wrap.appendChild(grid); msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
-  }
-
 
   function buildIco(nombre) {
     var el = document.createElement('div');
