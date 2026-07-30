@@ -262,6 +262,7 @@
     '.jbw-hi h4{margin:0;font-size:15.5px;font-weight:650;color:#fff;line-height:1.25;}',
     '.jbw-hi p{margin:3px 0 0;font-size:11.5px;color:rgba(255,255,255,.75);',
     'display:flex;align-items:center;gap:5px;font-weight:500;}',
+    '#jbw-version{margin-top:3px;font:10px ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(255,255,255,.62);}',
     '.jbw-dot{width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block;}',
 
     '#jbw-msgs{flex:1;overflow-y:auto;padding:18px 16px;display:flex;',
@@ -378,6 +379,7 @@
       '<div class="jbw-hi">' +
         '<h4 id="jbw-name">Assistant</h4>' +
         '<p><span class="jbw-dot"></span> <span id="jbw-status">Online now</span></p>' +
+        '<div id="jbw-version" hidden></div>' +
       '</div>' +
       '<button id="jbw-close" aria-label="Cerrar chat">' +
         '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
@@ -405,6 +407,16 @@
   var nameEl  = document.getElementById('jbw-name');
   var headEl  = document.getElementById('jbw-head');
   var statusEl = document.getElementById('jbw-status');
+  var versionEl = document.getElementById('jbw-version');
+
+  fetch(API + '/api/build', { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !/^(?:dpl_[a-z0-9]+|[a-f0-9]{7,64}|local)$/i.test(d.version)) return;
+      versionEl.textContent = 'Versión: ' + d.version.slice(0, 11);
+      versionEl.hidden = false;
+    })
+    .catch(function () {});
 
   // ── Apply color theme ────────────────────────────────────────────────────
   function greeting() {
@@ -1000,6 +1012,20 @@ function extractBooking(text, menu) {
   function seguirDesdeLoQueFalta(lang) { askBookingTurn(lang); }
 
 
+  function pedirCorreccion(campo, lang) {
+    if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
+    resumenBotones = null;
+    delete bookingData[campo];
+    bookingStep = 1;
+    bookingPending = campo;
+    bookingReview = false;
+    var etiqueta = CORE.summaryLabel(cfg, campo, lang).toLowerCase();
+    addMsg('bot', lang === 'en'
+      ? 'Sure 😊 What is the correct ' + etiqueta + '?'
+      : 'Claro 😊 ¿cuál es el dato correcto de ' + etiqueta + '?');
+    save();
+  }
+
   // Revisar antes de guardar: un dedazo en el teléfono o la fecha se corrige
   // aquí, no cuando el dueño intenta llamar y el número no existe.
   function showBookingSummary() {
@@ -1313,6 +1339,7 @@ function extractBooking(text, menu) {
       if (bookingReview || (function () { try { return JSON.parse(sessionStorage.getItem(BOOKING_SESS) || '{}').awaitingConfirmation === true; } catch (e) { return false; } })()) {
         addMsg('user', t);
         if (CORE.esConfirmacion(t)) submitBooking();
+        else if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);
         else showBookingSummary();
         return;
       }
@@ -1322,9 +1349,10 @@ function extractBooking(text, menu) {
       if (resolverHoraPendiente(t, lang)) return;
 
       var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
-      var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
-      var traidos = Object.keys(yaVisto);
-      traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
+       var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
+       var traidos = Object.keys(yaVisto);
+       traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
+       var campoCorreccion = CORE.campoCorreccion(t);
 
       // Preferencias que el cliente dice en su propio mensaje ("prefiero una
       // habitación silenciosa"), sin depender de que DeepSeek emita [NOTA:].
@@ -1339,19 +1367,17 @@ function extractBooking(text, menu) {
       // tengo ninguna petición especial"), esa repetición SÍ se detectaba
       // (traidos.length > 0 por el correo), así que la respuesta real
       // quedaba descartada y el asistente repetía la misma pregunta sin fin
-      // — el cliente sentía que "no lo escuchaba". Ahora solo importa si el
-      // dato pendiente EN SÍ sigue sin capturarse. [BUG-MEMORIA-REPETIDA]
-      var pendienteSinCapturar = bookingPending && traidos.indexOf(bookingPending) === -1;
-      if (pendienteSinCapturar && CORRECCION_RE.test(t)) {
-        var campoEncontrado = false;
-        for (var ci = 0; ci < CAMPO_MENCIONADO.length; ci++) {
-          if (CAMPO_MENCIONADO[ci][0].test(t)) { delete bookingData[CAMPO_MENCIONADO[ci][1]]; campoEncontrado = true; break; }
-        }
-        // Sin campo mencionado, "prefiero"/"mejor" es la respuesta al campo pendiente, no una corrección vacía. [BUG-CORRECCION-PENDIENTE]
-        if (!campoEncontrado && BARE_OK[bookingPending] &&
-            !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
-          bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
-        }
+       // — el cliente sentía que "no lo escuchaba". Ahora solo importa si el
+       // dato pendiente EN SÍ sigue sin capturarse. [BUG-MEMORIA-REPETIDA]
+       var pendienteSinCapturar = bookingPending && traidos.indexOf(bookingPending) === -1;
+       if (campoCorreccion && traidos.indexOf(campoCorreccion) === -1) {
+         pedirCorreccion(campoCorreccion, lang);
+         return;
+       } else if (pendienteSinCapturar && CORRECCION_RE.test(t)) {
+         // Sin campo mencionado, "prefiero"/"mejor" es la respuesta al campo pendiente, no una corrección vacía. [BUG-CORRECCION-PENDIENTE]
+         if (BARE_OK[bookingPending] && !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
+           bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
+         }
       } else if (pendienteSinCapturar && BARE_OK[bookingPending] &&
                  !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
          bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;

@@ -134,7 +134,7 @@ const clienteBase = (extra = {}) => Object.assign({
   ok(!redis._store.has('digest:sentAt:bella'), 'no marca sentAt');
 }
 
-// ── 6. Varios correos (notificationEmails) → un solo resumen a todos ──────────
+// ── 6. Dueño + avisos adicionales → un solo resumen a todos ──────────────────
 {
   console.log('6. Varios destinatarios → un resumen');
   const redis = fakeRedis({
@@ -147,7 +147,8 @@ const clienteBase = (extra = {}) => Object.assign({
   const resend = fakeResend();
   const r = await runDigest(false, { redis, resend });
   ok(r.enviados === 1 && resend.calls.length === 1, 'un solo correo');
-  ok(Array.isArray(resend.calls[0].to) && resend.calls[0].to.length === 3, 'un "to" con los 3 correos (deduplicados)');
+  ok(Array.isArray(resend.calls[0].to) && resend.calls[0].to.length === 4, 'un "to" con dueño y 3 correos adicionales deduplicados');
+  ok(resend.calls[0].to[0] === 'due@na.com', 'el dueño conserva la primera prioridad');
   ok(resend.calls[0].to.includes('c@x.com'), 'normaliza a minúsculas');
 }
 

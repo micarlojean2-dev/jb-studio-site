@@ -122,6 +122,24 @@ console.log('8. El resto del admin sigue presente');
 ok(!!$('setup-add-email'), 'el botón del modal de setup existe en el DOM');
 ok(!!$('add-menu-item') && !!$('mg-view-bot'), 'otras secciones (form y modal de gestión) intactas');
 
+console.log('9. Clientes recargados conservan el enlace directo del dueño');
+const panelUrl = 'https://jbstudio.app/reservas/qa-spa#t=qa-panel-token';
+let copiedPanelUrl = '';
+window.navigator.clipboard = { writeText(value) { copiedPanelUrl = value; return Promise.resolve(); } };
+fetchResponder = () => ({ ok: true, status: 200, json: async () => [{
+  id: 'qa-spa', businessName: 'QA Spa', plan: 'basic', active: true,
+  panelToken: 'qa-panel-token', menu: [], features: { reservations: true },
+}] });
+await window.__jbAdmin.refreshClients();
+await flush();
+const panelLink = document.querySelector(`#clients-list a[href="${panelUrl}"]`);
+ok(!!panelLink, 'un cliente cargado tras recargar muestra el enlace completo con token');
+const copyPanelButton = document.querySelector('#clients-list .ct-copy-panel');
+ok(!!copyPanelButton, 'un cliente cargado tras recargar muestra el botón de copiar');
+copyPanelButton.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+await flush();
+ok(copiedPanelUrl === panelUrl, 'el botón copia el enlace completo del dueño');
+
 console.log('');
 if (fallos) { console.error(`❌ ${fallos} aserción(es) fallaron`); process.exit(1); }
 console.log('✅ Login del admin verificado: sin error de null y con el flujo completo');

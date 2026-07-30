@@ -60,6 +60,8 @@
     }
     #a-name { font-size: 16px; font-weight: 650; line-height: 1.25; }
     #a-status { font-size: 12px; color: rgba(255,255,255,.75); margin-top: 3px; display: flex; align-items: center; gap: 5px; font-weight: 500; }
+    #a-version { font-size: 10px; color: rgba(255,255,255,.62); margin-top: 3px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    #a-version[hidden] { display: none; }
     .a-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; display: inline-block; box-shadow: 0 0 0 3px rgba(74,222,128,.22); }
 
     /* ── Message list ───────────────────────────────────────────────────── */
@@ -261,8 +263,9 @@
     <div id="a-head">
       <div id="a-av">✦</div>
       <div>
-        <div id="a-name">Asistente</div>
-        <div id="a-status"><span class="a-dot"></span><span id="a-status-text">En línea</span></div>
+         <div id="a-name">Asistente</div>
+         <div id="a-status"><span class="a-dot"></span><span id="a-status-text">En línea</span></div>
+         <div id="a-version" hidden></div>
       </div>
     </div>
     <div id="a-msgs"></div>
@@ -340,12 +343,22 @@
   var loadingEl  = document.getElementById('a-loading');
   var appEl      = document.getElementById('a-app');
   var notfoundEl = document.getElementById('a-notfound');
+  var versionEl  = document.getElementById('a-version');
 
   if (!clientId) {
     loadingEl.style.display = 'none';
     notfoundEl.style.display = 'flex';
     return;
   }
+
+  fetch(API + '/api/build', { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !/^(?:dpl_[a-z0-9]+|[a-f0-9]{7,64}|local)$/i.test(d.version)) return;
+      versionEl.textContent = 'Versión: ' + d.version.slice(0, 11);
+      versionEl.hidden = false;
+    })
+    .catch(function () {});
 
   // El banner NO se muestra solo por llevar ?preview= en la URL: cualquiera
   // podría añadir un token inventado a la página pública y leer que el
@@ -981,6 +994,20 @@ function extractBooking(text, menu) {
   // reserva pasa a DeepSeek.
   function seguirDesdeLoQueFalta(lang) { askBookingTurn(lang); }
 
+  function pedirCorreccion(campo, lang) {
+    if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
+    resumenBotones = null;
+    delete bookingData[campo];
+    bookingStep = 1;
+    bookingPending = campo;
+    bookingReview = false;
+    var etiqueta = CORE.summaryLabel(cfg, campo, lang).toLowerCase();
+    addMsg('bot', lang === 'en'
+      ? 'Sure 😊 What is the correct ' + etiqueta + '?'
+      : 'Claro 😊 ¿cuál es el dato correcto de ' + etiqueta + '?');
+    save();
+  }
+
 
   // Última parada antes de guardar: se enseña todo y se pide confirmación.
   // Antes la reserva se enviaba sola al responder el último campo, sin que
@@ -1366,6 +1393,7 @@ function extractBooking(text, menu) {
       if (bookingReview || (function () { try { return JSON.parse(sessionStorage.getItem(BOOKING_SESS) || '{}').awaitingConfirmation === true; } catch (e) { return false; } })()) {
         addMsg('user', t);
         if (CORE.esConfirmacion(t)) submitBooking();
+        else if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);
         else showBookingSummary();
         return;
       }
@@ -1379,9 +1407,10 @@ function extractBooking(text, menu) {
       // Extracción determinista: mete en el estado lo que el mensaje traiga,
       // esté o no en el orden esperado.
       var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
-      var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
-      var traidos = Object.keys(yaVisto);
-      traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
+       var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
+       var traidos = Object.keys(yaVisto);
+       traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
+       var campoCorreccion = CORE.campoCorreccion(t);
 
       // Preferencias que el cliente dice en su propio mensaje ("prefiero una
       // habitación silenciosa"), sin depender de que DeepSeek emita [NOTA:].
@@ -1398,19 +1427,17 @@ function extractBooking(text, menu) {
       // tengo ninguna petición especial"), esa repetición SÍ se detectaba
       // (traidos.length > 0 por el correo), así que la respuesta real
       // quedaba descartada y el asistente repetía la misma pregunta sin fin
-      // — el cliente sentía que "no lo escuchaba". Ahora solo importa si el
-      // dato pendiente EN SÍ sigue sin capturarse. [BUG-MEMORIA-REPETIDA]
-      var pendienteSinCapturar = bookingPending && traidos.indexOf(bookingPending) === -1;
-      if (pendienteSinCapturar && CORRECCION_RE.test(t)) {
-        var campoEncontrado = false;
-        for (var ci = 0; ci < CAMPO_MENCIONADO.length; ci++) {
-          if (CAMPO_MENCIONADO[ci][0].test(t)) { delete bookingData[CAMPO_MENCIONADO[ci][1]]; campoEncontrado = true; break; }
-        }
-        // Sin campo mencionado, "prefiero"/"mejor" es la respuesta al campo pendiente, no una corrección vacía. [BUG-CORRECCION-PENDIENTE]
-        if (!campoEncontrado && BARE_OK[bookingPending] &&
-            !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
-          bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
-        }
+       // — el cliente sentía que "no lo escuchaba". Ahora solo importa si el
+       // dato pendiente EN SÍ sigue sin capturarse. [BUG-MEMORIA-REPETIDA]
+       var pendienteSinCapturar = bookingPending && traidos.indexOf(bookingPending) === -1;
+       if (campoCorreccion && traidos.indexOf(campoCorreccion) === -1) {
+         pedirCorreccion(campoCorreccion, lang);
+         return;
+       } else if (pendienteSinCapturar && CORRECCION_RE.test(t)) {
+         // Sin campo mencionado, "prefiero"/"mejor" es la respuesta al campo pendiente, no una corrección vacía. [BUG-CORRECCION-PENDIENTE]
+         if (BARE_OK[bookingPending] && !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
+           bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
+         }
       }
       // Respuesta escueta al dato que se estaba pidiendo (ej. "Mike" tras
       // "¿tu nombre?"). Solo para campos donde el texto crudo es seguro; la

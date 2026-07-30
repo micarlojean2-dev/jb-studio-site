@@ -65,6 +65,34 @@ console.log('6. Compatibilidad: reserva vieja sin campo notes no rompe');
   ok(c && c.textContent.includes('Sin peticiones especiales') && c.textContent.includes('Viejo'), 'renderiza sin notes (undefined) sin error');
 }
 
+console.log('7. Fecha legible y tiempo restante usan datos normalizados');
+{
+  const fixedNow = Date.UTC(2026, 10, 27, 23, 45);
+  window.Date.now = () => fixedNow;
+  ok(window.fechaLegible('2026-11-28', 'mañana') === 'Sábado, 28 de noviembre', 'fechaISO se muestra en formato legible');
+  ok(window.tiempoRestante({ fechaISO: '2026-11-27', horaISO: '23:59', hora: '11:59 PM', timezone: 'UTC' }) === '⏳ En 14 minutos', 'muestra minutos para una reserva próxima');
+  ok(window.tiempoRestante({ fechaISO: '2026-11-28', horaISO: '14:00', hora: '2:00 PM', timezone: 'UTC' }) === '⏳ Mañana a las 2:00 PM', 'muestra mañana con la hora guardada');
+  ok(window.tiempoRestante({ fechaISO: '2026-12-01', horaISO: '10:00', hora: '10:00 AM', timezone: 'UTC' }) === '⏳ Faltan 4 días', 'muestra días para reservas futuras');
+  ok(window.tiempoRestante({ fechaISO: '2026-11-27', horaISO: '23:00', timezone: 'UTC' }) === '', 'no muestra tiempo para una fecha pasada');
+  ok(window.tiempoRestante({ fechaISO: '2026-11-28', horaISO: '14:00' }) === '', 'no usa la zona horaria del navegador como fallback');
+}
+
+console.log('8. La tarjeta solo muestra tiempo restante en estados próximos');
+{
+  window.allData = [
+    { nombre: 'Confirmada', servicio: 'X', fecha: 'mañana', fechaISO: '2026-11-28', hora: '2:00 PM', horaISO: '14:00', timezone: 'UTC', estado: 'confirmada' },
+    { nombre: 'Cancelada', servicio: 'X', fecha: 'mañana', fechaISO: '2026-11-28', hora: '2:00 PM', horaISO: '14:00', timezone: 'UTC', estado: 'cancelada' },
+  ];
+  window.activeFilter = 'proximas';
+  window.render();
+  const confirmed = [...doc.querySelectorAll('.rcard')].find((c) => c.textContent.includes('Confirmada'));
+  ok(confirmed && confirmed.textContent.includes('⏳ Mañana a las 2:00 PM'), 'confirmed reservation shows its remaining time');
+  window.activeFilter = 'canceladas';
+  window.render();
+  const cancelled = [...doc.querySelectorAll('.rcard')].find((c) => c.textContent.includes('Cancelada'));
+  ok(cancelled && !cancelled.textContent.includes('⏳'), 'cancelled reservation does not show remaining time');
+}
+
 console.log('');
 if (fallos) { console.error(`❌ ${fallos} aserción(es) fallaron`); process.exit(1); }
 console.log('✅ Panel de reservas verificado (peticiones especiales, iconos, badge, fecha)');

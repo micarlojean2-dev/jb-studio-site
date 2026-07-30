@@ -2974,7 +2974,7 @@ LÍMITES ESTRICTOS:
           <button type="button" class="manage-action-btn" id="mg-edit-design">🎨 Editar diseño</button>
           <button type="button" class="manage-action-btn" id="mg-edit-services">🧾 Editar servicios</button>
           <button type="button" class="manage-action-btn" id="mg-media">🖼 Galería y código QR</button>
-          <button type="button" class="manage-action-btn" id="mg-view-reservations">📅 Ver reservas</button>
+          <button type="button" class="manage-action-btn" id="mg-view-reservations">📅 Panel de reservas</button>
           <button type="button" class="manage-action-btn" id="mg-copy-link">🔗 Copiar enlace directo</button>
           <button type="button" class="manage-action-btn" id="mg-copy-code">📋 Copiar código para web</button>
           <button type="button" class="manage-action-btn" id="mg-view-payment">💳 Ver pago</button>
@@ -3508,6 +3508,7 @@ LÍMITES ESTRICTOS:
         const bot = chatbotStatusInfo(c);
         const categoria = c.businessType || 'Asistente de negocio';
         const servicios = Array.isArray(c.menu) ? c.menu.length : 0;
+        const panelUrl = `https://jbstudio.app/reservas/${encodeURIComponent(c.id)}#t=${encodeURIComponent(c.panelToken)}`;
         return `
         <tr data-id="${escHTML(c.id)}">
           <td>
@@ -3518,7 +3519,7 @@ LÍMITES ESTRICTOS:
           </td>
           <td><span class="ct-category">${escHTML(categoria)}</span></td>
           <td>${escHTML(PLAN_LABELS[c.plan] || c.plan)}<span class="ct-subline">${planPriceLabelPerMonth(c.plan)}</span></td>
-          <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>${
+          <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button><br><a class="ct-link" href="${escHTML(panelUrl)}" target="_blank" rel="noopener noreferrer">📅 Panel del dueño</a><br><button type="button" class="ct-link ct-copy-panel" data-panel-url="${escHTML(panelUrl)}">📋 Copiar enlace del dueño</button>${
             faltaConfigCliente(c).length
               ? `<button type="button" class="ct-link ct-setup" data-cid="${escHTML(c.id)}" title="Faltan: ${escHTML(faltaConfigCliente(c).join(', '))}" style="color:#a01b1b;display:block;margin-top:4px">⚠️ Completar</button>`
               : ''
@@ -3536,6 +3537,7 @@ LÍMITES ESTRICTOS:
         const bot = chatbotStatusInfo(c);
         const categoria = c.businessType || 'Asistente de negocio';
         const servicios = Array.isArray(c.menu) ? c.menu.length : 0;
+        const panelUrl = `https://jbstudio.app/reservas/${encodeURIComponent(c.id)}#t=${encodeURIComponent(c.panelToken)}`;
         return `
         <div class="client-card" data-id="${escHTML(c.id)}">
           <div class="cc-top">
@@ -3551,6 +3553,8 @@ LÍMITES ESTRICTOS:
           <div class="cc-health"><span>Salud del asistente</span><strong>Sin monitoreo</strong></div>
           <div class="cc-actions">
             <button type="button" class="cc-btn-secondary ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>
+            <a class="cc-btn-secondary" href="${escHTML(panelUrl)}" target="_blank" rel="noopener noreferrer">📅 Panel del dueño</a>
+            <button type="button" class="cc-btn-secondary ct-copy-panel" data-panel-url="${escHTML(panelUrl)}">📋 Copiar enlace</button>
             <button type="button" class="cc-btn-primary ct-manage" data-cid="${escHTML(c.id)}">Administrar</button>
           </div>
         </div>`;
@@ -3578,6 +3582,11 @@ LÍMITES ESTRICTOS:
         btn.addEventListener('click', () => {
           const c = clientsCache.find(x => x.id === btn.dataset.cid);
           if (c) openChatbotPreview(c);
+        });
+      });
+      clientsListEl.querySelectorAll('.ct-copy-panel').forEach(btn => {
+        btn.addEventListener('click', () => {
+          navigator.clipboard.writeText(btn.dataset.panelUrl);
         });
       });
       clientsListEl.querySelectorAll('.ct-manage').forEach(btn => {
@@ -3677,10 +3686,10 @@ LÍMITES ESTRICTOS:
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || res.status);
 
-        const panelUrl = `https://jbstudio.app/reservas/${escHTML(id)}`;
+        const panelUrl = `https://jbstudio.app/reservas/${id}#t=${encodeURIComponent(data.panelToken)}`;
 
         showMsg(
-          `✓ Client "${escHTML(bname)}" created!\n\nEmbed snippet:\n${escHTML(data.widgetSnippet)}\n\nPanel URL:\n${panelUrl}\n\nPanel token:\n${escHTML(data.panelToken || '(not generated)')}`,
+          `✓ Client "${escHTML(bname)}" created!\n\nEmbed snippet:\n${escHTML(data.widgetSnippet)}\n\nPanel del dueño:\n${escHTML(panelUrl)}`,
           true
         );
 
@@ -3698,16 +3707,16 @@ LÍMITES ESTRICTOS:
         createMsg.appendChild(document.createElement('br'));
         createMsg.appendChild(copyB);
 
-        // Copy panel URL button
+        // The fragment keeps the credential out of server requests and opens the panel directly.
         const copyPanelB = document.createElement('button');
         copyPanelB.className = 'copy-link';
         copyPanelB.style.marginTop = '6px';
         copyPanelB.style.marginLeft = '8px';
-        copyPanelB.textContent = 'Copy panel URL';
+        copyPanelB.textContent = 'Copiar enlace del panel';
         copyPanelB.addEventListener('click', () => {
-          navigator.clipboard.writeText(`https://jbstudio.app/reservas/${id}`).then(() => {
+          navigator.clipboard.writeText(panelUrl).then(() => {
             copyPanelB.textContent = 'Copied ✓';
-            setTimeout(() => copyPanelB.textContent = 'Copy panel URL', 1800);
+            setTimeout(() => copyPanelB.textContent = 'Copiar enlace del panel', 1800);
           });
         });
         createMsg.appendChild(copyPanelB);
@@ -4060,7 +4069,7 @@ LÍMITES ESTRICTOS:
     }));
 
     document.getElementById('mg-view-reservations').addEventListener('click', () => {
-      if (manageClient) window.open(`https://jbstudio.app/reservas/${encodeURIComponent(manageClient.id)}`, '_blank');
+      if (manageClient) window.open(`${window.location.origin}/reservas/${encodeURIComponent(manageClient.id)}`, '_blank');
     });
 
     document.getElementById('mg-copy-link').addEventListener('click', function () {

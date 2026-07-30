@@ -11,6 +11,10 @@
       "destination": "/api/client-config?__scope=health"
     },
     {
+      "source": "/api/build",
+      "destination": "/api/client-config?__scope=build"
+    },
+    {
       "source": "/ventas",
       "destination": "/ventas.html"
     },

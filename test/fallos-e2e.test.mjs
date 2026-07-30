@@ -141,6 +141,20 @@ console.log(' 9. Teléfono/correo/notas posteriores no cambian el nombre');
   ok(cap.nombre === 'María José de la Cruz', 'el nombre completo se conserva tras todos los pasos');
 }
 
+console.log(' 10. Datos pegados: nombre, correo, teléfono, fecha y hora');
+{
+  const r = CORE.extractBooking('mike,micarlojean2@gmail.com 2067421261 y quiero la cita para mañana a las 2 pm', MENU, null, 'es');
+  ok(r.nombre === 'mike', 'separa el nombre anterior al correo');
+  ok(r.email === 'micarlojean2@gmail.com', 'no absorbe el nombre como parte del correo');
+  ok(r.telefono === '2067421261', 'conserva el teléfono pegado');
+  ok(r.fecha === 'mañana' && r.hora === '2:00 PM', 'extrae fecha y hora pegadas');
+  ok(CORE.extractBooking('Quiero reservar Masaje relajante. Mike,micarlojean2@gmail.com 2067421261 mañana a las 2 pm', MENU, null, 'es').nombre === 'Mike',
+     'separa el nombre aunque la petición de reserva vaya antes');
+  ok(CORE.valorValido('nombre', 'no') === false, '"no" no es un nombre');
+  ok(CORE.valorValido('nombre', 'mike,micarlojean2@gmail.com 2067421261') === false,
+     'datos estructurados no se guardan como nombre libre');
+}
+
 // ── FALLO 3: SANEADO DE MARCADORES ─────────────────────────────────────────
 console.log('FALLO 3 — Marcadores');
 

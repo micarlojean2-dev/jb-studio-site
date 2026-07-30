@@ -88,7 +88,7 @@ window.JBChatCore = (function () {
 
   var NUM_PAL = { un:1, uno:1, una:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6, siete:7, ocho:8, nueve:9, diez:10 };
 
-  var EMAIL_RE2 = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
+  var EMAIL_RE2 = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/i;
 
   var TEL_RE = /(\+?\d[\d\s().-]{6,}\d)/;
 
@@ -97,7 +97,7 @@ window.JBChatCore = (function () {
   // Sin esto, cualquier número de contacto puede aportar un falso día/mes.
   function enmascararNoFecha(s) {
     return String(s)
-      .replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, ' ')                       // correos
+      .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi, ' ') // correos
       .replace(/\b\d{1,2}:\d{2}\s*(?:a\.?m\.?|p\.?m\.?)?/gi, ' ')         // horas 4:00 PM
       .replace(/\b\d{5,}\b/g, ' ')                                        // IDs largos
       .replace(/\+?\d[\d\s().-]{6,}\d/g, function (m) {
@@ -184,7 +184,7 @@ window.JBChatCore = (function () {
   // instead of the structured booking flow. [BUG-INTENT-EN]
   var INTENT_RE = /\b(quiero|quisiera|necesito|me\s+gustar[ií]a|puedo|ap[uú]ntame|ag[eé]ndame|d[ae]me|i\s+want|i\s?'?d\s+like|i\s+need|can\s+i|book\s+me)\b/i;
 
-  var CORRECCION_RE = /(me\s+equivoqu[eé]|cambiar|corregir|est[aá]\s+mal|mejor|en realidad|prefiero)/i;
+  var CORRECCION_RE = /(me\s+equivoqu[eé]|cambiar|corregir|est[aá]\s+mal|incorrect[oa]|(?:lo\s+)?puse\s+mal|mejor|en realidad|prefiero)/i;
 
   // Preguntar el precio/duración de un servicio no es elegirlo: sin esto,
   // "cuánto cuesta el tratamiento facial" durante una reserva de Manicura
@@ -197,6 +197,16 @@ window.JBChatCore = (function () {
       [/nombre/i, 'nombre'], [/mesa|terraza|ventana/i, 'tablePreference'],
       [/barbero|barbera|estilista/i, 'barberPreference']
     ];
+
+  // A correction without its new value must clear the named field, even after
+  // every required field has already been captured.
+  function campoCorreccion(text) {
+    if (!CORRECCION_RE.test(String(text || ''))) return '';
+    for (var i = 0; i < CAMPO_MENCIONADO.length; i++) {
+      if (CAMPO_MENCIONADO[i][0].test(text)) return CAMPO_MENCIONADO[i][1];
+    }
+    return '';
+  }
 
   // ── Nombre completo ────────────────────────────────────────────────────────
   // Partículas que van EN medio de un nombre ("de la Cruz", "del Valle"): se
@@ -571,6 +581,15 @@ window.JBChatCore = (function () {
     var e = t.match(EMAIL_RE2);
     if (e) out.email = e[0];
 
+    // A pasted intake often begins with "Ana, ana@example.com". Require its
+    // comma separator so prose such as "mi correo es ana@example.com" is not
+    // mistaken for a name.
+    var beforeEmailRaw = out.email ? t.slice(0, t.indexOf(out.email)) : '';
+    var pastedName = beforeEmailRaw.match(/(?:^|[.;]\s*)([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ' -]{0,79})\s*,\s*$/);
+    if (!out.nombre && pastedName) {
+      out.nombre = pastedName[1].trim();
+    }
+
     // Buscar el teléfono fuera del email: si no, los dígitos de "x1@y.com"
     // se colaban como número, o el email hacía perder el teléfono entero.
     // La fecha se excluye por lo mismo: "24-07-2026" tiene forma de teléfono
@@ -768,11 +787,12 @@ window.JBChatCore = (function () {
         // no son un nombre real: sin esto, se guardaban tal cual como el
         // "Nombre" del cliente cuando esos textos llegaban con "nombre" como
         // campo pendiente. [BUG-NOMBRE-PENDIENTE]
-        var s = String(t || '').trim();
-        if (!s || /[?¿]/.test(s)) return false;
-        if (/^(no|ninguno|ninguna)$/i.test(s)) return false;
-        if (PRICE_QUESTION_RE.test(s) || esConfirmacion(s)) return false;
-        return true;
+         var s = String(t || '').trim();
+         if (!s || /[?¿]/.test(s)) return false;
+         if (/^(no|ninguno|ninguna)$/i.test(s)) return false;
+         if (PRICE_QUESTION_RE.test(s) || esConfirmacion(s)) return false;
+         if (/^(?:ya\s+te\s+lo\s+dije|eso\s+mismo|te\s+dije\s+antes|como\s+te\s+dije)$/i.test(s)) return false;
+         return /^[A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ' -]{0,79}$/.test(s);
       }
       return true;
     }
@@ -959,6 +979,7 @@ window.JBChatCore = (function () {
     CORRECCION_RE: CORRECCION_RE,
     MODIFY_TRIGGERS: MODIFY_TRIGGERS,
     CAMPO_MENCIONADO: CAMPO_MENCIONADO,
+    campoCorreccion: campoCorreccion,
     extractBooking: extractBooking,
     resolverHora: resolverHora,
     horasAbiertas: horasAbiertas,

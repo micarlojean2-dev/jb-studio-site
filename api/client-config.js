@@ -316,6 +316,24 @@ export function createClientImagesHandler({ redis: store, fetchImpl = fetch, env
 
 const HEALTH_TIMEOUT_MS = 1500;
 
+// Reuses this serverless function because the project is at Vercel's function
+// limit. Prefer Vercel's deployment ID so Preview builds made from local
+// changes are never mislabeled with an older Git commit.
+export function createBuildHandler(env = process.env) {
+  return function handler(req, res) {
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).json({ error: 'Method not allowed' });
+
+    var version = String(env.VERCEL_DEPLOYMENT_ID || env.VERCEL_GIT_COMMIT_SHA || env.GIT_COMMIT_SHA || '').trim();
+    if (!/^(?:dpl_[a-z0-9]+|[a-f0-9]{7,64})$/i.test(version)) version = 'local';
+    if (req.method === 'HEAD') return res.status(200).end();
+    return res.status(200).json({ version });
+  };
+}
+
 function createHealthHandler({ redis } = {}) {
   const store = redis || new Redis({
     url: process.env.UPSTASH_REDIS_REST_URL,
@@ -348,6 +366,7 @@ function createHealthHandler({ redis } = {}) {
 let productionHandler;
 let imagesHandler;
 let healthHandler;
+let buildHandler;
 export default async function handler(req, res) {
   // Las peticiones admin de imágenes entran reescritas con __scope=images y el
   // health check con __scope=health (vercel.json). El resto es el config
@@ -359,6 +378,10 @@ export default async function handler(req, res) {
   if (req.query?.__scope === 'health') {
     if (!healthHandler) healthHandler = createHealthHandler();
     return healthHandler(req, res);
+  }
+  if (req.query?.__scope === 'build') {
+    if (!buildHandler) buildHandler = createBuildHandler();
+    return buildHandler(req, res);
   }
   if (!productionHandler) productionHandler = createClientConfigHandler();
   return productionHandler(req, res);
