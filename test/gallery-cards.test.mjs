@@ -9,13 +9,13 @@ for (const file of ['asistente.html', 'widget.js']) {
   assert.match(source, /entry\.item && entry\.item\.precio/, `${file} renders a linked service price`);
   assert.match(source, /entry\.item && entry\.item\.duracion/, `${file} renders a linked service duration`);
   assert.match(source, /\[item\.precio, item\.duracion\]\.filter\(Boolean\)\.join\(' · '\)/, `${file} shows duration in normal service cards`);
+  const fn = source.match(/function renderServicesWithPhotos\(\)[\s\S]*?\n  \}/)?.[0] || '';
+  assert.doesNotMatch(fn, /renderMenu\(/, `${file} service-photo renderer is independent`);
+  assert.doesNotMatch(fn, /cfg\.menu\s*=/, `${file} service-photo renderer does not mutate config`);
+  assert.match(fn, /a-card-img|jbw-card-img/, `${file} service-photo renderer creates image cards`);
 }
 
 const chat = readFileSync('api/client-chat.js', 'utf8');
 assert.match(chat, /SERVICE_PHOTO_INTENT/, 'chat recognizes the combined request');
-assert.match(chat, /if \(showServicePhotos\) text = text \+ '\\n\[MOSTRAR_MENU\]';/, 'combined request uses the normal menu marker');
-for (const file of ['asistente.html', 'widget.js']) {
-  assert.doesNotMatch(readFileSync(file, 'utf8'), /renderServicesWithPhotos/, `${file} has no positional service-photo renderer`);
-}
-
-console.log('gallery-cards.test.mjs: 15 checks passed');
+assert.match(chat, /if \(showServicePhotos\) text = text \+ '\\n\[MOSTRAR_SERVICIOS_CON_FOTOS\]';/, 'combined request uses its own marker');
+console.log('gallery-cards.test.mjs: 22 checks passed');

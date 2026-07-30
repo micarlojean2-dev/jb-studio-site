@@ -444,7 +444,7 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
   const showServicePhotos = SERVICE_PHOTO_INTENT.test(lastUserMsg);
   const { showMenu, showGallery } = markerDecisions(lastUserMsg, { bookingActive, catalogEnabled });
-  if (showServicePhotos) text = text + '\n[MOSTRAR_MENU]';
+  if (showServicePhotos) text = text + '\n[MOSTRAR_SERVICIOS_CON_FOTOS]';
   else {
     if (showMenu) text = text + '\n[MOSTRAR_MENU]';
     if (showGallery) text = text + '\n[MOSTRAR_GALERIA]';

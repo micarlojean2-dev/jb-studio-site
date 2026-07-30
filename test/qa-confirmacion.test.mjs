@@ -29,7 +29,7 @@ console.log('H1. Confirmaciones claras → true');
  // "todo está correcto" (con "está") no se reconocía, solo "todo correcto"/
  // "todo bien" — caía a "corrección" y regeneraba el resumen entero con un
  // segundo par de botones en vez de pedir usar el botón real. [BUG-CONFIRMACION-VARIANTE]
-  'todo está correcto', 'está correcto', 'confírmame la cita']
+  'todo está correcto', 'está correcto', 'confírmame la cita', 'si, confirmar', 'hazla', 'quiero confirmar']
   .forEach((t) => ok(C(t) === true, `"${t}" confirma`));
 
 console.log('H2. Negaciones y correcciones → false (jamás confirma)');
@@ -61,6 +61,7 @@ console.log('H6. El modo de confirmación se conserva al recargar');
 for (const [name, source] of [['asistente', assistant], ['widget', widget]]) {
   ok(source.includes('awaitingConfirmation: bookingReview'), `${name} persiste awaitingConfirmation`);
   ok(source.includes('bookingReview = true;   // solo el botón') && source.includes('bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva\n    save();'), `${name} guarda el resumen mostrado`);
+  ok(source.includes('if (CORE.esConfirmacion(t)) submitBooking();'), `${name} confirma por texto sin llegar al modelo`);
 }
 
 console.log(fallos === 0 ? '\n✅ QA confirmación: todas pasan' : `\n❌ QA confirmación: ${fallos} fallo(s)`);

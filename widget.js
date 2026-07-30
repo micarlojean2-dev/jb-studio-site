@@ -611,6 +611,41 @@
     CORE.irAlFondo(msgsEl, true);
   }
 
+  function renderServicesWithPhotos() {
+    var items = (Array.isArray(cfg.menu) ? cfg.menu : []).filter(function (item) { return item && item.imagen; });
+    if (!items.length) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'jbw-cards-wrap';
+    var row = document.createElement('div');
+    row.className = 'jbw-cards';
+    items.forEach(function (item, idx) {
+      var card = document.createElement('button');
+      card.className = 'jbw-card';
+      card.type = 'button';
+      card.style.animationDelay = (idx * 55) + 'ms';
+      var image = document.createElement('img');
+      image.className = 'jbw-card-img';
+      image.src = item.imagen;
+      image.alt = item.nombre || 'Servicio';
+      image.loading = 'lazy';
+      card.appendChild(image);
+      var name = document.createElement('div');
+      name.className = 'jbw-card-name';
+      name.textContent = item.nombre || 'Servicio';
+      card.appendChild(name);
+      var meta = [item.precio, item.duracion].filter(Boolean).join(' · ');
+      if (meta) { var price = document.createElement('div'); price.className = 'jbw-card-price'; price.style.color = cfg.color; price.textContent = meta; card.appendChild(price); }
+      if (item.descripcion) { var desc = document.createElement('div'); desc.className = 'jbw-card-desc'; desc.textContent = item.descripcion; card.appendChild(desc); }
+      var cta = document.createElement('div');
+      cta.className = 'jbw-card-cta'; cta.style.color = cfg.color; cta.textContent = CORE.bookServiceLabel(cfg.language); card.appendChild(cta);
+      card.addEventListener('click', function () { if (inp.disabled) return; if (wrap.parentNode) wrap.remove(); send(CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant')); });
+      row.appendChild(card);
+    });
+    wrap.appendChild(row);
+    msgsEl.appendChild(wrap);
+    CORE.irAlFondo(msgsEl, true);
+  }
+
   function renderGallery() {
     var generalImages = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
     var serviceImages = (Array.isArray(cfg.menu) ? cfg.menu : []).filter(function (item) {
@@ -1275,9 +1310,10 @@ function extractBooking(text, menu) {
       // escrito nunca debe confirmarla por su cuenta (puede ser una respuesta
       // apresurada sin haber revisado bien el resumen). Se pide que use el
       // botón en vez de dar la reserva por hecha. [BUG-CONFIRMACION-TEXTO]
-      if (bookingReview) {
+      if (bookingReview || (function () { try { return JSON.parse(sessionStorage.getItem(BOOKING_SESS) || '{}').awaitingConfirmation === true; } catch (e) { return false; } })()) {
         addMsg('user', t);
-        showBookingSummary();
+        if (CORE.esConfirmacion(t)) submitBooking();
+        else showBookingSummary();
         return;
       }
       bookingReview = false;
@@ -1388,12 +1424,13 @@ function extractBooking(text, menu) {
         } else if (d.text) {
           var showMenu    = /\[MOSTRAR_MENU\]/.test(d.text);
           var showGallery = /\[MOSTRAR_GALERIA\]/.test(d.text);
+          var showServicePhotos = /\[MOSTRAR_SERVICIOS_CON_FOTOS\]/.test(d.text);
           var cleanText  = CORE.limpiarMarcadores(d.text);
           if (cleanText) addMsg('bot', cleanText);
           // Pedir fotos ya no fuerza el catálogo completo: cada marcador
           // controla solo su propio bloque. [BUG-FOTOS-GALERIA]
-          if (showMenu) renderMenu();
-          if (showGallery) renderGallery();
+          if (showServicePhotos) renderServicesWithPhotos();
+          else { if (showMenu) renderMenu(); if (showGallery) renderGallery(); }
           // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
           // historial va solo el texto limpio, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: cleanText });
