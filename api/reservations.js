@@ -269,17 +269,25 @@ function fmt(min) {
   return h12 + ':' + String(m).padStart(2, '0') + ' ' + suf;
 }
 
-// "60 minutos", "1 hora", "45 min", "1h 30". Si no se entiende -> 0 (no se
-// aplica la regla en vez de inventar una duración).
+// "60", "60 minutos", "1 hora", "45 min", "1h 30". Si no se entiende -> 0
+// (no se aplica la regla en vez de inventar una duración). Misma gramática
+// que spaDurationMinutes() en api/clients.js — el guardado y la reserva
+// deben interpretar exactamente los mismos formatos. Cada patrón está
+// anclado con ^...$: antes, sin anclar, /(\d+)\s*m/ podía encontrar "60 m"
+// dentro de texto basura arbitrario ("60 min despues de la cita") y
+// aceptarlo igual; ahora la cadena completa debe ser uno de los formatos.
 function duracionMin(txt) {
-  const t = String(txt || '').toLowerCase();
+  const t = String(txt || '').trim().toLowerCase();
   if (!t) return 0;
-  const hm = t.match(/(\d+)\s*h(?:ora)?s?\s*(\d+)?/);
-  if (hm) return (+hm[1]) * 60 + (hm[2] ? +hm[2] : 0);
-  const m = t.match(/(\d+)\s*m/);
+  let m = t.match(/^(\d+)$/);
   if (m) return +m[1];
-  const solo = t.match(/^(\d+)$/);
-  return solo ? +solo[1] : 0;
+  m = t.match(/^(\d+)\s*(?:min|mins|minuto|minutos)$/);
+  if (m) return +m[1];
+  m = t.match(/^(\d+)\s*(?:h|hora|horas)$/);
+  if (m) return (+m[1]) * 60;
+  m = t.match(/^(\d+)\s*(?:h|hora|horas)\s+(\d+)$/);
+  if (m) return (+m[1]) * 60 + (+m[2]);
+  return 0;
 }
 
 function durationFor(client, servicio) {

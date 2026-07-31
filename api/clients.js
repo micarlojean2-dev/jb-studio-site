@@ -61,6 +61,29 @@ function normalizeBufferMinutes(v) {
   return Number.isInteger(n) && n >= 0 && n <= 240 ? n : 0;
 }
 
+// Misma gramática que duracionMin() en api/reservations.js (replicada aquí:
+// no hay módulo compartido en este proyecto sin build step) — el guardado y
+// la reserva deben interpretar exactamente los mismos formatos, o un valor
+// que pasa aquí podría leerse distinto (o como 0) al reservar.
+// Formatos completos aceptados: "60", "60 min"/"mins"/"minuto"/"minutos",
+// "1h"/"1 h"/"1 hora"/"1 horas", "1h 30"/"1 hora 30" (con minutos sueltos).
+// Cada patrón está anclado con ^...$: "60 min basura" o "texto 60 min" no
+// matchean ninguno (antes, sin anclar, un patrón como /(\d+)\s*m/ podía
+// encontrar "60 m" dentro de basura arbitraria y aceptarla igual).
+function spaDurationMinutes(txt) {
+  const t = String(txt || '').trim().toLowerCase();
+  if (!t) return 0;
+  let m = t.match(/^(\d+)$/);
+  if (m) return +m[1];
+  m = t.match(/^(\d+)\s*(?:min|mins|minuto|minutos)$/);
+  if (m) return +m[1];
+  m = t.match(/^(\d+)\s*(?:h|hora|horas)$/);
+  if (m) return (+m[1]) * 60;
+  m = t.match(/^(\d+)\s*(?:h|hora|horas)\s+(\d+)$/);
+  if (m) return (+m[1]) * 60 + (+m[2]);
+  return 0;
+}
+
 function normalizeReservationInterval(v) {
   const n = parseInt(v, 10);
   return Number.isFinite(n) && n >= 5 && n <= 240 && n % 5 === 0 ? n : 15;
@@ -118,6 +141,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // módulo compartido en este proyecto sin build step.
 const LANGUAGE_CODES = ['es', 'en', 'pt', 'fr'];
 const PHONE_COUNTRY_CODES = ['US', 'MX', 'CL', 'AR', 'CO', 'PE', 'BR', 'ES', 'GB', 'CA'];
+// Único mapa país -> código de marcado compartido en el backend. Antes
+// phoneCountry y phoneCountryCode se validaban por separado (cada uno con su
+// propia forma), así que "CL" + "+1" pasaba aunque Chile no sea +1. Solo se
+// exige la correspondencia para templateId === 'spa' (ver missingTemplateFields);
+// no cambia nada para restaurante, barbería ni el formulario legado.
+const PHONE_DIAL_CODES = { US: '+1', CA: '+1', MX: '+52', CL: '+56', AR: '+54', CO: '+57', PE: '+51', BR: '+55', ES: '+34', GB: '+44' };
 const TIME_RE = /^\d{2}:\d{2}$/;
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const DAY_LABELS = { monday: 'Lunes', tuesday: 'Martes', wednesday: 'Miércoles', thursday: 'Jueves', friday: 'Viernes', saturday: 'Sábado', sunday: 'Domingo' };
@@ -241,6 +270,35 @@ function missingTemplateFields(template, values) {
     const buffer = Number(values.bufferMinutes);
     if (!Number.isFinite(capacity) || capacity < 1 || capacity > 100) missing.push('capacityPerSlot');
     if (!Number.isInteger(buffer) || buffer < 0 || buffer > 240) missing.push('bufferMinutes');
+
+    // El código de marcado debe corresponder al país declarado — antes se
+    // validaban por separado (cada uno con su propia forma), así que
+    // phoneCountry:"CL" + phoneCountryCode:"+1" pasaba sin error.
+    if (values.phoneCountry && values.phoneCountryCode && PHONE_DIAL_CODES[values.phoneCountry] !== values.phoneCountryCode) {
+      missing.push('phoneCountryCode');
+    }
+    // Longitud del número ya normalizado (solo dígitos): el frontend exige
+    // 6-14, pero antes el backend solo comprobaba que existiera algún valor.
+    if (values.phoneNumber && (values.phoneNumber.length < 6 || values.phoneNumber.length > 14)) {
+      missing.push('phone');
+    }
+
+    // Duración de cada servicio: obligatoria, 1-1440 minutos. Antes solo se
+    // exigía que service.duracion fuera una cadena no vacía — un POST
+    // directo con duracion:"pronto" pasaba la validación y luego
+    // durationFor() en api/reservations.js silenciosamente la leía como 0.
+    // Se valida con spaDurationMinutes(), el mismo parser que duracionMin()
+    // en api/reservations.js interpretará en tiempo real ("60", "60 min",
+    // "1 hora" son formatos válidos ahí) — validar con Number.isInteger()
+    // puro habría rechazado "60 min", que el creador oficial vía IA
+    // (api/generate-client-config.js, ver test/template-creation.test.mjs)
+    // ya envía legítimamente hoy. "pronto", "60abc", "10.5", "-1" y "" siguen
+    // rechazándose porque ninguno matchea ningún patrón reconocido.
+    const invalidDuration = values.services.some((service) => {
+      const n = spaDurationMinutes(service.duracion);
+      return n < 1 || n > 1440;
+    });
+    if (invalidDuration && !missing.includes('services')) missing.push('services');
   }
   return missing;
 }
@@ -429,21 +487,37 @@ export default async function handler(req, res) {
       ? String(phoneCountry).toUpperCase() : null;
     const phoneCountryCodeSafe = phoneCountrySafe && /^\+\d{1,4}$/.test(String(phoneCountryCode || ''))
       ? String(phoneCountryCode) : null;
-    // Solo dígitos (nunca confiar en que el navegador ya lo saneó), y si el
-    // número trae el código de país pegado adelante (el admin lo pegó dentro
-    // del campo), se recorta para no duplicarlo en whatsapp = code + number.
-    let phoneNumberSafe = phoneNumber != null ? String(phoneNumber).replace(/[^0-9]/g, '').slice(0, 30) : '';
-    if (phoneCountryCodeSafe) {
-      const codeDigits = phoneCountryCodeSafe.replace(/[^0-9]/g, '');
-      if (codeDigits && phoneNumberSafe.startsWith(codeDigits) && phoneNumberSafe.length > codeDigits.length) {
-        phoneNumberSafe = phoneNumberSafe.slice(codeDigits.length);
+    // Un número local puede empezar legítimamente con el mismo dígito que el
+    // código de país (ej. +1 y un número de EE. UU. que empieza en "1") —
+    // recortar por startsWith(codeDigits) a ciegas le comía un dígito real.
+    // Solo se recorta el código cuando el texto original indica explícitamente
+    // que es un número internacional completo: empieza con "+" o con "00".
+    // Misma regla que normalizePhoneNumber() en admin.html, server-side.
+    let phoneNumberSafe = '';
+    if (phoneNumber != null) {
+      const rawPhoneStr = String(phoneNumber).trim();
+      let digits = rawPhoneStr.replace(/[^0-9]/g, '');
+      let isInternational = false;
+      if (/^\+/.test(rawPhoneStr)) {
+        isInternational = true;
+      } else if (/^00/.test(rawPhoneStr)) {
+        isInternational = true;
+        digits = digits.replace(/^00/, '');
       }
+      if (isInternational && phoneCountryCodeSafe) {
+        const codeDigits = phoneCountryCodeSafe.replace(/[^0-9]/g, '');
+        if (codeDigits && digits.startsWith(codeDigits) && digits.length > codeDigits.length) {
+          digits = digits.slice(codeDigits.length);
+        }
+      }
+      phoneNumberSafe = digits.slice(0, 30);
     }
     const notificationEmailsSafe = normalizeNotificationEmails(notificationEmails);
 
     const missingTemplate = missingTemplateFields(template, {
       businessName: String(businessName || '').trim(),
       address: String(address || '').trim(),
+      phoneCountry: phoneCountrySafe,
       phoneCountryCode: phoneCountryCodeSafe,
       phoneNumber: phoneNumberSafe,
       ownerEmail: String(ownerEmail || '').trim(),
