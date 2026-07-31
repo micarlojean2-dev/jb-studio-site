@@ -91,22 +91,49 @@ function restaurantNormalPreference(client, messages) {
 
 // Idioma fijado por el negocio, no por el modelo ni por quien escribe: se usa
 // tanto en el prompt base como al reforzarlo durante una reserva activa.
-function langDirectiveFor(client) {
-  return client.language === 'en'
+function isSpaBilingual(client) {
+  return client.templateId === 'spa' && Array.isArray(client.languages) && client.languages.includes('es') && client.languages.includes('en');
+}
+
+function detectLanguage(text) {
+  const value = String(text || '').toLowerCase().trim();
+  if (!value) return 'es';
+  const english = /\b(?:hello|hi|please|thanks?|thank you|i(?:'m| am| want| would| need| have| can)|appointment|book(?:ing)?|cancel|service|today|tomorrow|for|with|the|and)\b/i;
+  const spanish = /[áéíóúñ¿¡]|\b(?:hola|buenas|gracias|quiero|quisiera|necesito|cita|reservar|cancelar|servicio|hoy|mañana|para|con|el|la|y)\b/i;
+  if (english.test(value) && !spanish.test(value)) return 'en';
+  return 'es';
+}
+
+function isMeaningfulMessage(text) {
+  return /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(String(text || ''));
+}
+
+function languageForMessages(client, messages) {
+  if (!isSpaBilingual(client)) return client.language === 'en' ? 'en' : 'es';
+  const firstUser = messages.find(message => message.role === 'user' && isMeaningfulMessage(message.content));
+  return detectLanguage(firstUser?.content);
+}
+
+function langDirectiveFor(client, language) {
+  const activeLanguage = language || (client.language === 'en' ? 'en' : 'es');
+  return activeLanguage === 'en'
     ? 'LANGUAGE: Always reply in English, in every message, regardless of the language the customer writes in. Never switch languages.'
     : 'IDIOMA: Responde SIEMPRE en español, en todos los mensajes, sin importar en qué idioma te escriban. Nunca cambies de idioma.';
 }
 
-function buildSystemPrompt(basePrompt, client, media) {
+function buildSystemPrompt(basePrompt, client, media, activeLanguage) {
   const tz   = tzOf(client);
   const now  = new Date();
-  const days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const days = activeLanguage === 'en'
+    ? ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    : ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
   // El día de la semana también hay que sacarlo en la zona del negocio: cerca
   // de medianoche, UTC va un día por delante o por detrás.
   const localISO = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
   const day  = days[new Date(localISO + 'T12:00:00Z').getUTCDay()];
-  const date = now.toLocaleDateString('es-ES', { timeZone: tz, day: 'numeric', month: 'long', year: 'numeric' });
-  const time = now.toLocaleTimeString('es-ES', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+  const locale = activeLanguage === 'en' ? 'en-US' : 'es-ES';
+  const date = now.toLocaleDateString(locale, { timeZone: tz, day: 'numeric', month: 'long', year: 'numeric' });
+  const time = now.toLocaleTimeString(locale, { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: activeLanguage === 'en' });
 
   // La personalidad vive aquí, no en el prompt de cada cliente, para que la
   // hereden también los chatbots creados antes de este cambio. El prompt del
@@ -115,7 +142,7 @@ function buildSystemPrompt(basePrompt, client, media) {
   // La interfaz genera los textos críticos (resumen, botones, avisos) en el
   // idioma del negocio, y una respuesta del modelo en otro idioma rompería la
   // experiencia.
-  const langDirective = langDirectiveFor(client);
+  const langDirective = langDirectiveFor(client, activeLanguage);
 
   const header = `${langDirective}
 
@@ -280,6 +307,7 @@ export default async function handler(req, res) {
   try {
     const client = await redis.get(`client:${clientId}`);
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    const activeLanguage = languageForMessages(client, messages);
 
     // Paid clients answer normally. An unpaid one only answers when the
     // caller presents a valid preview token minted for this exact client
@@ -295,7 +323,7 @@ export default async function handler(req, res) {
     if (!client.active && !previewOk) {
       return res.status(200).json({
         error:   'inactive',
-        message: client.language === 'en'
+        message: activeLanguage === 'en'
           ? 'This assistant is temporarily out of service. Please contact the business directly.'
           : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio.',
       });
@@ -307,7 +335,7 @@ export default async function handler(req, res) {
     // modelo arranca igualmente el flujo y le pide los datos a alguien para
     // nada. Se le dice aquí, no reescribiendo el prompt guardado.
     const media = await confirmedMedia(clientId);
-    let systemPrompt = buildSystemPrompt(client.prompt, client, media);
+    let systemPrompt = buildSystemPrompt(client.prompt, client, media, activeLanguage);
 
     // Modo reserva: el frontend manda el estado estructurado (lo capturado y
     // lo que falta) y el modelo genera la respuesta conversacional. Así la
@@ -324,7 +352,7 @@ export default async function handler(req, res) {
         : '(todavía nada)';
       systemPrompt += `
 
-${langDirectiveFor(client)}
+${langDirectiveFor(client, activeLanguage)}
 
 ESTÁS AYUDANDO A AGENDAR UNA CITA AHORA MISMO.
 
@@ -479,4 +507,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor };
+export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages };

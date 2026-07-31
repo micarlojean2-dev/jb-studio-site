@@ -955,16 +955,28 @@ window.JBChatCore = (function () {
   // resumen sin responder con el aviso de "toca el botón" — en su lugar volvía
   // a mostrar el resumen entero. [BUG-CONFIRMACION-VARIANTE]
   var CONFIRMACIONES = /^(si|si todo correcto|si todo bien|si esta bien|si correcto|si confirma|si confirmar|si confirmo|si adelante|si dale|confirmar|confirma|confirma la cita|confirmame la cita|confirmo|confirmo la cita|quiero confirmar|hazla|todo correcto|todo esta correcto|todo bien|todo esta bien|esta bien|esta correcto|correcto|adelante|dale|de acuerdo|ok|okay|listo|perfecto|si por favor)$/;
-  function esConfirmacion(t) {
+  var CONFIRMACIONES_EN = /^(yes|yes confirm|yes confirm it|yes confirm my appointment|confirm|confirm it|confirm my appointment|i confirm|please confirm|go ahead|that is correct|everything is correct|everything looks good|looks good|all good|correct|okay|ok|sure)$/;
+  function esConfirmacion(t, lang) {
     var s = String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
     if (!s) return false;
     if (/\b(cambiar|corregir|equivoq|mejor|otra|otro|modif|no |cancel)\b/.test(s)) return false;
-    return CONFIRMACIONES.test(s);
+    return CONFIRMACIONES.test(s) || (lang === 'en' && CONFIRMACIONES_EN.test(s));
+  }
+
+  // Deterministic, deliberately conservative detector for the official Spa's
+  // first customer message. Ambiguous text retains the Spanish default.
+  function detectarIdioma(texto) {
+    var s = String(texto || '').toLowerCase().trim();
+    if (!s) return 'es';
+    var ingles = /\b(?:hello|hi|please|thanks?|thank you|i(?: m| am| want| would| need| have| can)|appointment|book(?:ing)?|cancel|service|today|tomorrow|for|with|the|and)\b/i;
+    var espanol = /[áéíóúñ¿¡]|\b(?:hola|buenas|gracias|quiero|quisiera|necesito|cita|reservar|cancelar|servicio|hoy|mañana|para|con|el|la|y)\b/i;
+    return ingles.test(s) && !espanol.test(s) ? 'en' : 'es';
   }
 
   return {
     esConfirmacion: esConfirmacion,
+    detectarIdioma: detectarIdioma,
     esSinPeticionEspecial: esSinPeticionEspecial,
     BOOKING_STEPS: BOOKING_STEPS,
     CANCEL_STEPS: CANCEL_STEPS,

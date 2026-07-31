@@ -22,6 +22,7 @@ const widget = readFileSync(join(__dirname, '..', 'widget.js'), 'utf8');
 let fallos = 0;
 const ok = (cond, msg) => { if (cond) console.log('  ✓', msg); else { console.error('  ✗', msg); fallos++; } };
 const C = (t) => CORE.esConfirmacion(t);
+const EN = (t) => CORE.esConfirmacion(t, 'en');
 
 console.log('H1. Confirmaciones claras → true');
 ['sí', 'si', 'confirmo', 'confirmar', 'dale', 'correcto', 'ok', 'okay', 'perfecto',
@@ -57,11 +58,23 @@ console.log('H5. "no" nunca cuela como confirmación aunque contenga letras de "
   ok(C('no, cambialo') === false, '"no, cambialo" → false');
 }
 
-console.log('H6. El modo de confirmación se conserva al recargar');
+console.log('H6. Inglés solo se habilita cuando el llamador lo pide');
+['yes', 'yes, confirm it', 'yes, confirm my appointment', 'please confirm', 'everything looks good', 'go ahead'].forEach((t) => {
+  ok(EN(t) === true, `"${t}" confirma en inglés`);
+  ok(C(t) === false, `"${t}" no cambia el comportamiento español`);
+});
+
+console.log('H7. Detector Spa controlado');
+ok(CORE.detectarIdioma('I want to book an appointment tomorrow') === 'en', 'detecta mensaje inglés');
+ok(CORE.detectarIdioma('Quiero reservar una cita mañana') === 'es', 'detecta mensaje español');
+ok(CORE.detectarIdioma('hello, gracias') === 'es', 'texto mixto conserva español seguro');
+
+console.log('H8. El modo de confirmación se conserva al recargar');
 for (const [name, source] of [['asistente', assistant], ['widget', widget]]) {
   ok(source.includes('awaitingConfirmation: bookingReview'), `${name} persiste awaitingConfirmation`);
   ok(source.includes('bookingReview = true;   // solo el botón') && source.includes('bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva\n    save();'), `${name} guarda el resumen mostrado`);
-  ok(source.includes('if (CORE.esConfirmacion(t)) submitBooking();'), `${name} confirma por texto sin llegar al modelo`);
+  ok(source.includes('if (CORE.esConfirmacion(t, lang)) submitBooking();'), `${name} confirma por texto sin llegar al modelo`);
+  ok(source.includes('function lockLanguage(text)') && source.includes("CORE.detectarIdioma(text)"), `${name} bloquea el idioma Spa por código`);
 }
 
 console.log(fallos === 0 ? '\n✅ QA confirmación: todas pasan' : `\n❌ QA confirmación: ${fallos} fallo(s)`);

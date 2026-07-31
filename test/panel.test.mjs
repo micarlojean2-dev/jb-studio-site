@@ -93,6 +93,18 @@ console.log('8. La tarjeta solo muestra tiempo restante en estados próximos');
   ok(cancelled && !cancelled.textContent.includes('⏳'), 'cancelled reservation does not show remaining time');
 }
 
+console.log('9. Selector y traducción del panel');
+{
+  ok(doc.getElementById('login-language') && doc.getElementById('panel-language'), 'hay selector accesible en login y cabecera');
+  window.setPanelLanguage('en');
+  ok(doc.getElementById('agenda-title').textContent === 'Your appointments', 'traduce encabezado estático al inglés');
+  window.allData = [];
+  window.activeFilter = 'proximas';
+  window.render();
+  ok(doc.getElementById('sheet').textContent.includes('No upcoming appointments.'), 'traduce estado vacío dinámico al inglés');
+  window.setPanelLanguage('es');
+}
+
 console.log('');
 if (fallos) { console.error(`❌ ${fallos} aserción(es) fallaron`); process.exit(1); }
 console.log('✅ Panel de reservas verificado (peticiones especiales, iconos, badge, fecha)');

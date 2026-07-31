@@ -141,6 +141,24 @@
 
   // ── State ────────────────────────────────────────────────────────────────
   var cfg     = { businessName: 'Chat', color: '#1a4a2e', language: 'es', active: true };
+  var LANGUAGE_SESS = SESS + '_language';
+
+  function isSpaBilingual() {
+    return cfg.templateId === 'spa' && Array.isArray(cfg.languages) && cfg.languages.indexOf('es') !== -1 && cfg.languages.indexOf('en') !== -1;
+  }
+  function lockLanguage(text) {
+    if (!isSpaBilingual() || !/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(String(text || ''))) return;
+    var locked = '';
+    try { locked = sessionStorage.getItem(LANGUAGE_SESS) || ''; } catch (e) {}
+    if (locked !== 'en' && locked !== 'es') {
+      locked = CORE.detectarIdioma(text);
+      try { sessionStorage.setItem(LANGUAGE_SESS, locked); } catch (e) {}
+    }
+    cfg.language = locked;
+  }
+  function isCancellationRequest(text) {
+    return CANCEL_TRIGGERS.test(text) || (isSpaBilingual() && /\bi want to cancel my appointment\b/i.test(text));
+  }
 
   // Feature gating — legacy clients (no cfg.features at all) keep every
   // behavior enabled, exactly like before this was added. Only a client
@@ -470,6 +488,11 @@
     .then(function (d) {
       if (!d) return;
       Object.assign(cfg, d);
+      if (isSpaBilingual()) {
+        var firstCustomer = msgs.find(function (message) { return message.role === 'user' && /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(String(message.content || '')); });
+        if (firstCustomer) lockLanguage(firstCustomer.content);
+        else { try { var savedLanguage = sessionStorage.getItem(LANGUAGE_SESS); if (savedLanguage === 'en' || savedLanguage === 'es') cfg.language = savedLanguage; } catch (e) {} }
+      }
       paint();
       // Snippet antiguo sin data-position: respetamos lo guardado del cliente.
       if (!position && d.widgetPosition) {
@@ -1254,6 +1277,7 @@ function extractBooking(text, menu) {
     if (busy || !text.trim()) return;
 
     var t    = text.trim();
+    lockLanguage(t);
     var lang = cfg.language === 'en' ? 'en' : 'es';
 
     // ── Active cancel flow: collect next field ───────────────────────────
@@ -1293,7 +1317,7 @@ function extractBooking(text, menu) {
     if (activeReservation && bookingStep === 0 && featureOn('reservations')) {
       var preARW = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
       var looksNewW = CORE.pareceReserva(t, preARW) || BOOKING_TRIGGERS.test(t);
-      if (CANCEL_TRIGGERS.test(t)) {
+      if (isCancellationRequest(t)) {
         dupPending = false;
         if (accionesBotones && accionesBotones.parentNode) accionesBotones.remove();
         accionesBotones = null;
@@ -1338,7 +1362,7 @@ function extractBooking(text, menu) {
       // botón en vez de dar la reserva por hecha. [BUG-CONFIRMACION-TEXTO]
       if (bookingReview || (function () { try { return JSON.parse(sessionStorage.getItem(BOOKING_SESS) || '{}').awaitingConfirmation === true; } catch (e) { return false; } })()) {
         addMsg('user', t);
-        if (CORE.esConfirmacion(t)) submitBooking();
+        if (CORE.esConfirmacion(t, lang)) submitBooking();
         else if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);
         else showBookingSummary();
         return;
@@ -1390,7 +1414,7 @@ function extractBooking(text, menu) {
     }
 
     // ── Cancel intent detected: start flow ──────────────────────────────
-    if (featureOn('cancellation') && CANCEL_TRIGGERS.test(t)) {
+    if (featureOn('cancellation') && isCancellationRequest(t)) {
       addMsg('user', t);
       cancelStep = 1;
       var cancelIntro = lang === 'en'

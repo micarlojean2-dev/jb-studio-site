@@ -82,11 +82,20 @@ export function createClientConfigHandler({ redis } = {}) {
       const imageUrl = menuImageUrls.get(itemId);
       return imageUrl ? { ...item, imagen: imageUrl } : item;
     }) : [];
+    const languages = Array.isArray(client.languages)
+      ? client.languages.filter(language => ['es', 'en', 'pt', 'fr'].includes(language))
+      : [];
+    const language = client.language === 'en' ? 'en' : 'es';
+    if (!languages.length) languages.push(language);
+    const primaryLanguage = languages.includes(client.primaryLanguage) ? client.primaryLanguage : languages[0];
     const out = {
       businessName: client.businessName,
       templateId:   client.templateId || null,
       color:        client.color    || '#1a4a2e',
-      language:     client.language || 'es',
+      language,
+      // Additive for older consumers: `language` remains the legacy default.
+      languages,
+      primaryLanguage,
       active:       client.active !== false,
       menu,
       // Legacy clients have neither field stored: they keep the original

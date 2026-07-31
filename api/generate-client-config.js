@@ -453,6 +453,11 @@ function normalizeTemplateConfig(config, template, raw) {
   }
   config.template = { id: template.id, version: template.version, requiredFields: template.requiredFields };
   config.templateData = sanitizeTemplateData(raw.templateData, template);
+  if (template.id === 'spa') {
+    // Official Spa drafts are bilingual by product policy, never by model choice.
+    config.business.languages = ['es', 'en'];
+    config.business.primaryLanguage = 'es';
+  }
   config.systemPrompt = buildTemplatePrompt(config, template);
   return config;
 }

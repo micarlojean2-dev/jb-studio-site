@@ -4,7 +4,7 @@
   <script src="/sentry-init.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Citas — JB Studio</title>
+  <title>Appointments — JB Studio</title>
   <meta name="robots" content="noindex, nofollow">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -95,6 +95,7 @@
     .login-go { width: 100%; margin-top: 10px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 12px; }
     .login-go:disabled { opacity: .6; cursor: not-allowed; }
     .login-err { display: none; color: var(--cancel); font-size: 13px; margin-top: 10px; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
     /* ── Agenda profesional ── */
     :root { --bg:#f2f5f3; --card-soft:#f8faf9; --line:#dce5e0; --ink:#17251e; --muted:#66736c; --accent:#17633f; --accent-dark:#10432c; --today:#a86611; --urgent:#b64043; --reprogrammed:#3769a7; --radius:18px; --ease-out:cubic-bezier(.23,1,.32,1); }
@@ -135,11 +136,13 @@
   <!-- Login -->
   <div id="login">
     <div class="login-card">
-      <h2>Tus citas</h2>
-      <p id="login-desc">Introduce tu clave de acceso para ver las citas de tu negocio.</p>
+      <label for="login-language" data-i18n="language">Idioma</label>
+      <select id="login-language" class="hdr-btn" onchange="setPanelLanguage(this.value)" aria-label="Language selector"><option value="es">Español</option><option value="en">English</option></select>
+      <h2 data-i18n="myAppointments">Tus citas</h2>
+      <p id="login-desc" data-i18n="loginDesc">Introduce tu clave de acceso para ver las citas de tu negocio.</p>
       <input class="login-inp" id="token-inp" type="password" placeholder="Clave de acceso" autocomplete="off">
-      <button class="login-go" id="login-btn" onclick="doLogin()">Entrar</button>
-      <div class="login-err" id="login-err">Clave incorrecta. Inténtalo de nuevo.</div>
+      <button class="login-go" id="login-btn" onclick="doLogin()" data-i18n="enter">Entrar</button>
+      <div class="login-err" id="login-err" data-i18n="loginError">Clave incorrecta. Inténtalo de nuevo.</div>
     </div>
   </div>
 
@@ -147,33 +150,35 @@
   <div id="panel" style="display:none">
     <div class="hdr">
       <span class="hdr-biz" id="hdr-biz"></span>
-      <button class="hdr-btn" id="refresh-btn" onclick="loadReservations()">↻ Actualizar</button>
-      <button class="hdr-btn ghost" onclick="logout()">Salir</button>
+      <label for="panel-language" class="sr-only" data-i18n="language">Idioma</label>
+      <select id="panel-language" class="hdr-btn" onchange="setPanelLanguage(this.value)" aria-label="Language selector"><option value="es">Español</option><option value="en">English</option></select>
+      <button class="hdr-btn" id="refresh-btn" onclick="loadReservations()" data-i18n="refresh">↻ Actualizar</button>
+      <button class="hdr-btn ghost" onclick="logout()" data-i18n="logout">Salir</button>
     </div>
     <div class="wrap">
       <section class="agenda-intro" aria-labelledby="agenda-title">
         <div>
-          <div class="eyebrow">Agenda del negocio</div>
-          <h1 id="agenda-title">Tus citas</h1>
+          <div class="eyebrow" data-i18n="businessSchedule">Agenda del negocio</div>
+          <h1 id="agenda-title" data-i18n="myAppointments">Tus citas</h1>
           <div class="sub" id="count">—</div>
         </div>
-        <div class="agenda-live">Actualización automática</div>
+        <div class="agenda-live" data-i18n="autoRefresh">Actualización automática</div>
       </section>
 
-      <section class="summary-grid" aria-label="Resumen de agenda">
-        <article class="summary-card is-today"><span class="summary-value" id="summary-today">0</span><span class="summary-label">Citas de hoy</span></article>
-        <article class="summary-card is-upcoming"><span class="summary-value" id="summary-upcoming">0</span><span class="summary-label">Próximas citas</span></article>
-        <article class="summary-card is-rescheduled"><span class="summary-value" id="summary-rescheduled">0</span><span class="summary-label">Reprogramadas</span></article>
-        <article class="summary-card is-cancelled"><span class="summary-value" id="summary-cancelled">0</span><span class="summary-label">Canceladas</span></article>
+      <section class="summary-grid" aria-label="Schedule summary">
+        <article class="summary-card is-today"><span class="summary-value" id="summary-today">0</span><span class="summary-label" data-i18n="todayAppointments">Citas de hoy</span></article>
+        <article class="summary-card is-upcoming"><span class="summary-value" id="summary-upcoming">0</span><span class="summary-label" data-i18n="upcomingAppointments">Próximas citas</span></article>
+        <article class="summary-card is-rescheduled"><span class="summary-value" id="summary-rescheduled">0</span><span class="summary-label" data-i18n="rescheduled">Reprogramadas</span></article>
+        <article class="summary-card is-cancelled"><span class="summary-value" id="summary-cancelled">0</span><span class="summary-label" data-i18n="cancelled">Canceladas</span></article>
       </section>
 
       <section aria-labelledby="list-title">
         <div class="agenda-list-header">
-          <h2 id="list-title">Agenda</h2>
+          <h2 id="list-title" data-i18n="schedule">Agenda</h2>
           <div class="filters">
-            <button class="filter-btn active" data-f="proximas" onclick="setFilter('proximas',this)">Próximas</button>
-            <button class="filter-btn" data-f="canceladas" onclick="setFilter('canceladas',this)">Canceladas</button>
-            <button class="filter-btn" data-f="reprogramadas" onclick="setFilter('reprogramadas',this)">Reprogramadas</button>
+            <button class="filter-btn active" data-f="proximas" onclick="setFilter('proximas',this)" data-i18n="upcoming">Próximas</button>
+            <button class="filter-btn" data-f="canceladas" onclick="setFilter('canceladas',this)" data-i18n="cancelled">Canceladas</button>
+            <button class="filter-btn" data-f="reprogramadas" onclick="setFilter('reprogramadas',this)" data-i18n="rescheduled">Reprogramadas</button>
           </div>
         </div>
         <div class="sheet" id="sheet"></div>
@@ -181,7 +186,7 @@
       <div class="updated" id="updated"></div>
 
       <section class="activity" aria-labelledby="activity-title">
-        <div class="activity-head"><h2 id="activity-title">Actividad reciente</h2><p>Últimos cambios</p></div>
+        <div class="activity-head"><h2 id="activity-title" data-i18n="recentActivity">Actividad reciente</h2><p data-i18n="latestChanges">Últimos cambios</p></div>
         <div class="activity-list" id="activity-list"></div>
       </section>
     </div>
@@ -214,13 +219,34 @@
   var activeFilter = 'proximas';
   var refreshTimer = null;
   var animateCards = true;
+  var LANGUAGE_STORE_KEY = 'jbr_panel_language';
+  var panelLanguage = localStorage.getItem(LANGUAGE_STORE_KEY) === 'en' ? 'en' : 'es';
+  var I18N = {
+    es: { language: 'Idioma', myAppointments: 'Tus citas', loginDesc: 'Introduce tu clave de acceso para ver las citas de tu negocio.', accessKey: 'Clave de acceso', enter: 'Entrar', loginError: 'Clave incorrecta. Inténtalo de nuevo.', refresh: '↻ Actualizar', logout: 'Salir', businessSchedule: 'Agenda del negocio', autoRefresh: 'Actualización automática', todayAppointments: 'Citas de hoy', upcomingAppointments: 'Próximas citas', rescheduled: 'Reprogramadas', cancelled: 'Canceladas', schedule: 'Agenda', upcoming: 'Próximas', recentActivity: 'Actividad reciente', latestChanges: 'Últimos cambios', invalidLink: 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio', verifying: 'Verificando…', new: 'Nueva', specialRequests: 'Peticiones especiales', noSpecialRequests: 'Sin peticiones especiales', reservation: 'Reserva', time: 'Hora', datePending: 'Fecha por confirmar', people: 'Personas', table: 'Mesa', barber: 'Barbero', phone: 'Teléfono', email: 'Correo', cancelledOn: 'Cancelada', by: 'Por', before: 'Antes', noRecentActivity: 'Aún no hay actividad reciente.', customer: 'Cliente', cancelledAppointment: 'canceló una cita', rescheduledAppointment: 'reagendó una cita', createdReservation: 'creó una nueva reserva', now: 'Ahora', createdSeconds: 'Creada hace unos segundos', createdMinutes: 'Creada hace ', createdHours: 'Creada hace ', createdOn: 'Creada el ', in: 'En ', tomorrowAt: 'Mañana a las ', remaining: 'Faltan ', minute: 'minuto', minutes: 'minutos', hour: 'hora', hours: 'horas', day: 'día', days: 'días', appointment: 'cita', appointments: 'citas', cancelledSuffix: 'canceladas', upcomingSuffix: 'próximas', emptyUpcoming: 'No hay citas próximas.', emptyCancelled: 'No hay citas canceladas.', updated: 'Actualizado ' },
+    en: { language: 'Language', myAppointments: 'Your appointments', loginDesc: 'Enter your access key to view your business appointments.', accessKey: 'Access key', enter: 'Sign in', loginError: 'Incorrect access key. Please try again.', refresh: '↻ Refresh', logout: 'Sign out', businessSchedule: 'Business schedule', autoRefresh: 'Auto-refresh', todayAppointments: "Today's appointments", upcomingAppointments: 'Upcoming appointments', rescheduled: 'Rescheduled', cancelled: 'Cancelled', schedule: 'Schedule', upcoming: 'Upcoming', recentActivity: 'Recent activity', latestChanges: 'Latest changes', invalidLink: 'Invalid link. Access jbstudio.app/reservas/your-business', verifying: 'Verifying…', new: 'New', specialRequests: 'Special requests', noSpecialRequests: 'No special requests', reservation: 'Reservation', time: 'Time', datePending: 'Date to be confirmed', people: 'People', table: 'Table', barber: 'Barber', phone: 'Phone', email: 'Email', cancelledOn: 'Cancelled', by: 'By', before: 'Before', noRecentActivity: 'No recent activity yet.', customer: 'Customer', cancelledAppointment: 'cancelled an appointment', rescheduledAppointment: 'rescheduled an appointment', createdReservation: 'created a new reservation', now: 'Now', createdSeconds: 'Created seconds ago', createdMinutes: 'Created ', createdHours: 'Created ', createdOn: 'Created on ', in: 'In ', tomorrowAt: 'Tomorrow at ', remaining: 'Remaining: ', minute: 'minute', minutes: 'minutes', hour: 'hour', hours: 'hours', day: 'day', days: 'days', appointment: 'appointment', appointments: 'appointments', cancelledSuffix: 'cancelled', upcomingSuffix: 'upcoming', emptyUpcoming: 'No upcoming appointments.', emptyCancelled: 'No cancelled appointments.', updated: 'Updated ' }
+  };
+  function tr(key) { return I18N[panelLanguage][key] || key; }
+  function setPanelLanguage(language) {
+    panelLanguage = language === 'en' ? 'en' : 'es';
+    localStorage.setItem(LANGUAGE_STORE_KEY, panelLanguage);
+    document.documentElement.lang = panelLanguage;
+    document.title = panelLanguage === 'en' ? 'Appointments — JB Studio' : 'Citas — JB Studio';
+    document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = tr(el.dataset.i18n); });
+    document.getElementById('token-inp').placeholder = tr('accessKey');
+    document.getElementById('login-language').value = panelLanguage;
+    document.getElementById('panel-language').value = panelLanguage;
+    document.querySelector('.summary-grid').setAttribute('aria-label', panelLanguage === 'en' ? 'Schedule summary' : 'Resumen de agenda');
+    if (!clientId) document.getElementById('login-desc').textContent = tr('invalidLink');
+    if (allData.length || activitiesData.length) render();
+  }
 
   if (!clientId) {
-    document.getElementById('login-desc').textContent = 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio';
+    document.getElementById('login-desc').textContent = tr('invalidLink');
     document.getElementById('login-btn').disabled = true;
   }
 
   window.addEventListener('DOMContentLoaded', function () {
+    setPanelLanguage(panelLanguage);
     var frag = '';
     if (window.location.hash && window.location.hash.indexOf('t=') !== -1) {
       frag = decodeURIComponent(window.location.hash.replace(/^#t=/, ''));
@@ -235,7 +261,7 @@
     var t = document.getElementById('token-inp').value.trim();
     if (!t) return;
     var b = document.getElementById('login-btn');
-    b.disabled = true; b.textContent = 'Verificando…';
+    b.disabled = true; b.textContent = tr('verifying');
     document.getElementById('login-err').style.display = 'none';
     tryToken(t);
   }
@@ -267,7 +293,7 @@
       .catch(function (err) {
         localStorage.removeItem(STORE_KEY);
         var b = document.getElementById('login-btn');
-        b.disabled = false; b.textContent = 'Entrar';
+        b.disabled = false; b.textContent = tr('enter');
         if (err.message === 'unauthorized') document.getElementById('login-err').style.display = 'block';
       });
   }
@@ -306,7 +332,7 @@
     document.getElementById('login').style.display = 'flex';
     document.getElementById('token-inp').value = '';
     var b = document.getElementById('login-btn');
-    b.disabled = false; b.textContent = 'Entrar';
+    b.disabled = false; b.textContent = tr('enter');
   }
 
   function setFilter(f, btn) {
@@ -323,9 +349,9 @@
 
   // Estados que ve el dueño: Nueva / Reprogramada / Cancelada. Nada más.
   function estadoInfo(r) {
-    if (r.estado === 'cancelada' || r.estado === 'rechazada') return { cls: 'cancelada', txt: 'Cancelada' };
-    if (r.estado === 'reprogramada') return { cls: 'reprogramada', txt: 'Reprogramada' };
-    return { cls: 'nueva', txt: 'Nueva' };
+    if (r.estado === 'cancelada' || r.estado === 'rechazada') return { cls: 'cancelada', txt: tr('cancelled') };
+    if (r.estado === 'reprogramada') return { cls: 'reprogramada', txt: tr('rescheduled') };
+    return { cls: 'nueva', txt: tr('new') };
   }
 
   function filtered() {
@@ -343,20 +369,19 @@
     var d = new Date(iso);
     if (isNaN(d.getTime())) return '';
     var min = Math.floor((Date.now() - d.getTime()) / 60000);
-    if (min < 1)  return 'Creada hace unos segundos';
-    if (min < 60) return 'Creada hace ' + min + (min === 1 ? ' minuto' : ' minutos');
+    if (min < 1)  return tr('createdSeconds');
+    if (min < 60) return tr('createdMinutes') + min + ' ' + tr(min === 1 ? 'minute' : 'minutes') + (panelLanguage === 'en' ? ' ago' : '');
     var h = Math.floor(min / 60);
-    if (h < 24)   return 'Creada hace ' + h + (h === 1 ? ' hora' : ' horas');
-    var meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    var fecha = d.getDate() + ' ' + meses[d.getMonth()] + ' ' + d.getFullYear();
-    return 'Creada el ' + fecha + ' · ' + d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+    if (h < 24)   return tr('createdHours') + h + ' ' + tr(h === 1 ? 'hour' : 'hours') + (panelLanguage === 'en' ? ' ago' : '');
+    var fecha = d.toLocaleDateString(panelLanguage === 'en' ? 'en-US' : 'es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+    return tr('createdOn') + fecha + ' · ' + d.toLocaleTimeString(panelLanguage === 'en' ? 'en-US' : 'es-ES', { hour: '2-digit', minute: '2-digit' });
   }
 
   function fechaLegible(fechaISO, fallback) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fechaISO || ''))) return fallback || '';
     var d = new Date(fechaISO + 'T12:00:00Z');
     if (isNaN(d.getTime())) return fallback || '';
-    var text = new Intl.DateTimeFormat('es-ES', {
+    var text = new Intl.DateTimeFormat(panelLanguage === 'en' ? 'en-US' : 'es-ES', {
       weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC'
     }).format(d);
     return text.charAt(0).toUpperCase() + text.slice(1);
@@ -414,12 +439,12 @@
 
     if (days === 0) {
       var minutes = Math.max(1, Math.ceil((when - Date.now()) / 60000));
-      if (minutes < 60) return '⏳ En ' + minutes + (minutes === 1 ? ' minuto' : ' minutos');
+      if (minutes < 60) return '⏳ ' + tr('in') + minutes + ' ' + tr(minutes === 1 ? 'minute' : 'minutes');
       var hours = Math.ceil(minutes / 60);
-      return '⏳ En ' + hours + (hours === 1 ? ' hora' : ' horas');
+      return '⏳ ' + tr('in') + hours + ' ' + tr(hours === 1 ? 'hour' : 'hours');
     }
-    if (days === 1) return '⏳ Mañana a las ' + (r.hora || r.horaISO);
-    return '⏳ Faltan ' + days + (days === 1 ? ' día' : ' días');
+    if (days === 1) return '⏳ ' + tr('tomorrowAt') + (r.hora || r.horaISO);
+    return '⏳ ' + tr('remaining') + days + ' ' + tr(days === 1 ? 'day' : 'days');
   }
 
   function urgenciaCita(r) {
@@ -443,24 +468,20 @@
   function cardHTML(r) {
     var e = estadoInfo(r);
     var special = String(r.specialRequests == null ? (r.notes || '') : r.specialRequests).trim();
-    var notesHTML = '<div class="rnotes"><div class="rnotes-t">Peticiones especiales</div>' + esc(special || 'Sin peticiones especiales') + '</div>';
+    var notesHTML = '<div class="rnotes"><div class="rnotes-t">' + tr('specialRequests') + '</div>' + esc(special || tr('noSpecialRequests')) + '</div>';
     var creada = fechaCreacion(r.fechaSolicitud);
     var fecha = fechaLegible(r.fechaISO, r.fecha);
     var restante = (r.estado === 'confirmada' || r.estado === 'reprogramada') ? tiempoRestante(r) : '';
     var urgencia = urgenciaCita(r);
     return '<article class="rcard is-' + urgencia + ' is-' + e.cls + '">' +
-        '<div class="card-top"><div><h3 class="rname">' + esc(r.nombre || '—') + '</h3><div class="rservice">' + esc(r.servicio || 'Reserva') + '</div></div>' +
-        '<div class="time-block"><span class="time-label">Hora</span><span class="time-value">' + esc(r.hora || '—') + '</span></div></div>' +
-        '<div class="rdate">' + esc(fecha || 'Fecha por confirmar') + '</div>' +
+        '<div class="card-top"><div><h3 class="rname">' + esc(r.nombre || '—') + '</h3><div class="rservice">' + esc(r.servicio || tr('reservation')) + '</div></div>' +
+        '<div class="time-block"><span class="time-label">' + tr('time') + '</span><span class="time-value">' + esc(r.hora || '—') + '</span></div></div>' +
+        '<div class="rdate">' + esc(fecha || tr('datePending')) + '</div>' +
         (restante ? '<div class="rremaining">' + esc(restante) + '</div>' : '') +
         '<div class="rmeta">' +
-        fila('👥', 'Personas', r.partySize || r.personas) +
-        fila('🪑', 'Mesa', r.tablePreference) +
-        fila('✂️', 'Barbero', r.barberPreference) +
-        fila('📞', 'Teléfono', r.telefono) +
-        fila('✉️', 'Correo', r.email) +
-        (r.estado === 'cancelada' ? fila('🗓️', 'Cancelada', r.fechaCancelacion ? new Date(r.fechaCancelacion).toLocaleString('es') : '') + fila('👤', 'Por', r.cancelledBy || '') : '') +
-        (r.estado === 'reprogramada' ? fila('↔️', 'Antes', (r.fechaAnterior || '') + ' ' + (r.horaAnterior || '')) : '') +
+        fila('👥', tr('people'), r.partySize || r.personas) + fila('🪑', tr('table'), r.tablePreference) + fila('✂️', tr('barber'), r.barberPreference) + fila('📞', tr('phone'), r.telefono) + fila('✉️', tr('email'), r.email) +
+        (r.estado === 'cancelada' ? fila('🗓️', tr('cancelledOn'), r.fechaCancelacion ? new Date(r.fechaCancelacion).toLocaleString(panelLanguage === 'en' ? 'en-US' : 'es-ES') : '') + fila('👤', tr('by'), r.cancelledBy || '') : '') +
+        (r.estado === 'reprogramada' ? fila('↔️', tr('before'), (r.fechaAnterior || '') + ' ' + (r.horaAnterior || '')) : '') +
         '</div>' +
         notesHTML +
         '<div class="rfoot"><span class="estado ' + e.cls + '">' + e.txt + '</span>' +
@@ -487,26 +508,26 @@
   function renderActivity() {
     var list = document.getElementById('activity-list');
     if (!activitiesData.length) {
-      list.innerHTML = '<div class="activity-empty">Aún no hay actividad reciente.</div>';
+      list.innerHTML = '<div class="activity-empty">' + tr('noRecentActivity') + '</div>';
       return;
     }
     list.innerHTML = activitiesData.map(function (a) {
-      var name = esc(a.cliente || 'Cliente');
+      var name = esc(a.cliente || tr('customer'));
       var slot = [a.fecha, a.hora].filter(Boolean).join(' · ');
       var previousSlot = [a.prevFecha, a.prevHora].filter(Boolean).join(' · ');
       var title;
       var details = '';
 
       if (a.type === 'cancelled') {
-        title = '🔴 ' + name + ' canceló una cita';
+        title = '🔴 ' + name + ' ' + tr('cancelledAppointment');
         details = [a.servicio, slot].filter(Boolean).map(esc).join('<br>');
       } else if (a.type === 'rescheduled') {
-        title = '🔵 ' + name + ' reagendó una cita';
-        if (previousSlot) details += '<div>Antes:</div><div>' + esc(previousSlot) + '</div>';
-        if (slot) details += (details ? '<br>' : '') + '<div>Ahora:</div><div>' + esc(slot) + '</div>';
+        title = '🔵 ' + name + ' ' + tr('rescheduledAppointment');
+        if (previousSlot) details += '<div>' + tr('before') + ':</div><div>' + esc(previousSlot) + '</div>';
+        if (slot) details += (details ? '<br>' : '') + '<div>' + tr('now') + ':</div><div>' + esc(slot) + '</div>';
         if (!details && a.servicio) details = esc(a.servicio);
       } else {
-        title = '🟢 ' + name + ' creó una nueva reserva';
+        title = '🟢 ' + name + ' ' + tr('createdReservation');
         details = [a.servicio, slot].filter(Boolean).map(esc).join('<br>');
       }
 
@@ -523,18 +544,18 @@
              String(a.horaISO || '').localeCompare(String(b.horaISO || ''));
     });
     document.getElementById('count').textContent =
-      data.length + (data.length === 1 ? ' cita' : ' citas') + (activeFilter === 'canceladas' ? ' canceladas' : ' próximas');
+      data.length + ' ' + tr(data.length === 1 ? 'appointment' : 'appointments') + ' ' + tr(activeFilter === 'canceladas' ? 'cancelledSuffix' : 'upcomingSuffix');
 
     var sheet = document.getElementById('sheet');
     sheet.classList.toggle('animate-cards', animateCards);
     if (!data.length) {
-      sheet.innerHTML = '<div class="empty">No hay citas ' + (activeFilter === 'canceladas' ? 'canceladas' : 'próximas') + '.</div>';
+      sheet.innerHTML = '<div class="empty">' + tr(activeFilter === 'canceladas' ? 'emptyCancelled' : 'emptyUpcoming') + '</div>';
     } else {
       sheet.innerHTML = data.map(cardHTML).join('');
     }
     animateCards = false;
     var now = new Date();
-    document.getElementById('updated').textContent = 'Actualizado ' + now.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('updated').textContent = tr('updated') + now.toLocaleTimeString(panelLanguage === 'en' ? 'en-US' : 'es-ES', { hour: '2-digit', minute: '2-digit' });
   }
 </script>
 </body>

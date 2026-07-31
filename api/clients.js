@@ -411,8 +411,11 @@ export default async function handler(req, res) {
     // null/undefined y no se guardan campos estructurados nuevos, pero los
     // campos legados (language/whatsapp/hours) se siguen guardando igual
     // que antes más abajo.
-    const languagesSafe = sanitizeLanguages(languages);
-    const primaryLanguageSafe = languagesSafe && languagesSafe.length
+    const requestedLanguages = sanitizeLanguages(languages);
+    // The official Spa experience is intentionally bilingual. This is server
+    // owned so neither the creator model nor a browser request can override it.
+    const languagesSafe = templateIdSafe === 'spa' ? ['es', 'en'] : requestedLanguages;
+    const primaryLanguageSafe = templateIdSafe === 'spa' ? 'es' : languagesSafe && languagesSafe.length
       ? (languagesSafe.includes(String(primaryLanguage || '').toLowerCase()) ? String(primaryLanguage).toLowerCase() : languagesSafe[0])
       : null;
     const businessHoursSafe = sanitizeBusinessHours(businessHours);
@@ -469,7 +472,7 @@ export default async function handler(req, res) {
       // texto plano siga funcionando sin cambios. Si no vino estructura
       // nueva (formulario legado), se guarda lo que mandó el request como
       // siempre.
-      const languageDerived = primaryLanguageSafe || (language === 'en' ? 'en' : 'es');
+      const languageDerived = templateIdSafe === 'spa' ? 'es' : primaryLanguageSafe || (language === 'en' ? 'en' : 'es');
       const whatsappDerived = phoneCountryCodeSafe && phoneNumberSafe
         ? `${phoneCountryCodeSafe}${phoneNumberSafe}`
         : String(whatsapp || '').slice(0, 30);
