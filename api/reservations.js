@@ -291,8 +291,10 @@ function durationFor(client, servicio) {
 
 function spaBufferMinutes(client) {
   const template = client && (client.templateId || (client.config && client.config.templateId));
-  const n = parseInt(client && client.bufferMinutes, 10);
-  return template === 'spa' && [0, 15, 30, 45].includes(n) ? n : 0;
+  // Cualquier entero 0-240 (antes: solo 0/15/30/45), consistente con
+  // normalizeBufferMinutes/missingTemplateFields en api/clients.js.
+  const n = Number(client && client.bufferMinutes);
+  return template === 'spa' && Number.isInteger(n) && n >= 0 && n <= 240 ? n : 0;
 }
 
 function occupiedDurationFor(client, servicio, storedDuration) {

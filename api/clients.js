@@ -52,9 +52,13 @@ function normalizeCapacity(v) {
   return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 1;   // por defecto, uno
 }
 
+// Cualquier entero razonable entre 0 y 240 minutos (antes: solo 0/15/30/45).
+// Number(), no parseInt(): parseInt('10.5')===10 truncaría un decimal en vez
+// de rechazarlo. Aquí basta con no persistir un valor fuera de rango; el
+// rechazo real ocurre antes, en missingTemplateFields.
 function normalizeBufferMinutes(v) {
-  const n = parseInt(v, 10);
-  return [0, 15, 30, 45].includes(n) ? n : 0;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 240 ? n : 0;
 }
 
 function normalizeReservationInterval(v) {
@@ -232,9 +236,11 @@ function missingTemplateFields(template, values) {
   if (!values.notificationEmails.length) missing.push('notificationEmails');
   if (template.id === 'spa') {
     const capacity = parseInt(values.capacityPerSlot, 10);
-    const buffer = parseInt(values.bufferMinutes, 10);
+    // Number(), no parseInt(): un decimal como 10.5 debe rechazarse, no
+    // truncarse a 10. Rango 0-240 (antes: solo 0/15/30/45).
+    const buffer = Number(values.bufferMinutes);
     if (!Number.isFinite(capacity) || capacity < 1 || capacity > 100) missing.push('capacityPerSlot');
-    if (![0, 15, 30, 45].includes(buffer)) missing.push('bufferMinutes');
+    if (!Number.isInteger(buffer) || buffer < 0 || buffer > 240) missing.push('bufferMinutes');
   }
   return missing;
 }
@@ -423,7 +429,16 @@ export default async function handler(req, res) {
       ? String(phoneCountry).toUpperCase() : null;
     const phoneCountryCodeSafe = phoneCountrySafe && /^\+\d{1,4}$/.test(String(phoneCountryCode || ''))
       ? String(phoneCountryCode) : null;
-    const phoneNumberSafe = phoneNumber != null ? String(phoneNumber).slice(0, 30) : '';
+    // Solo dígitos (nunca confiar en que el navegador ya lo saneó), y si el
+    // número trae el código de país pegado adelante (el admin lo pegó dentro
+    // del campo), se recorta para no duplicarlo en whatsapp = code + number.
+    let phoneNumberSafe = phoneNumber != null ? String(phoneNumber).replace(/[^0-9]/g, '').slice(0, 30) : '';
+    if (phoneCountryCodeSafe) {
+      const codeDigits = phoneCountryCodeSafe.replace(/[^0-9]/g, '');
+      if (codeDigits && phoneNumberSafe.startsWith(codeDigits) && phoneNumberSafe.length > codeDigits.length) {
+        phoneNumberSafe = phoneNumberSafe.slice(codeDigits.length);
+      }
+    }
     const notificationEmailsSafe = normalizeNotificationEmails(notificationEmails);
 
     const missingTemplate = missingTemplateFields(template, {
