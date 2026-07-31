@@ -5803,6 +5803,20 @@ LÍMITES ESTRICTOS:
           <option value="restaurant">Restaurante</option>
           <option value="barber">Barbería</option>
         </select>
+        <div class="auto-summary-section" id="auto-spa-booking-section" hidden>
+          <h3>Reglas de reserva del Spa</h3>
+          <label class="auto-label" for="auto-spa-capacity">¿Cuántas citas pueden aceptar al mismo tiempo?</label>
+          <input type="number" id="auto-spa-capacity" class="admin-input auto-owner-input" min="1" max="100" step="1" inputmode="numeric" placeholder="Ej: 3">
+          <p class="auto-owner-help">Ejemplo: 3 personas trabajando = 3 citas simultáneas.</p>
+          <label class="auto-label" for="auto-spa-buffer">¿Cuánto tiempo necesitan entre citas para preparar el espacio?</label>
+          <select id="auto-spa-buffer" class="admin-input auto-owner-input">
+            <option value="">Elige una opción…</option>
+            <option value="0">0 minutos</option>
+            <option value="15">15 minutos</option>
+            <option value="30">30 minutos</option>
+            <option value="45">45 minutos</option>
+          </select>
+        </div>
         <label class="auto-label">Información del negocio</label>
         <textarea id="auto-info-input" class="auto-textarea" placeholder='Ej: "Barbería Mike queda en Santiago. Atiende lunes a sábado de 9 a 7. Corte normal 20 dólares, barba 12 y corte con barba 28. Quiero diseño negro y dorado. El dueño habla español e inglés. Quiero que responda preguntas, muestre precios y permita reservar. Correo owner@barberiamike.com, teléfono +56912345678."'></textarea>
         <label class="auto-label">Instrucciones adicionales (opcional)</label>
@@ -5861,21 +5875,6 @@ LÍMITES ESTRICTOS:
             <option value="4">4 horas antes</option>
             <option value="24">1 día antes</option>
             <option value="48">2 días antes</option>
-          </select>
-        </div>
-
-        <div class="auto-summary-section" id="auto-spa-booking-section" hidden>
-          <h3>Reglas de reserva del Spa</h3>
-          <label class="auto-label" for="auto-spa-capacity">¿Cuántas citas pueden aceptar al mismo tiempo?</label>
-          <input type="number" id="auto-spa-capacity" class="admin-input auto-owner-input" min="1" max="100" step="1" inputmode="numeric" placeholder="Ej: 3">
-          <p class="auto-owner-help">Ejemplo: 3 personas trabajando = 3 citas simultáneas.</p>
-          <label class="auto-label" for="auto-spa-buffer">¿Cuánto tiempo necesitan entre citas para preparar el espacio?</label>
-          <select id="auto-spa-buffer" class="admin-input auto-owner-input">
-            <option value="">Elige una opción…</option>
-            <option value="0">0 minutos</option>
-            <option value="15">15 minutos</option>
-            <option value="30">30 minutos</option>
-            <option value="45">45 minutos</option>
           </select>
         </div>
 
@@ -6412,7 +6411,8 @@ LÍMITES ESTRICTOS:
   }
 
   function spaTemplateSelected() {
-    return !!(generatedConfig && generatedConfig.template && generatedConfig.template.id === 'spa');
+    return !!(templateSelect && templateSelect.value === 'spa') ||
+      !!(generatedConfig && generatedConfig.template && generatedConfig.template.id === 'spa');
   }
 
   function spaCapacityValid() {
@@ -6546,6 +6546,9 @@ LÍMITES ESTRICTOS:
     createBtn.disabled = !displayMode || renderFalta().length > 0;
   }
 
+  if (templateSelect) {
+    templateSelect.addEventListener('change', syncDisplayUI);
+  }
   if (tzSelect) {
     tzSelect.addEventListener('change', function () { tzSelect.dataset.tocado = '1'; syncDisplayUI(); });
   }
