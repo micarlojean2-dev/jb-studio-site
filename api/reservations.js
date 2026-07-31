@@ -289,6 +289,17 @@ function durationFor(client, servicio) {
     ((client.config || {}).reservationDuration));
 }
 
+function spaBufferMinutes(client) {
+  const template = client && (client.templateId || (client.config && client.config.templateId));
+  const n = parseInt(client && client.bufferMinutes, 10);
+  return template === 'spa' && [0, 15, 30, 45].includes(n) ? n : 0;
+}
+
+function occupiedDurationFor(client, servicio, storedDuration) {
+  const duration = Number.isFinite(storedDuration) ? storedDuration : durationFor(client, servicio);
+  return duration + spaBufferMinutes(client);
+}
+
 function rangosDelDia(businessHours, fechaISO) {
   if (!businessHours || !fechaISO) return null;          // sin datos: no se valida
   const dow = new Date(fechaISO + 'T12:00:00Z').getUTCDay();
@@ -326,7 +337,7 @@ function contarSolapes(reservas, fechaISO, iniMin, durMin, client) {
     if (!activa(r) || r.fechaISO !== fechaISO) continue;
     const ini = minutosDe(r.horaISO);
     if (ini === null) continue;                          // sin hora normalizada: no cuenta
-    const dur = Number.isFinite(r.duracion) ? r.duracion : durationFor(client || {}, r.servicio);
+    const dur = occupiedDurationFor(client || {}, r.servicio, r.duracion);
     if (solapan(iniMin, durMin, ini, dur)) n++;
   }
   return n;
@@ -370,6 +381,7 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
 
   // Duración: si el servicio no cabe antes del cierre, no vale.
   const dur = durationFor(client, servicio);
+  const occupiedDuration = occupiedDurationFor(client, servicio, dur);
 
   let dentro = null;
   for (const [a, b] of rangos) {
@@ -384,12 +396,12 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
       alternativa: pedido < primero[0] ? fmt(primero[0]) : null,
     };
   }
-  if (dur > 0 && pedido + dur > dentro[1]) {
+  if (occupiedDuration > 0 && pedido + occupiedDuration > dentro[1]) {
     return {
       ok: false,
       motivo: 'no_cabe_antes_del_cierre',
       mensaje: 'Este servicio necesita más tiempo del que queda disponible ese día.',
-      alternativa: dentro[1] - dur >= dentro[0] ? fmt(dentro[1] - dur) : null,
+      alternativa: dentro[1] - occupiedDuration >= dentro[0] ? fmt(dentro[1] - occupiedDuration) : null,
     };
   }
 
@@ -401,15 +413,15 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
     return { ok: false, motivo: 'intervalo_invalido', mensaje: 'Ese horario no coincide con los intervalos de reserva disponibles.' };
   }
 
-  if (staffRanges && staffRanges.length && !staffRanges.some(([a, b]) => pedido >= a && pedido + dur <= b)) {
+  if (staffRanges && staffRanges.length && !staffRanges.some(([a, b]) => pedido >= a && pedido + occupiedDuration <= b)) {
     return { ok: false, motivo: 'barbero_no_disponible', mensaje: 'Ese barbero no está disponible a esa hora.' };
   }
 
   if (template === 'barber' && selectedStaff && Array.isArray(reservas)) {
     const ocupado = reservas.some((r) => activa(r) && r.fechaISO === fechaISO &&
       String(r.barberPreference || '').toLowerCase() === String(selectedStaff.name || selectedStaff.id).toLowerCase() &&
-      solapan(pedido, dur, minutosDe(r.horaISO) || -1,
-        Number.isFinite(r.duracion) ? r.duracion : durationFor(client, r.servicio)));
+      solapan(pedido, occupiedDuration, minutosDe(r.horaISO) || -1,
+        occupiedDurationFor(client, r.servicio, r.duracion)));
     if (ocupado) return { ok: false, motivo: 'barbero_no_disponible', mensaje: 'Ese barbero ya tiene una cita a esa hora.' };
   }
 
@@ -437,7 +449,7 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
   // aparecen en la puerta.
   const cap = Number.isFinite(client.capacityPerSlot) ? client.capacityPerSlot : null;
   if (cap !== null && cap >= 1 && Array.isArray(reservas)) {
-    const ocupadas = contarSolapes(reservas, fechaISO, pedido, dur, client);
+    const ocupadas = contarSolapes(reservas, fechaISO, pedido, occupiedDuration, client);
     if (ocupadas >= cap) {
       return {
         ok: false,
@@ -445,7 +457,7 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
         mensaje: cap === 1
           ? 'Ese horario ya está ocupado.'
           : 'Ya no nos quedan huecos a esa hora.',
-        alternativa: proximoHueco(client, fechaISO, pedido, dur, dentro, reservas),
+        alternativa: proximoHueco(client, fechaISO, pedido, occupiedDuration, dentro, reservas),
       };
     }
   }

@@ -93,6 +93,26 @@ console.log('2. Server-side persona validation');
   'configured restaurant duration participates in capacity overlap checks');
   ok(validarReserva({ ...restaurant, reservationIntervalMinutes: 30 }, '2026-07-20', '10:15', '', 0, []).motivo === 'intervalo_invalido',
     'backend rejects starts outside the configured reservation interval');
+  const spa = {
+    templateId: 'spa', businessHours: hours,
+    menu: [{ nombre: 'Facial', duracion: '60 min' }], capacityPerSlot: 1, bufferMinutes: 15,
+  };
+  const spaExisting = [{ estado: 'confirmada', fechaISO: '2026-07-20', horaISO: '10:00', servicio: 'Facial', duracion: 60 }];
+  ok(validarReserva(spa, '2026-07-20', '11:00', 'Facial', 0, spaExisting).motivo === 'sin_disponibilidad',
+    'Spa: 60 min más 15 min de preparación bloquea los siguientes 75 minutos');
+  ok(validarReserva(spa, '2026-07-20', '11:15', 'Facial', 0, spaExisting).ok,
+    'Spa: la siguiente cita queda disponible al terminar los 75 minutos');
+  const spaThreeSlots = [...spaExisting, ...spaExisting, ...spaExisting];
+  ok(validarReserva({ ...spa, capacityPerSlot: 3 }, '2026-07-20', '10:00', 'Facial', 0, spaThreeSlots).motivo === 'sin_disponibilidad',
+    'Spa: capacidad 3 permite tres citas simultáneas y rechaza la cuarta');
+  ok(validarReserva({ ...spa, templateId: undefined, bufferMinutes: undefined }, '2026-07-20', '11:00', 'Facial', 0, spaExisting).ok,
+    'clientes antiguos sin buffer conservan ocupación de solo 60 minutos');
+  const spaClosing = {
+    ...spa, businessHours: { monday: { enabled: true, ranges: [{ start: '10:00', end: '17:00' }] } }, bufferMinutes: 30,
+  };
+  ok(validarReserva(spaClosing, '2026-07-20', '15:30', 'Facial', 0, []).ok &&
+    validarReserva(spaClosing, '2026-07-20', '15:45', 'Facial', 0, []).motivo === 'no_cabe_antes_del_cierre',
+    'Spa: servicio más preparación debe terminar antes del cierre');
 }
 
 console.log('3. Booking summary renders visibly and never duplicates its buttons');

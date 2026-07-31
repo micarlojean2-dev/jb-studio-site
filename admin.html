@@ -5864,6 +5864,21 @@ LÍMITES ESTRICTOS:
           </select>
         </div>
 
+        <div class="auto-summary-section" id="auto-spa-booking-section" hidden>
+          <h3>Reglas de reserva del Spa</h3>
+          <label class="auto-label" for="auto-spa-capacity">¿Cuántas citas pueden aceptar al mismo tiempo?</label>
+          <input type="number" id="auto-spa-capacity" class="admin-input auto-owner-input" min="1" max="100" step="1" inputmode="numeric" placeholder="Ej: 3">
+          <p class="auto-owner-help">Ejemplo: 3 personas trabajando = 3 citas simultáneas.</p>
+          <label class="auto-label" for="auto-spa-buffer">¿Cuánto tiempo necesitan entre citas para preparar el espacio?</label>
+          <select id="auto-spa-buffer" class="admin-input auto-owner-input">
+            <option value="">Elige una opción…</option>
+            <option value="0">0 minutos</option>
+            <option value="15">15 minutos</option>
+            <option value="30">30 minutos</option>
+            <option value="45">45 minutos</option>
+          </select>
+        </div>
+
         <!-- Elección obligatoria de formato: nunca se adivina desde el texto -->
         <div class="auto-summary-section" id="auto-display-section">
           <h3>¿Cómo quieres mostrar este chatbot?</h3>
@@ -6007,6 +6022,9 @@ LÍMITES ESTRICTOS:
   var ownerError = document.getElementById('auto-owner-error');
   var tzSelect = document.getElementById('auto-tz');
   var minNoticeSelect = document.getElementById('auto-min-notice');
+  var spaBookingSection = document.getElementById('auto-spa-booking-section');
+  var spaCapacityInput = document.getElementById('auto-spa-capacity');
+  var spaBufferSelect = document.getElementById('auto-spa-buffer');
   var templateSelect = document.getElementById('auto-template');
 
   // Zonas de los países que la IA sabe detectar (ver generate-client-config).
@@ -6147,6 +6165,8 @@ LÍMITES ESTRICTOS:
     displayMode = null;
     widgetPosition = 'bottom-right';
     if (ownerInput) ownerInput.value = '';
+    if (spaCapacityInput) spaCapacityInput.value = '';
+    if (spaBufferSelect) spaBufferSelect.value = '';
     if (templateSelect) templateSelect.value = '';
     if (ownerError) ownerError.hidden = true;
     syncDisplayUI();
@@ -6351,6 +6371,10 @@ LÍMITES ESTRICTOS:
     if (!f.reservations) fields.push('bookingEnabled');
     // The creator collects this from the owner email when necessary.
     if (!b.ownerEmail) fields.push('notificationEmails');
+    if (config.template.id === 'spa') {
+      if (!spaCapacityValid()) fields.push('capacityPerSlot');
+      if (!spaBufferValid()) fields.push('bufferMinutes');
+    }
     return fields;
   }
 
@@ -6387,6 +6411,20 @@ LÍMITES ESTRICTOS:
     return EMAIL_RE.test(ownerEmailValue());
   }
 
+  function spaTemplateSelected() {
+    return !!(generatedConfig && generatedConfig.template && generatedConfig.template.id === 'spa');
+  }
+
+  function spaCapacityValid() {
+    var n = Number(spaCapacityInput && spaCapacityInput.value);
+    return Number.isInteger(n) && n >= 1 && n <= 100;
+  }
+
+  function spaBufferValid() {
+    return [0, 15, 30, 45].indexOf(Number(spaBufferSelect && spaBufferSelect.value)) !== -1 &&
+      String(spaBufferSelect && spaBufferSelect.value) !== '';
+  }
+
   // Duraciones que falten: se piden con un desplegable, no en texto libre.
   // "45 min" y "45m" y "cuarenta y cinco" acabarían todos en el mismo campo.
   var DUR_OPCIONES = ['15 min', '30 min', '45 min', '60 min', '90 min', '120 min'];
@@ -6398,7 +6436,11 @@ LÍMITES ESTRICTOS:
     var svc = generatedConfig.services || [];
     var faltan = svc.filter(function (x) { return !x.duracion; });
     sec.hidden = faltan.length === 0;
-    if (!faltan.length) { list.innerHTML = ''; return; }
+    if (!faltan.length) {
+      list.innerHTML = '';
+      delete list.dataset.pintado;
+      return;
+    }
     if (list.dataset.pintado === String(faltan.length)) return;
     list.dataset.pintado = String(faltan.length);
     list.innerHTML = '';
@@ -6455,6 +6497,11 @@ LÍMITES ESTRICTOS:
 
     if (!minNoticeSelect || minNoticeSelect.value === '') f.push('Anticipación mínima');
 
+    if (spaTemplateSelected()) {
+      if (!spaCapacityValid()) f.push('Capacidad de citas simultáneas');
+      if (!spaBufferValid()) f.push('Tiempo de preparación entre citas');
+    }
+
     var svc = generatedConfig.services || [];
     if (!svc.length) f.push('Servicios');
     else if ((!templated || templated.id !== 'restaurant') && svc.some(function (x) { return !x.duracion; })) f.push('Duración de servicios');
@@ -6484,6 +6531,7 @@ LÍMITES ESTRICTOS:
     posCards.forEach(function (c) { c.classList.toggle('selected', c.dataset.pos === widgetPosition); });
     widgetPreview.classList.toggle('pos-left', widgetPosition === 'bottom-left');
     ownerSection.hidden = !ownerEmailFalta();
+    if (spaBookingSection) spaBookingSection.hidden = !spaTemplateSelected();
     // Propuesta según el país que detectó la IA; el admin la confirma o cambia.
     if (tzSelect && !tzSelect.dataset.tocado) {
       var pais = generatedConfig && generatedConfig.business && generatedConfig.business.phoneCountry;
@@ -6503,6 +6551,12 @@ LÍMITES ESTRICTOS:
   }
   if (minNoticeSelect) {
     minNoticeSelect.addEventListener('change', syncDisplayUI);
+  }
+  if (spaCapacityInput) {
+    spaCapacityInput.addEventListener('input', syncDisplayUI);
+  }
+  if (spaBufferSelect) {
+    spaBufferSelect.addEventListener('change', syncDisplayUI);
   }
 
   if (ownerInput) {
@@ -6560,6 +6614,10 @@ LÍMITES ESTRICTOS:
       widgetPosition: widgetPosition,
       timezone: tzSelect ? tzSelect.value : 'UTC',
       minNoticeHours: minNoticeSelect ? parseInt(minNoticeSelect.value, 10) : 0,
+      ...(spaTemplateSelected() ? {
+        capacityPerSlot: Number(spaCapacityInput.value),
+        bufferMinutes: Number(spaBufferSelect.value),
+      } : {}),
     };
 
     function doCreate(idToUse) {

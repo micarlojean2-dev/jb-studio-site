@@ -52,6 +52,11 @@ function normalizeCapacity(v) {
   return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 1;   // por defecto, uno
 }
 
+function normalizeBufferMinutes(v) {
+  const n = parseInt(v, 10);
+  return [0, 15, 30, 45].includes(n) ? n : 0;
+}
+
 function normalizeReservationInterval(v) {
   const n = parseInt(v, 10);
   return Number.isFinite(n) && n >= 5 && n <= 240 && n % 5 === 0 ? n : 15;
@@ -225,6 +230,12 @@ function missingTemplateFields(template, values) {
   if (!values.services.length || values.services.some(service => !service.precio || (requiresDuration && !service.duracion))) missing.push('services');
   if (!values.features.reservations) missing.push('bookingEnabled');
   if (!values.notificationEmails.length) missing.push('notificationEmails');
+  if (template.id === 'spa') {
+    const capacity = parseInt(values.capacityPerSlot, 10);
+    const buffer = parseInt(values.bufferMinutes, 10);
+    if (!Number.isFinite(capacity) || capacity < 1 || capacity > 100) missing.push('capacityPerSlot');
+    if (![0, 15, 30, 45].includes(buffer)) missing.push('bufferMinutes');
+  }
   return missing;
 }
 
@@ -344,7 +355,7 @@ export default async function handler(req, res) {
       secondaryColor, style, address, hours, businessType, services, features, templateId, templateVersion,
       billingDay, trialEnabled, trialDays,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
-        displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, reservationIntervalMinutes, holidays, notificationEmails, templateData,
+      displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, bufferMinutes, reservationIntervalMinutes, holidays, notificationEmails, templateData,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -423,6 +434,8 @@ export default async function handler(req, res) {
       services: servicesSafe,
       features: featuresSafe,
       notificationEmails: notificationEmailsSafe,
+      capacityPerSlot,
+      bufferMinutes,
     });
     if (missingTemplate.length) {
       return res.status(400).json({ error: 'Missing required template fields', fields: missingTemplate });
@@ -524,6 +537,7 @@ export default async function handler(req, res) {
         reservationIntervalMinutes: normalizeReservationInterval(reservationIntervalMinutes),
         holidays:        normalizeHolidays(holidays),
         notificationEmails: notificationEmailsSafe,
+        bufferMinutes:      normalizeBufferMinutes(bufferMinutes),
         widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}" data-position="${position}"></script>`,
         assistantUrl:  `https://jbstudio.app/asistente/${id}`,
       };
@@ -541,7 +555,7 @@ export default async function handler(req, res) {
   if (req.method === 'PUT') {
     const { id, active, prompt, businessName, ownerName, ownerEmail, plan,
             color, language, whatsapp, menu, services, features,
-             timezone, minNoticeHours, businessHours, capacityPerSlot, reservationIntervalMinutes, holidays, notificationEmails } = req.body || {};
+            timezone, minNoticeHours, businessHours, capacityPerSlot, bufferMinutes, reservationIntervalMinutes, holidays, notificationEmails } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id is required' });
 
     try {
@@ -566,6 +580,7 @@ export default async function handler(req, res) {
       if (timezone !== undefined) client.timezone = normalizeTimezone(timezone);
       if (minNoticeHours !== undefined) client.minNoticeHours = normalizeMinNotice(minNoticeHours);
       if (capacityPerSlot !== undefined) client.capacityPerSlot = normalizeCapacity(capacityPerSlot);
+      if (bufferMinutes !== undefined) client.bufferMinutes = normalizeBufferMinutes(bufferMinutes);
       if (reservationIntervalMinutes !== undefined) client.reservationIntervalMinutes = normalizeReservationInterval(reservationIntervalMinutes);
       if (holidays !== undefined) client.holidays = normalizeHolidays(holidays);
       if (notificationEmails === null) delete client.notificationEmails;
