@@ -120,7 +120,7 @@ ok($('admin-panel').style.display === 'block', 'la contraseña nueva abre el pan
 console.log('8. El resto del admin sigue presente');
 // Elementos clave de otras secciones (modal de gestión, creador) siguen en el DOM.
 ok(!!$('setup-add-email'), 'el botón del modal de setup existe en el DOM');
-ok(!!$('add-menu-item') && !!$('mg-view-bot'), 'otras secciones (form y modal de gestión) intactas');
+ok(!!$('open-spa-creator-btn') && !!$('mg-view-bot'), 'el creador Spa y el modal de gestión están presentes');
 
 console.log('9. Clientes recargados conservan el enlace directo del dueño');
 const panelUrl = 'https://jbstudio.app/reservas/qa-spa#t=qa-panel-token';
