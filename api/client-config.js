@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis';
 import { createHash, randomUUID } from 'node:crypto';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
+import { loadClientMedia } from '../lib/media.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 
 initSentry();
@@ -18,42 +19,12 @@ export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
 // mismas que usan todas las demás funciones) — esto hacía que este endpoint
 // devolviera 500 en producción y que widget.js nunca cargara los datos
 // reales del cliente. Corregido para usar el mismo par que el resto de la API.
-function safeImageUrl(value) {
-  try {
-    var url = new URL(String(value || ''));
-    return url.protocol === 'https:' ? url.href : '';
-  } catch (_) {
-    return '';
-  }
-}
-
-function imageKeyBelongsTo(clientId, key, record) {
-  var publicId = record && record.publicId;
-  return typeof key === 'string'
-    && key === `client-images:${clientId}:${publicId}`
-    && typeof publicId === 'string'
-    && publicId.startsWith(`clients/${clientId}/`);
-}
-
-async function publicMedia(redis, clientId) {
-  const keys = await redis.keys(`client-images:${clientId}:*`);
-  const records = !keys.length ? [] : (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys));
-  const gallery = [];
-  const menu = [];
-
-  records.forEach((record, index) => {
-    if (!record || record.confirmed !== true || !imageKeyBelongsTo(clientId, keys[index], record)) return;
-    const imageUrl = safeImageUrl(record.imageUrl);
-    if (!imageUrl) return;
-    if (record.linkedType === 'gallery') gallery.push(imageUrl);
-    // `service` was used by the first admin media UI. Keep its stored refs
-    // visible while new associations use the clearer `menu` name.
-    if ((record.linkedType === 'menu' || record.linkedType === 'service') && typeof record.linkedItemId === 'string') {
-      menu.push({ itemId: record.linkedItemId, imageUrl });
-    }
-  });
-  return { gallery, menu };
-}
+//
+// La validación de qué imagen cuenta como confirmada y pública vive en
+// lib/media.js (loadClientMedia), compartida con confirmedMedia() en
+// api/client-chat.js — antes cada una tenía su propio criterio y podían
+// divergir (el modelo decía "hay fotos" que el widget nunca podía pintar).
+const publicMedia = loadClientMedia;
 
 export function createClientConfigHandler({ redis } = {}) {
   const store = redis || new Redis({
@@ -77,9 +48,14 @@ export function createClientConfigHandler({ redis } = {}) {
     // Return only public-safe fields — never expose prompt, panelToken, ownerEmail
     const media = await publicMedia(store, id);
     const menuImageUrls = new Map(media.menu.map(image => [image.itemId, image.imageUrl]));
-    const menu = Array.isArray(client.menu) ? client.menu.map((item, index) => {
-      const itemId = String(item?.id || item?.nombre || index);
-      const imageUrl = menuImageUrls.get(itemId);
+    // Se prueba primero por id (asociaciones nuevas, estables ante un
+    // renombre) y solo si no hay match se cae al nombre (asociaciones viejas,
+    // guardadas antes de que los servicios tuvieran id). Así una asociación
+    // hecha con el nombre sigue funcionando aunque el servicio ya tenga id.
+    const menu = Array.isArray(client.menu) ? client.menu.map((item) => {
+      const byId = item?.id ? menuImageUrls.get(String(item.id)) : undefined;
+      const byName = byId === undefined && item?.nombre ? menuImageUrls.get(String(item.nombre)) : undefined;
+      const imageUrl = byId || byName;
       return imageUrl ? { ...item, imagen: imageUrl } : item;
     }) : [];
     const languages = Array.isArray(client.languages)

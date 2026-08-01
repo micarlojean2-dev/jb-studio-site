@@ -1611,20 +1611,28 @@
     .media-dropzone.is-dragging { border-color: var(--green); background: #e2f1e8; }
     .media-dropzone strong { display: block; color: var(--green); }
     .media-dropzone span { color: #555; font-size: 13px; }
-    .media-selectors { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .media-staged, .media-confirmed { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
     .media-thumb { position: relative; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: #f5f5f5; aspect-ratio: 1; }
     .media-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .media-thumb button { position: absolute; top: 5px; right: 5px; width: 25px; height: 25px; border: none; border-radius: 50%; background: rgba(0,0,0,.7); color: #fff; cursor: pointer; }
     .media-empty { grid-column: 1 / -1; color: #666; font-size: 13px; padding: 8px 0; }
     .media-section-title { font-size: 13px; font-weight: 700; color: var(--green); margin: 18px 0 8px; }
+    /* Una tarjeta por servicio: foto actual (o placeholder) + subir/cambiar. */
+    .media-service-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+    .media-service-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: #fbfbfb; display: flex; flex-direction: column; gap: 8px; }
+    .media-service-card-photo { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #f0f0f0; display: flex; align-items: center; justify-content: center; }
+    .media-service-card-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .media-service-card-photo.is-empty { color: #999; font-size: 12px; text-align: center; padding: 6px; }
+    .media-service-card-name { font-size: 12.5px; font-weight: 600; color: #222; line-height: 1.3; min-height: 32px; }
+    .media-service-card-btn { font-size: 12px; border: 1px solid var(--border); border-radius: 7px; background: #fff; padding: 6px 8px; cursor: pointer; color: var(--green); font-weight: 600; }
+    .media-service-card-btn:hover { background: var(--green-light); }
+    .media-service-card-btn:disabled { opacity: .6; cursor: not-allowed; }
     .qr-layout { display: flex; align-items: center; gap: 18px; padding: 14px; background: #f7f8f7; border: 1px solid var(--border); border-radius: 10px; }
     #client-qr { width: 128px; height: 128px; flex: 0 0 128px; background: #fff; padding: 6px; }
     #client-qr img, #client-qr canvas { max-width: 100%; height: auto; }
     .qr-url { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; color: #444; margin: 5px 0 10px; }
     .qr-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     @media (max-width: 560px) {
-      .media-selectors { grid-template-columns: 1fr; }
       .qr-layout { align-items: flex-start; flex-direction: column; }
     }
 
@@ -3031,11 +3039,11 @@ LÍMITES ESTRICTOS:
             </div>
           </div>
 
-          <div class="media-section-title">Agregar imágenes</div>
-          <div class="media-selectors">
-            <div class="form-group"><label for="media-association">Asociar a</label><select id="media-association" class="admin-input"></select></div>
-            <div class="form-group"><label for="media-gallery">Galería</label><select id="media-gallery" class="admin-input"><option value="gallery">Galería principal</option></select></div>
-          </div>
+          <div class="media-section-title">Foto por servicio</div>
+          <div id="media-service-msg" class="create-msg" role="status"></div>
+          <div id="media-service-cards" class="media-service-cards"><div class="media-empty">Este negocio todavía no tiene servicios.</div></div>
+
+          <div class="media-section-title">Galería general</div>
           <input id="media-file-input" type="file" accept="image/*" multiple hidden>
           <div id="media-dropzone" class="media-dropzone" tabindex="0" role="button" aria-label="Seleccionar imágenes para subir">
             <strong>Suelta imágenes aquí</strong><span>o selecciona varios archivos</span>
@@ -3884,8 +3892,8 @@ LÍMITES ESTRICTOS:
 
     // ── Client gallery + assistant QR (UI-only; upload endpoint owns storage) ──
     const mediaOverlay = document.getElementById('media-modal-overlay');
-    const mediaAssociation = document.getElementById('media-association');
-    const mediaGallery = document.getElementById('media-gallery');
+    const mediaServiceCards = document.getElementById('media-service-cards');
+    const mediaServiceMsg = document.getElementById('media-service-msg');
     const mediaInput = document.getElementById('media-file-input');
     const mediaDropzone = document.getElementById('media-dropzone');
     const mediaStaged = document.getElementById('media-staged');
@@ -3956,24 +3964,157 @@ LÍMITES ESTRICTOS:
       new window.QRCode(qrEl, { text: url, width: 116, height: 116, correctLevel: window.QRCode.CorrectLevel.M });
     }
 
+    // Misma lista que usan client-config.js y client-chat.js para construir
+    // el menú del widget: services si existe, si no menu. Ambos ya traen id
+    // (sistema de IDs estables de servicios).
+    function serviceItems(client) {
+      return Array.isArray(client.services) && client.services.length ? client.services
+        : (Array.isArray(client.menu) ? client.menu : []);
+    }
+
+    // Misma prioridad que api/client-config.js: primero por id (asociaciones
+    // nuevas), y solo si no hay match se cae al nombre (asociaciones hechas
+    // antes de que los servicios tuvieran id).
+    function findServiceImage(item) {
+      const byId = item.id && confirmedMedia.find(image => image.linkedType === 'menu' && image.linkedItemId === item.id);
+      if (byId) return byId;
+      return (item.nombre && confirmedMedia.find(image => image.linkedType === 'menu' && image.linkedItemId === item.nombre)) || null;
+    }
+
+    function showServiceMediaMessage(text, ok) {
+      mediaServiceMsg.textContent = text;
+      mediaServiceMsg.className = `create-msg ${ok ? 'ok' : 'err'}`;
+      mediaServiceMsg.style.display = 'block';
+    }
+
+    function renderServiceCards(client) {
+      const items = serviceItems(client);
+      mediaServiceCards.innerHTML = '';
+      if (!items.length) {
+        mediaServiceCards.innerHTML = '<div class="media-empty">Este negocio todavía no tiene servicios.</div>';
+        return;
+      }
+      items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'media-service-card';
+
+        const photoBox = document.createElement('div');
+        photoBox.className = 'media-service-card-photo';
+        const existing = findServiceImage(item);
+        const url = existing && confirmedImageUrl(existing);
+        if (url) {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = item.nombre || 'Servicio';
+          photoBox.appendChild(img);
+        } else {
+          photoBox.classList.add('is-empty');
+          photoBox.textContent = 'Sin foto';
+        }
+        card.appendChild(photoBox);
+
+        const name = document.createElement('div');
+        name.className = 'media-service-card-name';
+        name.textContent = item.nombre || 'Servicio';
+        card.appendChild(name);
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'media-service-card-btn';
+        btn.textContent = url ? 'Cambiar foto' : 'Subir foto';
+        btn.addEventListener('click', () => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/*';
+          input.addEventListener('change', () => {
+            if (input.files && input.files[0]) uploadServicePhoto(client, item, input.files[0], btn);
+          });
+          input.click();
+        });
+        card.appendChild(btn);
+
+        mediaServiceCards.appendChild(card);
+      });
+    }
+
+    // Sube UNA foto para UN servicio: misma secuencia upload -> Cloudinary ->
+    // confirm -> PUT que usa la galería general, pero con linkedItemId fijo
+    // al id del servicio (nunca su nombre, así sobrevive un rename futuro).
+    // Un servicio muestra una sola foto: si ya tenía una confirmada, la
+    // anterior se borra (Cloudinary + Redis) después de que la nueva quede
+    // asociada, para no dejar al servicio sin foto si algo falla a mitad de
+    // camino.
+    async function uploadServicePhoto(client, item, file, btn) {
+      if (!file.type.startsWith('image/')) {
+        showServiceMediaMessage('El archivo debe ser una imagen.', false);
+        return;
+      }
+      const previous = findServiceImage(item);
+      const originalLabel = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Subiendo…';
+      try {
+        const request = async (method, action, body) => {
+          const response = await fetch(`/api/client-images?clientId=${encodeURIComponent(client.id)}${action ? `&action=${action}` : ''}`, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+            body: body ? JSON.stringify(body) : undefined,
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || response.status);
+          return result;
+        };
+        const instructions = await request('POST', 'upload', { files: [{ type: file.type, size: file.size }] });
+        const upload = instructions.uploads[0];
+        const uploadBody = new FormData();
+        Object.entries(upload.params).forEach(([key, value]) => uploadBody.append(key, value));
+        uploadBody.append('api_key', upload.apiKey);
+        uploadBody.append('signature', upload.signature);
+        uploadBody.append('file', file);
+        const cloudinaryResponse = await fetch(upload.uploadUrl, { method: 'POST', body: uploadBody });
+        if (!cloudinaryResponse.ok) throw new Error('La carga de imagen falló');
+        await cloudinaryResponse.json();
+        const [confirmedImage] = await request('POST', 'confirm', { publicIds: [upload.publicId] });
+        // La respuesta de confirm todavía tiene linkedType:null (la
+        // asociación se hace en el PUT de abajo) — hay que guardar en
+        // confirmedMedia el registro que devuelve el PUT, ya asociado, para
+        // que findServiceImage() lo encuentre sin tener que reabrir el modal.
+        const [associatedImage] = await request('PUT', '', { images: [{ publicId: confirmedImage.publicId, linkedType: 'menu', linkedItemId: item.id }] });
+        confirmedMedia = confirmedMedia.filter(image => image !== previous).concat(associatedImage);
+
+        if (previous) {
+          const deleteResponse = await fetch(`/api/client-images?clientId=${encodeURIComponent(client.id)}&publicId=${encodeURIComponent(previous.publicId)}`, {
+            method: 'DELETE',
+            headers: { 'x-admin-token': token },
+          });
+          if (!deleteResponse.ok) {
+            showServiceMediaMessage(`La foto nueva de "${item.nombre}" se guardó, pero no se pudo borrar la anterior. Revisa "Imágenes confirmadas".`, false);
+          } else {
+            showServiceMediaMessage(`Foto de "${item.nombre}" actualizada.`, true);
+          }
+        } else {
+          showServiceMediaMessage(`Foto de "${item.nombre}" guardada.`, true);
+        }
+        renderServiceCards(client);
+        renderMediaList(mediaConfirmed, confirmedMedia, false);
+      } catch (error) {
+        showServiceMediaMessage(`No se pudo subir la foto de "${item.nombre}": ${error.message}`, false);
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+      }
+    }
+
     async function openMediaModal(client) {
       stagedMedia.forEach(image => URL.revokeObjectURL(image.preview));
       stagedMedia = [];
       confirmedMedia = [];
-      mediaAssociation.innerHTML = '<option value="gallery">Galería general</option>';
-      const items = Array.isArray(client.services) && client.services.length ? client.services : (Array.isArray(client.menu) ? client.menu : []);
-      items.forEach((item, index) => {
-        const option = document.createElement('option');
-        option.value = item.id || item.nombre || String(index);
-        option.textContent = item.nombre || `Elemento ${index + 1}`;
-        mediaAssociation.appendChild(option);
-      });
-      mediaGallery.value = 'gallery';
       mediaInput.value = '';
       mediaMsg.style.display = 'none';
+      mediaServiceMsg.style.display = 'none';
       mediaSave.disabled = true;
       renderMediaList(mediaStaged, stagedMedia, true);
       renderMediaList(mediaConfirmed, confirmedMedia, false);
+      renderServiceCards(client);
       renderAssistantQr(assistantUrl(client));
       mediaOverlay.style.display = 'flex';
       try {
@@ -3983,6 +4124,7 @@ LÍMITES ESTRICTOS:
         if (manageClient !== client) return;
         confirmedMedia = Array.isArray(images) ? images : [];
         renderMediaList(mediaConfirmed, confirmedMedia, false);
+        renderServiceCards(client);
       } catch (error) {
         showMediaMessage(`No se pudieron cargar las imágenes: ${error.message}`, false);
       }
@@ -4047,9 +4189,10 @@ LÍMITES ESTRICTOS:
           });
         }));
         const confirmed = await request('POST', 'confirm', { publicIds: instructions.uploads.map(upload => upload.publicId) });
-        const linkedType = mediaAssociation.value === 'gallery' ? 'gallery' : 'menu';
-        const linkedItemId = linkedType === 'gallery' ? null : mediaAssociation.value;
-        await request('PUT', '', { images: confirmed.map(image => ({ publicId: image.publicId, linkedType, linkedItemId })) });
+        // Esta zona es solo para la galería general — las fotos por servicio
+        // se suben desde su propia tarjeta (uploadServicePhoto), con
+        // linkedItemId fijo al id del servicio.
+        await request('PUT', '', { images: confirmed.map(image => ({ publicId: image.publicId, linkedType: 'gallery', linkedItemId: null })) });
         // A preview becomes visible here only after Cloudinary and our endpoint confirm it.
         confirmedMedia = confirmedMedia.concat(confirmed);
         stagedMedia.forEach(image => URL.revokeObjectURL(image.preview));
@@ -4223,7 +4366,8 @@ LÍMITES ESTRICTOS:
         eColor.value = color;
         eCPicker.value = color;
       } else if (section === 'services') {
-        editServices = Array.isArray(c.menu) ? c.menu.map(i => ({ ...i })) : [];
+        editServices = Array.isArray(c.services) && c.services.length ? c.services.map(i => ({ ...i }))
+          : Array.isArray(c.menu) ? c.menu.map(i => ({ ...i })) : [];
         renderEditServices();
       }
 
@@ -4266,7 +4410,7 @@ LÍMITES ESTRICTOS:
           return;
         }
       } else if (editSection === 'services') {
-        body.menu = editServices.filter(s => s.nombre && s.nombre.trim());
+        body.services = editServices.filter(s => s.nombre && s.nombre.trim());
       }
 
       editSaveBtn.disabled = true;

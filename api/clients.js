@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import { randomUUID } from 'node:crypto';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 
 initSentry();
@@ -204,9 +205,22 @@ function sanitizeServiceImage(raw) {
   return v;
 }
 
+// Identificador estable de un servicio, independiente de su nombre. Antes,
+// una imagen se asociaba a un servicio guardando su NOMBRE como clave
+// (linkedItemId) — si el negocio renombraba el servicio, la foto quedaba
+// huérfana en silencio. Se preserva el id existente si ya es válido (para
+// que editar un servicio no le asigne uno nuevo cada vez, lo que rompería
+// las asociaciones de imagen ya guardadas); si no hay uno válido, se genera
+// una sola vez.
+const SERVICE_ID_RE = /^svc_[a-f0-9]{8,32}$/i;
+function sanitizeServiceId(raw) {
+  return typeof raw === 'string' && SERVICE_ID_RE.test(raw) ? raw : `svc_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+}
+
 function sanitizeServices(services) {
   if (!Array.isArray(services)) return [];
   return services.slice(0, 40).map(item => ({
+    id:          sanitizeServiceId(item?.id),
     nombre:      String(item?.nombre      || '').slice(0, 80),
     precio:      String(item?.precio      || '').slice(0, 30),
     duracion:    String(item?.duracion    || '').slice(0, 30),
@@ -218,6 +232,7 @@ function sanitizeServices(services) {
 function sanitizeMenu(menu) {
   if (!Array.isArray(menu)) return [];
   return menu.slice(0, 20).map(item => ({
+    id:          sanitizeServiceId(item?.id),
     nombre:      String(item?.nombre      || '').slice(0, 80),
     precio:      String(item?.precio      || '').slice(0, 30),
     descripcion: String(item?.descripcion || '').slice(0, 200),
@@ -540,8 +555,10 @@ export default async function handler(req, res) {
     // menu[] directly; it's still sanitized the same way.
     const menuSafe = Array.isArray(services)
       // duracion viaja al menu: el chat la necesita para no aceptar un servicio
-      // de 60 min a 15 minutos del cierre.
-      ? (featuresSafe.catalog ? servicesSafe.map(s => ({ nombre: s.nombre, precio: s.precio, descripcion: s.descripcion, imagen: s.imagen, duracion: s.duracion })) : [])
+      // de 60 min a 15 minutos del cierre. id también viaja: es la misma clave
+      // que usan las imágenes asociadas (client-images), y debe coincidir con
+      // client.services[].id para que el widget y el panel las encuentren.
+      ? (featuresSafe.catalog ? servicesSafe.map(s => ({ id: s.id, nombre: s.nombre, precio: s.precio, descripcion: s.descripcion, imagen: s.imagen, duracion: s.duracion })) : [])
       : sanitizeMenu(menu);
 
     try {
@@ -552,8 +569,6 @@ export default async function handler(req, res) {
 
       const mode     = normalizeDisplayMode(displayMode);
       const position = normalizeWidgetPosition(widgetPosition);
-
-      const { randomUUID } = await import('crypto');
 
       // Campos legados derivados: si el wizard nuevo mandó estructura,
       // language/whatsapp/hours se derivan de ella para que todo el código
@@ -684,19 +699,23 @@ export default async function handler(req, res) {
         const bh = sanitizeBusinessHours(businessHours);
         if (bh) client.businessHours = bh;
       }
-      // services es la fuente con duración; menu se deriva de ella, igual que
-      // en la creación, para que no vuelvan a divergir.
+      // services es la fuente de verdad; menu siempre se deriva de ella. menu
+      // como entrada independiente solo existe por compatibilidad con paneles
+      // viejos que todavía lo mandan sin services: se trata como si fuera
+      // services (mismo saneador, gana un id estable) y se re-deriva menu
+      // desde ahí, igual que el camino normal — así nunca vuelven a
+      // divergir. Si llegan ambos, services manda: el menu de la petición se
+      // ignora por completo.
+      const deriveMenu = (svc) => svc.map(x => ({
+        id: x.id, nombre: x.nombre, precio: x.precio, descripcion: x.descripcion,
+        imagen: x.imagen, duracion: x.duracion,
+      }));
       if (services !== undefined && Array.isArray(services)) {
         client.services = sanitizeServices(services);
-        client.menu = client.services.map(x => ({
-          nombre: x.nombre, precio: x.precio, descripcion: x.descripcion,
-          imagen: x.imagen, duracion: x.duracion,
-        }));
-      }
-      if (menu      !== undefined && Array.isArray(menu)) {
-        // Reutiliza el saneador de la creación: el mapeo inline que había aquí
-        // descartaba `duracion` y saneaba la imagen peor.
-        client.menu = sanitizeMenu(menu);
+        client.menu = deriveMenu(client.services);
+      } else if (menu !== undefined && Array.isArray(menu)) {
+        client.services = sanitizeServices(menu);
+        client.menu = deriveMenu(client.services);
       }
 
       await redis.set(`client:${id}`, client);

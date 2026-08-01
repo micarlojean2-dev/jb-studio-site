@@ -1,5 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
+import { loadClientMedia } from '../lib/media.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 
 initSentry();
@@ -62,18 +63,27 @@ function tzOf(client) {
   try { new Intl.DateTimeFormat('en-CA', { timeZone: v }); return v; } catch (e) { return 'UTC'; }
 }
 
-async function confirmedMedia(clientId) {
-  const keys = await redis.keys(`client-images:${clientId}:*`);
-  if (!keys.length) return { gallery: 0, menuItems: [] };
-  const records = keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys);
-  const gallery = [];
-  const menuItems = [];
-  records.forEach((record) => {
-    if (!record || record.confirmed !== true || !record.imageUrl) return;
-    if (record.linkedType === 'gallery') gallery.push(record.imageUrl);
-    if ((record.linkedType === 'menu' || record.linkedType === 'service') && record.linkedItemId) menuItems.push(record.linkedItemId);
-  });
-  return { gallery: gallery.length, menuItems };
+// La validación de qué imagen es confirmada y pública vive en lib/media.js
+// (loadClientMedia), compartida con publicMedia() en api/client-config.js —
+// antes cada una tenía su propio criterio y podían divergir (el modelo podía
+// decir "hay fotos" que el widget nunca iba a poder pintar).
+//
+// linkedItemId puede ser el id estable de un servicio (asociaciones nuevas)
+// o su nombre (asociaciones hechas antes de que los servicios tuvieran id).
+// El prompt necesita el nombre ACTUAL del servicio, no un id opaco ni un
+// nombre que ya cambió — por eso se resuelve contra client.menu aquí.
+async function confirmedMedia(clientId, client) {
+  const media = await loadClientMedia(redis, clientId);
+  const items = Array.isArray(client && client.menu) ? client.menu : [];
+  const menuItems = media.menu
+    .map((entry) => {
+      const byId = items.find((item) => item.id && String(item.id) === entry.itemId);
+      if (byId) return byId.nombre;
+      const byName = items.find((item) => item.nombre === entry.itemId);
+      return byName ? byName.nombre : null;   // asociación huérfana (servicio renombrado o borrado): se ignora
+    })
+    .filter(Boolean);
+  return { gallery: media.gallery.length, menuItems: [...new Set(menuItems)] };
 }
 
 function needsRestaurantMedicalWarning(client, messages) {
@@ -537,7 +547,7 @@ export default async function handler(req, res) {
     // falta configuración, el servidor las rechaza — y sin este aviso el
     // modelo arranca igualmente el flujo y le pide los datos a alguien para
     // nada. Se le dice aquí, no reescribiendo el prompt guardado.
-    const media = await confirmedMedia(clientId);
+    const media = await confirmedMedia(clientId, client);
     let systemPrompt = buildSystemPrompt(client.prompt, client, media, activeLanguage);
 
     // Modo reserva: el frontend manda el estado estructurado (lo capturado y
@@ -733,4 +743,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, spaBusinessInfoBlock, buildSystemPrompt };
+export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, spaBusinessInfoBlock, buildSystemPrompt, confirmedMedia };
