@@ -31,7 +31,8 @@ ok(/function serviceItems\(client\)/.test(html), 'existe serviceItems() — mism
 ok(/function findServiceImage\(item\)/.test(html) && /item\.id && confirmedMedia\.find/.test(html), 'findServiceImage() prioriza id sobre nombre, igual que el backend');
 ok(/function renderServiceCards\(client\)/.test(html), 'existe renderServiceCards()');
 ok(/async function uploadServicePhoto\(client, item, file, btn\)/.test(html), 'existe uploadServicePhoto()');
-ok(/linkedType: 'menu', linkedItemId: item\.id/.test(html), 'la foto de un servicio se asocia con linkedItemId = item.id (no el nombre)');
+ok(/linkedType: 'service', linkedItemId: item\.id/.test(html), 'la foto de un servicio se asocia con linkedType:"service" y linkedItemId = item.id (no el nombre)');
+ok(/linkedType === 'service' \|\| image\.linkedType === 'menu'/.test(html), 'al leer, sigue aceptando linkedType:"menu" legacy además del nuevo "service"');
 ok(/method: 'DELETE'/.test(html) && /previous\.publicId/.test(html), 'al reemplazar la foto de un servicio se borra la anterior (Cloudinary + Redis)');
 
 console.log('3. QR controls');

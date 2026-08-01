@@ -3976,9 +3976,13 @@ LÍMITES ESTRICTOS:
     // nuevas), y solo si no hay match se cae al nombre (asociaciones hechas
     // antes de que los servicios tuvieran id).
     function findServiceImage(item) {
-      const byId = item.id && confirmedMedia.find(image => image.linkedType === 'menu' && image.linkedItemId === item.id);
+      // 'service' es el tipo para asociaciones nuevas (linkedItemId = id);
+      // 'menu' sigue siendo válido para las asociaciones legacy (linkedItemId
+      // = nombre) — igual que ya acepta lib/media.js en el backend.
+      const isServiceLink = (image) => image.linkedType === 'service' || image.linkedType === 'menu';
+      const byId = item.id && confirmedMedia.find(image => isServiceLink(image) && image.linkedItemId === item.id);
       if (byId) return byId;
-      return (item.nombre && confirmedMedia.find(image => image.linkedType === 'menu' && image.linkedItemId === item.nombre)) || null;
+      return (item.nombre && confirmedMedia.find(image => isServiceLink(image) && image.linkedItemId === item.nombre)) || null;
     }
 
     function showServiceMediaMessage(text, ok) {
@@ -4079,7 +4083,11 @@ LÍMITES ESTRICTOS:
         // asociación se hace en el PUT de abajo) — hay que guardar en
         // confirmedMedia el registro que devuelve el PUT, ya asociado, para
         // que findServiceImage() lo encuentre sin tener que reabrir el modal.
-        const [associatedImage] = await request('PUT', '', { images: [{ publicId: confirmedImage.publicId, linkedType: 'menu', linkedItemId: item.id }] });
+        // linkedType:'service' identifica una asociación nueva (linkedItemId
+        // = id estable). 'menu' sigue existiendo solo para lo asociado antes
+        // de este cambio (linkedItemId = nombre) — lib/media.js y
+        // findServiceImage() arriba aceptan ambos al leer.
+        const [associatedImage] = await request('PUT', '', { images: [{ publicId: confirmedImage.publicId, linkedType: 'service', linkedItemId: item.id }] });
         confirmedMedia = confirmedMedia.filter(image => image !== previous).concat(associatedImage);
 
         if (previous) {
@@ -4321,12 +4329,14 @@ LÍMITES ESTRICTOS:
         row.innerHTML = `
           <input class="admin-input" placeholder="Nombre (ej: Corte clásico)" style="grid-column:1;" value="${escHTML(svc.nombre || '')}">
           <input class="admin-input" placeholder="$15" style="grid-column:2;" value="${escHTML(svc.precio || '')}">
+          <input class="admin-input" placeholder="Duración (ej: 30 min)" style="grid-column:1/3;" value="${escHTML(svc.duracion || '')}">
           <input class="admin-input" placeholder="Descripción breve" style="grid-column:1/3;" value="${escHTML(svc.descripcion || '')}">
           <button type="button" class="svc2-remove-btn">✕ Eliminar</button>`;
         const inputs = row.querySelectorAll('input');
         inputs[0].addEventListener('input', e => editServices[idx].nombre = e.target.value);
         inputs[1].addEventListener('input', e => editServices[idx].precio = e.target.value);
-        inputs[2].addEventListener('input', e => editServices[idx].descripcion = e.target.value);
+        inputs[2].addEventListener('input', e => editServices[idx].duracion = e.target.value);
+        inputs[3].addEventListener('input', e => editServices[idx].descripcion = e.target.value);
         row.querySelector('.svc2-remove-btn').addEventListener('click', () => {
           editServices.splice(idx, 1);
           renderEditServices();
@@ -4338,7 +4348,7 @@ LÍMITES ESTRICTOS:
 
     document.getElementById('e-svc-add').addEventListener('click', () => {
       if (editServices.length >= 20) return;
-      editServices.push({ nombre: '', precio: '', descripcion: '', imagen: '' });
+      editServices.push({ nombre: '', precio: '', duracion: '', descripcion: '', imagen: '' });
       renderEditServices();
     });
 
@@ -5232,7 +5242,12 @@ LÍMITES ESTRICTOS:
         card.querySelector('.svc-desc').addEventListener('input', e => state.services[idx].descripcion = e.target.value);
         card.querySelector('.svc-imagen').addEventListener('input', e => state.services[idx].imagen = e.target.value);
         card.querySelector('.svc-dup-btn').addEventListener('click', () => {
-          state.services.splice(idx + 1, 0, Object.assign({}, svc));
+          // Nunca copiar `id`: son dos servicios distintos y cada uno debe
+          // recibir el suyo propio al guardar (lib/services.js lo genera).
+          // Copiar el id original haría que la imagen asociada a uno se
+          // "viera" también en el otro.
+          const { id, ...copia } = svc;
+          state.services.splice(idx + 1, 0, copia);
           formTouched = true;
           renderServices();
         });

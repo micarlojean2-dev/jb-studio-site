@@ -2,6 +2,7 @@ import { Redis } from '@upstash/redis';
 import { createHash, randomUUID } from 'node:crypto';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { loadClientMedia } from '../lib/media.js';
+import { findServiceByLinkedItemId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 
 initSentry();
@@ -47,17 +48,22 @@ export function createClientConfigHandler({ redis } = {}) {
 
     // Return only public-safe fields — never expose prompt, panelToken, ownerEmail
     const media = await publicMedia(store, id);
-    const menuImageUrls = new Map(media.menu.map(image => [image.itemId, image.imageUrl]));
-    // Se prueba primero por id (asociaciones nuevas, estables ante un
-    // renombre) y solo si no hay match se cae al nombre (asociaciones viejas,
-    // guardadas antes de que los servicios tuvieran id). Así una asociación
-    // hecha con el nombre sigue funcionando aunque el servicio ya tenga id.
-    const menu = Array.isArray(client.menu) ? client.menu.map((item) => {
-      const byId = item?.id ? menuImageUrls.get(String(item.id)) : undefined;
-      const byName = byId === undefined && item?.nombre ? menuImageUrls.get(String(item.nombre)) : undefined;
-      const imageUrl = byId || byName;
+    // findServiceByLinkedItemId (lib/services.js) es la única fuente de este
+    // fallback id→nombre — antes vivía reimplementado aquí a mano. Se arma
+    // por entrada de imagen (no por servicio) para conservar el mismo
+    // comportamiento de antes ante un conflicto: si dos imágenes terminan
+    // asociadas al mismo servicio, gana la última del array, igual que antes
+    // con el Map.
+    const clientMenu = Array.isArray(client.menu) ? client.menu : [];
+    const imageByService = new Map();
+    media.menu.forEach((entry) => {
+      const service = findServiceByLinkedItemId(clientMenu, entry.itemId);
+      if (service) imageByService.set(service, entry.imageUrl);
+    });
+    const menu = clientMenu.map((item) => {
+      const imageUrl = imageByService.get(item);
       return imageUrl ? { ...item, imagen: imageUrl } : item;
-    }) : [];
+    });
     const languages = Array.isArray(client.languages)
       ? client.languages.filter(language => ['es', 'en', 'pt', 'fr'].includes(language))
       : [];

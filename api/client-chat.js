@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { loadClientMedia } from '../lib/media.js';
+import { findServiceByLinkedItemId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 
 initSentry();
@@ -69,18 +70,18 @@ function tzOf(client) {
 // decir "hay fotos" que el widget nunca iba a poder pintar).
 //
 // linkedItemId puede ser el id estable de un servicio (asociaciones nuevas)
-// o su nombre (asociaciones hechas antes de que los servicios tuvieran id).
-// El prompt necesita el nombre ACTUAL del servicio, no un id opaco ni un
-// nombre que ya cambió — por eso se resuelve contra client.menu aquí.
+// o su nombre (asociaciones hechas antes de que los servicios tuvieran id) —
+// findServiceByLinkedItemId (lib/services.js) es la única fuente de ese
+// fallback, compartida con api/client-config.js. El prompt necesita el
+// nombre ACTUAL del servicio, no un id opaco ni un nombre que ya cambió —
+// por eso se resuelve contra client.menu aquí.
 async function confirmedMedia(clientId, client) {
   const media = await loadClientMedia(redis, clientId);
   const items = Array.isArray(client && client.menu) ? client.menu : [];
   const menuItems = media.menu
     .map((entry) => {
-      const byId = items.find((item) => item.id && String(item.id) === entry.itemId);
-      if (byId) return byId.nombre;
-      const byName = items.find((item) => item.nombre === entry.itemId);
-      return byName ? byName.nombre : null;   // asociación huérfana (servicio renombrado o borrado): se ignora
+      const service = findServiceByLinkedItemId(items, entry.itemId);
+      return service ? service.nombre : null;   // asociación huérfana (servicio renombrado o borrado): se ignora
     })
     .filter(Boolean);
   return { gallery: media.gallery.length, menuItems: [...new Set(menuItems)] };

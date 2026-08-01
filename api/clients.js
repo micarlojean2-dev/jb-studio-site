@@ -1,5 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { randomUUID } from 'node:crypto';
+import { sanitizeServiceList } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 
 initSentry();
@@ -199,46 +200,17 @@ function businessHoursToText(businessHours) {
   }).join('\n');
 }
 
-function sanitizeServiceImage(raw) {
-  const v = String(raw || '').slice(0, 500);
-  if (/^data:/i.test(v)) return ''; // never persist local base64 blobs
-  return v;
-}
-
-// Identificador estable de un servicio, independiente de su nombre. Antes,
-// una imagen se asociaba a un servicio guardando su NOMBRE como clave
-// (linkedItemId) — si el negocio renombraba el servicio, la foto quedaba
-// huérfana en silencio. Se preserva el id existente si ya es válido (para
-// que editar un servicio no le asigne uno nuevo cada vez, lo que rompería
-// las asociaciones de imagen ya guardadas); si no hay uno válido, se genera
-// una sola vez.
-const SERVICE_ID_RE = /^svc_[a-f0-9]{8,32}$/i;
-function sanitizeServiceId(raw) {
-  return typeof raw === 'string' && SERVICE_ID_RE.test(raw) ? raw : `svc_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
-}
-
+// La generación/validación de id y el saneado de una lista de servicios
+// viven en lib/services.js — única fuente de verdad, compartida también con
+// api/generate-client-config.js. Antes cada archivo tenía su propia copia
+// (una de ellas ni siquiera generaba id), el mismo patrón de divergencia
+// que ya causó el bug de client.services/client.menu desincronizados.
 function sanitizeServices(services) {
-  if (!Array.isArray(services)) return [];
-  return services.slice(0, 40).map(item => ({
-    id:          sanitizeServiceId(item?.id),
-    nombre:      String(item?.nombre      || '').slice(0, 80),
-    precio:      String(item?.precio      || '').slice(0, 30),
-    duracion:    String(item?.duracion    || '').slice(0, 30),
-    descripcion: String(item?.descripcion || '').slice(0, 200),
-    imagen:      sanitizeServiceImage(item?.imagen),
-  })).filter(item => item.nombre);
+  return sanitizeServiceList(services, 40);
 }
 
 function sanitizeMenu(menu) {
-  if (!Array.isArray(menu)) return [];
-  return menu.slice(0, 20).map(item => ({
-    id:          sanitizeServiceId(item?.id),
-    nombre:      String(item?.nombre      || '').slice(0, 80),
-    precio:      String(item?.precio      || '').slice(0, 30),
-    descripcion: String(item?.descripcion || '').slice(0, 200),
-    duracion:    String(item?.duracion    || '').slice(0, 30),
-    imagen:      sanitizeServiceImage(item?.imagen),
-  })).filter(item => item.nombre);
+  return sanitizeServiceList(menu, 20);
 }
 
 // El plan es un TECHO, no un valor por defecto. Antes cualquier booleano que
