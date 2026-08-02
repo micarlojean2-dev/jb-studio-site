@@ -1617,16 +1617,66 @@
     .media-thumb button { position: absolute; top: 5px; right: 5px; width: 25px; height: 25px; border: none; border-radius: 50%; background: rgba(0,0,0,.7); color: #fff; cursor: pointer; }
     .media-empty { grid-column: 1 / -1; color: #666; font-size: 13px; padding: 8px 0; }
     .media-section-title { font-size: 13px; font-weight: 700; color: var(--green); margin: 18px 0 8px; }
-    /* Una tarjeta por servicio: foto actual (o placeholder) + subir/cambiar. */
-    .media-service-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-    .media-service-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: #fbfbfb; display: flex; flex-direction: column; gap: 8px; }
-    .media-service-card-photo { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #f0f0f0; display: flex; align-items: center; justify-content: center; }
-    .media-service-card-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .media-service-card-photo.is-empty { color: #999; font-size: 12px; text-align: center; padding: 6px; }
-    .media-service-card-name { font-size: 12.5px; font-weight: 600; color: #222; line-height: 1.3; min-height: 32px; }
-    .media-service-card-btn { font-size: 12px; border: 1px solid var(--border); border-radius: 7px; background: #fff; padding: 6px 8px; cursor: pointer; color: var(--green); font-weight: 600; }
+    /* Tabla tipo SaaS por servicio: Servicio | Imagen | Estado | Acción.
+       Mismo contenedor #media-service-cards de siempre (no se renombra el
+       id: nada más en el modal ni en los tests depende de su nombre visual,
+       solo de que exista). Sigue el mismo patrón responsive que .svc-table/
+       .svc-row del wizard: filas de grid en escritorio, tarjetas apiladas
+       con labels visibles en móvil. */
+    .media-service-cards { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .media-service-cards .media-empty { padding: 14px; }
+    .media-service-row {
+      display: grid;
+      grid-template-columns: 1.7fr 84px 110px auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border-top: 1px solid #eee;
+    }
+    .media-service-row:first-child { border-top: none; }
+    .media-service-row-header {
+      background: #f5f5f5;
+      font-size: 12px;
+      font-weight: 700;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .media-service-cell-name { font-size: 13.5px; font-weight: 600; color: #222; }
+    .media-service-thumb { width: 56px; height: 56px; border-radius: 8px; overflow: hidden; background: #f0f0f0; display: flex; align-items: center; justify-content: center; }
+    .media-service-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .media-service-thumb.is-empty { color: #999; font-size: 9.5px; text-align: center; padding: 4px; line-height: 1.2; }
+    .media-service-badge { display: inline-block; font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+    .media-service-badge.is-ok { background: var(--green-light); color: var(--green); }
+    .media-service-badge.is-empty { background: #f0f0f0; color: #777; }
+    .media-service-cell-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .media-service-cell-label { display: none; }
+    .media-service-card-btn { font-size: 12px; border: 1px solid var(--border); border-radius: 7px; background: #fff; padding: 6px 8px; cursor: pointer; color: var(--green); font-weight: 600; white-space: nowrap; }
     .media-service-card-btn:hover { background: var(--green-light); }
     .media-service-card-btn:disabled { opacity: .6; cursor: not-allowed; }
+    .media-service-card-btn.is-danger { color: var(--danger); border-color: #f0caca; }
+    .media-service-card-btn.is-danger:hover { background: #fff0f0; }
+    @media (max-width: 620px) {
+      .media-service-row-header { display: none; }
+      .media-service-row, .media-service-row:first-child {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        border: 1px solid var(--border);
+        border-top: 1px solid var(--border);
+        border-radius: 10px;
+        margin: 10px;
+        padding: 12px;
+      }
+      .media-service-cell-label {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        margin-bottom: 4px;
+      }
+    }
     .qr-layout { display: flex; align-items: center; gap: 18px; padding: 14px; background: #f7f8f7; border: 1px solid var(--border); border-radius: 10px; }
     #client-qr { width: 128px; height: 128px; flex: 0 0 128px; background: #fff; padding: 6px; }
     #client-qr img, #client-qr canvas { max-width: 100%; height: auto; }
@@ -3991,53 +4041,93 @@ LÍMITES ESTRICTOS:
       mediaServiceMsg.style.display = 'block';
     }
 
-    function renderServiceCards(client) {
+    // Tabla Servicio | Imagen | Estado | Acción — una fila por servicio, en
+    // el mismo orden que devuelve serviceItems(client). Reemplaza a la
+    // antigua renderServiceCards() (grid de tarjetas grandes); la fuente de
+    // datos y la lógica de asociación no cambian, solo la presentación.
+    function renderServiceImageTable(client) {
       const items = serviceItems(client);
       mediaServiceCards.innerHTML = '';
       if (!items.length) {
         mediaServiceCards.innerHTML = '<div class="media-empty">Este negocio todavía no tiene servicios.</div>';
         return;
       }
-      items.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'media-service-card';
 
-        const photoBox = document.createElement('div');
-        photoBox.className = 'media-service-card-photo';
+      const header = document.createElement('div');
+      header.className = 'media-service-row media-service-row-header';
+      header.innerHTML = '<div>Servicio</div><div>Imagen</div><div>Estado</div><div>Acción</div>';
+      mediaServiceCards.appendChild(header);
+
+      items.forEach(item => {
         const existing = findServiceImage(item);
         const url = existing && confirmedImageUrl(existing);
+        const row = document.createElement('div');
+        row.className = 'media-service-row';
+
+        const nameCell = document.createElement('div');
+        nameCell.className = 'media-service-cell-name';
+        nameCell.textContent = item.nombre || 'Servicio';
+        row.appendChild(nameCell);
+
+        const photoCell = document.createElement('div');
+        const photoLabel = document.createElement('span');
+        photoLabel.className = 'media-service-cell-label';
+        photoLabel.textContent = 'Imagen';
+        photoCell.appendChild(photoLabel);
+        const thumb = document.createElement('div');
+        thumb.className = 'media-service-thumb';
         if (url) {
           const img = document.createElement('img');
           img.src = url;
           img.alt = item.nombre || 'Servicio';
-          photoBox.appendChild(img);
+          thumb.appendChild(img);
         } else {
-          photoBox.classList.add('is-empty');
-          photoBox.textContent = 'Sin foto';
+          thumb.classList.add('is-empty');
+          thumb.textContent = 'Sin foto';
         }
-        card.appendChild(photoBox);
+        photoCell.appendChild(thumb);
+        row.appendChild(photoCell);
 
-        const name = document.createElement('div');
-        name.className = 'media-service-card-name';
-        name.textContent = item.nombre || 'Servicio';
-        card.appendChild(name);
+        const stateCell = document.createElement('div');
+        const stateLabel = document.createElement('span');
+        stateLabel.className = 'media-service-cell-label';
+        stateLabel.textContent = 'Estado';
+        stateCell.appendChild(stateLabel);
+        const badge = document.createElement('span');
+        badge.className = `media-service-badge ${url ? 'is-ok' : 'is-empty'}`;
+        badge.textContent = url ? 'Con foto' : 'Sin foto';
+        stateCell.appendChild(badge);
+        row.appendChild(stateCell);
 
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'media-service-card-btn';
-        btn.textContent = url ? 'Cambiar foto' : 'Subir foto';
-        btn.addEventListener('click', () => {
+        const actionsCell = document.createElement('div');
+        actionsCell.className = 'media-service-cell-actions';
+
+        const uploadBtn = document.createElement('button');
+        uploadBtn.type = 'button';
+        uploadBtn.className = 'media-service-card-btn';
+        uploadBtn.textContent = url ? 'Cambiar foto' : 'Subir foto';
+        uploadBtn.addEventListener('click', () => {
           const input = document.createElement('input');
           input.type = 'file';
           input.accept = 'image/*';
           input.addEventListener('change', () => {
-            if (input.files && input.files[0]) uploadServicePhoto(client, item, input.files[0], btn);
+            if (input.files && input.files[0]) uploadServicePhoto(client, item, input.files[0], uploadBtn);
           });
           input.click();
         });
-        card.appendChild(btn);
+        actionsCell.appendChild(uploadBtn);
 
-        mediaServiceCards.appendChild(card);
+        if (existing) {
+          const deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.className = 'media-service-card-btn is-danger';
+          deleteBtn.textContent = 'Eliminar';
+          deleteBtn.addEventListener('click', () => deleteServicePhoto(client, item, existing, deleteBtn));
+          actionsCell.appendChild(deleteBtn);
+        }
+
+        row.appendChild(actionsCell);
+        mediaServiceCards.appendChild(row);
       });
     }
 
@@ -4112,10 +4202,40 @@ LÍMITES ESTRICTOS:
         } else {
           showServiceMediaMessage(`Foto de "${item.nombre}" guardada.`, true);
         }
-        renderServiceCards(client);
+        renderServiceImageTable(client);
         renderMediaList(mediaConfirmed, confirmedMedia, false);
       } catch (error) {
         showServiceMediaMessage(`No se pudo subir la foto de "${item.nombre}": ${error.message}`, false);
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+      }
+    }
+
+    // Elimina la foto de UN servicio: DELETE directo (Cloudinary + Redis),
+    // igual que el paso "borrar la anterior" que ya hace uploadServicePhoto
+    // al reemplazar una foto — mismo endpoint, mismo contrato. Solo toca
+    // confirmedMedia (estado local de imágenes); nunca escribe
+    // client.services ni client.menu.
+    async function deleteServicePhoto(client, item, image, btn) {
+      if (!window.confirm(`¿Eliminar la foto de "${item.nombre || 'este servicio'}"?`)) return;
+      const originalLabel = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Eliminando…';
+      try {
+        const response = await fetch(`/api/client-images?clientId=${encodeURIComponent(client.id)}&publicId=${encodeURIComponent(image.publicId)}`, {
+          method: 'DELETE',
+          headers: { 'x-admin-token': token },
+        });
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(result.error || response.status);
+        }
+        confirmedMedia = confirmedMedia.filter(entry => entry !== image);
+        showServiceMediaMessage(`Foto de "${item.nombre || 'este servicio'}" eliminada.`, true);
+        renderServiceImageTable(client);
+        renderMediaList(mediaConfirmed, confirmedMedia, false);
+      } catch (error) {
+        showServiceMediaMessage(`No se pudo eliminar la foto de "${item.nombre || 'este servicio'}": ${error.message}`, false);
         btn.disabled = false;
         btn.textContent = originalLabel;
       }
@@ -4131,7 +4251,7 @@ LÍMITES ESTRICTOS:
       mediaSave.disabled = true;
       renderMediaList(mediaStaged, stagedMedia, true);
       renderMediaList(mediaConfirmed, confirmedMedia, false);
-      renderServiceCards(client);
+      renderServiceImageTable(client);
       renderAssistantQr(assistantUrl(client));
       mediaOverlay.style.display = 'flex';
       try {
@@ -4141,7 +4261,7 @@ LÍMITES ESTRICTOS:
         if (manageClient !== client) return;
         confirmedMedia = Array.isArray(images) ? images : [];
         renderMediaList(mediaConfirmed, confirmedMedia, false);
-        renderServiceCards(client);
+        renderServiceImageTable(client);
       } catch (error) {
         showMediaMessage(`No se pudieron cargar las imágenes: ${error.message}`, false);
       }
