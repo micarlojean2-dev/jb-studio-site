@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
   createServiceId, isValidServiceId, sanitizeServiceId,
-  sanitizeServiceList, findServiceByLinkedItemId,
+  sanitizeServiceList, findServiceByLinkedItemId, assignUniqueServiceIds,
 } from '../lib/services.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -211,6 +211,22 @@ console.log('\n11. migrate-service-ids.mjs: migrateClient() — legacy menu-only
     'services y menu comparten exactamente los mismos ids, en el mismo orden');
   ok(legacyClient.menu[0].id === undefined, 'el objeto original no se muta (migrateClient devuelve uno nuevo)');
 
+  // Caso exacto de la auditoría: menu-only con id YA válido -> debe
+  // promoverse a services igual, SIN regenerar el id (changed:true por la
+  // promoción estructural, no porque falte un id).
+  const legacyConIdValido = {
+    businessName: 'Spa Legacy Con Id',
+    menu: [{ id: 'svc_abc123abc123', nombre: 'Masaje' }],
+  };
+  const r1b = migrateClient(legacyConIdValido);
+  ok(r1b.changed === true, 'changed:true aunque el id ya sea válido — falta crear services');
+  ok(r1b.wasLegacy === true, 'se marca como legacy');
+  ok(r1b.updatedClient.services.length === 1 && r1b.updatedClient.services[0].id === 'svc_abc123abc123',
+    'services se crea preservando el id existente, sin regenerarlo');
+  ok(r1b.updatedClient.menu.length === 1 && r1b.updatedClient.menu[0].id === 'svc_abc123abc123',
+    'menu queda derivado con el mismo id');
+  ok(r1b.faltantesCount === 0, 'ningún id se regeneró (0 ids nuevos): el cambio es solo estructural (promoción)');
+
   // Cliente ya migrado (services con ids válidos): no debe tocarse nada.
   const yaMigrado = {
     businessName: 'Spa Al Día',
@@ -269,6 +285,76 @@ console.log('\n12. admin.html: uploadServicePhoto() bloquea si el servicio no ti
   const conId = runGuard({ id: 'svc_111111111111', nombre: 'Masaje' });
   ok(conId.message === null, 'servicio con id: no muestra ningún mensaje de bloqueo');
   ok(conId.reachedFetch === true, 'servicio con id: sigue de largo hacia el flujo normal de subida');
+}
+
+console.log('\n13. migrate-service-ids.mjs: migrateClient() — ids duplicados YA persistidos en services se corrigen');
+{
+  const { migrateClient } = await import('../scripts/migrate-service-ids.mjs');
+  const idDuplicado = 'svc_deadbeef0001';
+  const client = {
+    businessName: 'Spa Duplicado',
+    services: [
+      { id: idDuplicado, nombre: 'Masaje' },
+      { id: idDuplicado, nombre: 'Facial' },
+    ],
+    menu: [
+      { id: idDuplicado, nombre: 'Masaje' },
+      { id: idDuplicado, nombre: 'Facial' },
+    ],
+  };
+  const r = migrateClient(client);
+  ok(r.changed === true, 'detecta el duplicado persistido y marca changed:true');
+  ok(r.wasLegacy === false, 'no es legacy: ya tenía services');
+  ok(r.updatedClient.services[0].id === idDuplicado, 'el primer servicio conserva el id original');
+  ok(isValidServiceId(r.updatedClient.services[1].id) && r.updatedClient.services[1].id !== idDuplicado,
+    `el segundo servicio recibe un id NUEVO (${r.updatedClient.services[1].id})`);
+  const idsServices = r.updatedClient.services.map((s) => s.id);
+  ok(new Set(idsServices).size === idsServices.length, 'services termina con ids únicos');
+  ok(r.updatedClient.menu.map((m) => m.id).join(',') === idsServices.join(','), 'menu queda como espejo exacto, con los mismos ids únicos');
+  ok(r.faltantesCount === 1, 'cuenta 1 id regenerado (solo el duplicado, no el primero)');
+}
+
+console.log('\n14. assignUniqueServiceIds() — el while reintenta si la regeneración también colisiona (colisión controlada)');
+{
+  const primerId = 'svc_deadbeef0001';
+  const segundoId = 'svc_deadbeef0002'; // ya ocupado por otro servicio del mismo array
+  const idFinal = 'svc_deadbeef0003';
+  let llamadas = 0;
+  // Generador amañado: el primer intento de regenerar devuelve un id que
+  // TAMBIÉN está ocupado (segundoId), obligando al while a reintentar.
+  const generateId = () => { llamadas += 1; return llamadas === 1 ? segundoId : idFinal; };
+
+  const items = [
+    { id: primerId, nombre: 'Masaje' },
+    { id: segundoId, nombre: 'Facial' },
+    { id: primerId, nombre: 'Manicure' }, // duplicado del primero
+  ];
+  const out = assignUniqueServiceIds(items, { generateId });
+
+  ok(out[0].id === primerId, 'primer servicio conserva su id');
+  ok(out[1].id === segundoId, 'segundo servicio conserva su id (no es duplicado dentro del array)');
+  ok(llamadas === 2, 'el generador se invoca 2 veces: el primer intento choca con el id del segundo servicio y reintenta');
+  ok(out[2].id === idFinal, `el duplicado termina con el id del SEGUNDO intento, no con el que colisionó (${out[2].id})`);
+  const ids = out.map((s) => s.id);
+  ok(new Set(ids).size === ids.length, 'los 3 ids finales son únicos, ninguna colisión sobrevive');
+}
+
+console.log('\n15. assignUniqueServiceIds()/sanitizeServiceList() — un servicio sin nombre no le roba el id a uno real posterior');
+{
+  const idCompartido = 'svc_deadbeef0009';
+  const items = [
+    { id: idCompartido, nombre: '' },           // sin nombre: no debe "reservar" idCompartido
+    { id: idCompartido, nombre: 'Pedicure' },   // mismo id, pero es el único con nombre real
+  ];
+  const out = assignUniqueServiceIds(items);
+  ok(out[0].id === idCompartido, 'el item sin nombre no se toca (mismo id que traía)');
+  ok(out[1].id === idCompartido, 'el servicio real CONSERVA su id: el sin-nombre no lo marcó como usado');
+
+  // A través de sanitizeServiceList() (que filtra los sin nombre al
+  // final), el resultado no debe mostrar ningún cambio innecesario de id.
+  const sanitized = sanitizeServiceList(items, 40);
+  ok(sanitized.length === 1, 'el item sin nombre se descarta del resultado final');
+  ok(sanitized[0].id === idCompartido, 'el servicio con nombre conserva su id original, no se regeneró innecesariamente');
 }
 
 if (failures) { console.error(`\n${failures} fallo(s)`); process.exit(1); }

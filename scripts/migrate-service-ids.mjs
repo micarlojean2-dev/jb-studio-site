@@ -15,13 +15,18 @@
 //   descripcion/imagen/duracion) — igual que hace api/clients.js en cada
 //   POST/PUT normal.
 // - Si client.services está vacío y client.menu tiene datos (cliente
-//   legacy), se promueve por completo a la arquitectura services-first:
-//   client.services = menu con ids, client.menu = espejo derivado de esos
-//   mismos ids — mismo resultado final que produciría un PUT normal con
-//   `menu` como entrada (ver api/clients.js).
-// - Un id ya válido (formato svc_...) nunca se regenera, se conserva tal
-//   cual. Un cliente donde todos sus servicios ya tienen id se salta sin
-//   escribir nada.
+//   legacy), se promueve SIEMPRE por completo a la arquitectura
+//   services-first: client.services = menu con ids, client.menu = espejo
+//   derivado de esos mismos ids — igual que produciría un PUT normal con
+//   `menu` como entrada (ver api/clients.js). Esto se escribe aunque el
+//   menu ya tuviera ids válidos: falta crear client.services, y eso por sí
+//   solo ya es un cambio a persistir.
+// - Un id ya válido y único (formato svc_..., no repetido dentro del
+//   mismo array) nunca se regenera, se conserva tal cual. Si dos servicios
+//   del mismo cliente comparten el mismo id (dato corrupto ya persistido),
+//   el primero lo conserva y el resto se regenera.
+// - Un cliente NO legacy (ya tiene client.services) donde todos los ids ya
+//   son válidos y únicos se salta sin escribir nada.
 // - Por qué las asociaciones de imagen sobreviven sin tocarlas: hoy, un
 //   servicio sin id tiene su imagen asociada por NOMBRE (linkedItemId =
 //   nombre). api/client-config.js ya resuelve primero por id y cae a
@@ -29,7 +34,7 @@
 //   agrega id — así que ese fallback sigue encontrando la imagen igual
 //   que antes, sin que haga falta tocar client-images:* para nada.
 
-import { isValidServiceId, createServiceId } from '../lib/services.js';
+import { assignUniqueServiceIds } from '../lib/services.js';
 
 const URL = process.env.UPSTASH_REDIS_REST_URL;
 const TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -65,10 +70,6 @@ async function scanAll(pattern) {
   return found;
 }
 
-function hasValidId(item) {
-  return isValidServiceId(item?.id);
-}
-
 function deriveMenuFromServices(services) {
   return services.map((s) => ({
     id: s.id, nombre: s.nombre, precio: s.precio, descripcion: s.descripcion,
@@ -81,26 +82,31 @@ function deriveMenuFromServices(services) {
 // (services vacío, menu con datos) y no-legacy terminan en el mismo sitio:
 // services + menu poblados, mismos ids en ambos — igual que produce un PUT
 // normal en api/clients.js. Exportada para poder testearla sin mockear HTTP.
+//
+// El dedup de ids (faltantes o duplicados) lo hace assignUniqueServiceIds
+// de lib/services.js — misma función que usa sanitizeServiceList(), para
+// no mantener esa lógica por duplicado aquí.
 export function migrateClient(client) {
   const services = Array.isArray(client.services) ? client.services : [];
   const menu = Array.isArray(client.menu) ? client.menu : [];
   const usingServices = services.length > 0;
+  const wasLegacy = !usingServices;
   const items = usingServices ? services : menu;
 
-  const faltantes = items.filter((it) => it && it.nombre && !hasValidId(it));
-  if (!faltantes.length) {
-    return { changed: false, wasLegacy: !usingServices, faltantesCount: 0, updatedClient: client, items, itemsConId: items };
-  }
+  const itemsConId = assignUniqueServiceIds(items);
+  const cambiados = itemsConId.filter((it, i) => it.id !== items[i].id);
 
-  // Solo a los que no tienen id válido se les asigna uno nuevo; el resto de
-  // campos viaja intacto (spread), incluido `imagen`.
-  const itemsConId = items.map((it) => (
-    it && it.nombre && !hasValidId(it) ? { ...it, id: createServiceId() } : it
-  ));
+  // "changed" es true si al menos un id se asignó/regeneró, O si el
+  // cliente es legacy: promover menu -> services es en sí mismo un cambio
+  // que hay que persistir, aunque los ids ya fueran válidos y únicos.
+  const changed = wasLegacy || cambiados.length > 0;
+  if (!changed) {
+    return { changed: false, wasLegacy, faltantesCount: 0, updatedClient: client, items, itemsConId: items };
+  }
 
   const updatedClient = { ...client, services: itemsConId, menu: deriveMenuFromServices(itemsConId) };
 
-  return { changed: true, wasLegacy: !usingServices, faltantesCount: faltantes.length, updatedClient, items, itemsConId };
+  return { changed: true, wasLegacy, faltantesCount: cambiados.length, updatedClient, items, itemsConId };
 }
 
 async function main() {
