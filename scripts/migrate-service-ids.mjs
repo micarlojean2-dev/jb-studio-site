@@ -15,9 +15,10 @@
 //   descripcion/imagen/duracion) — igual que hace api/clients.js en cada
 //   POST/PUT normal.
 // - Si client.services está vacío y client.menu tiene datos (cliente
-//   legacy), solo se asigna id a los items de menu — NO se crea
-//   client.services; convertir un legacy a la arquitectura services-first
-//   es una decisión aparte, fuera de esta migración.
+//   legacy), se promueve por completo a la arquitectura services-first:
+//   client.services = menu con ids, client.menu = espejo derivado de esos
+//   mismos ids — mismo resultado final que produciría un PUT normal con
+//   `menu` como entrada (ver api/clients.js).
 // - Un id ya válido (formato svc_...) nunca se regenera, se conserva tal
 //   cual. Un cliente donde todos sus servicios ya tienen id se salta sin
 //   escribir nada.
@@ -28,16 +29,11 @@
 //   agrega id — así que ese fallback sigue encontrando la imagen igual
 //   que antes, sin que haga falta tocar client-images:* para nada.
 
-import { randomUUID } from 'node:crypto';
+import { isValidServiceId, createServiceId } from '../lib/services.js';
 
 const URL = process.env.UPSTASH_REDIS_REST_URL;
 const TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 const apply = process.argv.slice(2).includes('--yes');
-
-if (!URL || !TOKEN) {
-  console.error('Faltan UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN en el entorno.');
-  process.exit(1);
-}
 
 const ALLOWED_COMMANDS = new Set(['GET', 'MGET', 'SCAN', 'SET']);
 async function cmd(...cmdArgs) {
@@ -69,16 +65,8 @@ async function scanAll(pattern) {
   return found;
 }
 
-// Duplicado a propósito de sanitizeServiceId()/SERVICE_ID_RE en
-// api/clients.js: ese archivo instancia Redis y Sentry al cargarse (efectos
-// secundarios que no queremos arrastrar a un script de migración). Mismo
-// patrón ya usado en el proyecto para duracionMin()/spaDurationMinutes().
-const SERVICE_ID_RE = /^svc_[a-f0-9]{8,32}$/i;
 function hasValidId(item) {
-  return typeof item?.id === 'string' && SERVICE_ID_RE.test(item.id);
-}
-function newServiceId() {
-  return `svc_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  return isValidServiceId(item?.id);
 }
 
 function deriveMenuFromServices(services) {
@@ -88,7 +76,39 @@ function deriveMenuFromServices(services) {
   }));
 }
 
+// Lógica pura, sin red: dado un client tal cual viene de Redis, decide si
+// hace falta escribir algo y devuelve el client ya migrado. Legacy
+// (services vacío, menu con datos) y no-legacy terminan en el mismo sitio:
+// services + menu poblados, mismos ids en ambos — igual que produce un PUT
+// normal en api/clients.js. Exportada para poder testearla sin mockear HTTP.
+export function migrateClient(client) {
+  const services = Array.isArray(client.services) ? client.services : [];
+  const menu = Array.isArray(client.menu) ? client.menu : [];
+  const usingServices = services.length > 0;
+  const items = usingServices ? services : menu;
+
+  const faltantes = items.filter((it) => it && it.nombre && !hasValidId(it));
+  if (!faltantes.length) {
+    return { changed: false, wasLegacy: !usingServices, faltantesCount: 0, updatedClient: client, items, itemsConId: items };
+  }
+
+  // Solo a los que no tienen id válido se les asigna uno nuevo; el resto de
+  // campos viaja intacto (spread), incluido `imagen`.
+  const itemsConId = items.map((it) => (
+    it && it.nombre && !hasValidId(it) ? { ...it, id: createServiceId() } : it
+  ));
+
+  const updatedClient = { ...client, services: itemsConId, menu: deriveMenuFromServices(itemsConId) };
+
+  return { changed: true, wasLegacy: !usingServices, faltantesCount: faltantes.length, updatedClient, items, itemsConId };
+}
+
 async function main() {
+  if (!URL || !TOKEN) {
+    console.error('Faltan UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN en el entorno.');
+    process.exit(1);
+  }
+
   const clientKeys = (await scanAll('client:*')).filter((k) => /^client:[a-z0-9-]+$/.test(k));
   console.log(`${apply ? 'EJECUCIÓN REAL' : 'DRY-RUN'} — ${clientKeys.length} cliente(s) encontrados.\n`);
 
@@ -103,35 +123,17 @@ async function main() {
     if (!raw) continue;
     const client = typeof raw === 'string' ? JSON.parse(raw) : raw;
 
-    const services = Array.isArray(client.services) ? client.services : [];
-    const menu = Array.isArray(client.menu) ? client.menu : [];
-    const usingServices = services.length > 0;
-    const items = usingServices ? services : menu;
+    const { changed, wasLegacy, faltantesCount, updatedClient, items, itemsConId } = migrateClient(client);
+    if (!changed) { clientesSinCambios++; continue; }
 
-    const faltantes = items.filter((it) => it && it.nombre && !hasValidId(it));
-    if (!faltantes.length) { clientesSinCambios++; continue; }
-
-    // Solo a los que no tienen id válido se les asigna uno nuevo; el resto
-    // de campos viaja intacto (spread), incluido `imagen`.
-    const itemsConId = items.map((it) => (
-      it && it.nombre && !hasValidId(it) ? { ...it, id: newServiceId() } : it
-    ));
-
-    console.log(`- ${clientId} (${client.businessName || 's/nombre'}) [fuente: ${usingServices ? 'services' : 'menu legacy'}]`);
+    console.log(`- ${clientId} (${client.businessName || 's/nombre'}) [fuente: ${wasLegacy ? 'menu legacy' : 'services'}]`);
     console.log(`    antes:   ${JSON.stringify(items.map((it) => ({ nombre: it?.nombre, id: it?.id ?? null })))}`);
     console.log(`    después: ${JSON.stringify(itemsConId.map((it) => ({ nombre: it?.nombre, id: it?.id })))}`);
+    if (wasLegacy) console.log('    (cliente legacy promovido a services + menu derivado)');
 
-    const updatedClient = { ...client };
-    if (usingServices) {
-      updatedClient.services = itemsConId;
-      updatedClient.menu = deriveMenuFromServices(itemsConId);
-    } else {
-      updatedClient.menu = itemsConId;
-      clientesLegacyTocados++;
-    }
-
-    serviciosMigrados += faltantes.length;
+    serviciosMigrados += faltantesCount;
     clientesConCambios++;
+    if (wasLegacy) clientesLegacyTocados++;
 
     if (apply) {
       await cmd('SET', key, JSON.stringify(updatedClient));
@@ -147,7 +149,10 @@ async function main() {
   console.log(apply ? '\nEscritura real completada.' : '\nDRY-RUN: no se escribió nada. Ejecuta con --yes para aplicar.');
 }
 
-main().catch((err) => {
-  console.error('Error en la migración:', err);
-  process.exit(1);
-});
+const isMain = import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
+  main().catch((err) => {
+    console.error('Error en la migración:', err);
+    process.exit(1);
+  });
+}

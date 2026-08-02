@@ -173,5 +173,103 @@ console.log('\n9. Rename de un servicio mantiene su imagen asociada (id nuevo "s
   ok(media.menuItems.includes('Manicure Legacy'), 'el chatbot también ve el servicio con imagen legacy por nombre');
 }
 
+console.log('\n10. sanitizeServiceList() — ids duplicados en el mismo array se regeneran');
+{
+  const idCompartido = 'svc_deadbeef0001'; // hex válido (d,e,a,d,b,e,e,f)
+  const out = sanitizeServiceList([
+    { id: idCompartido, nombre: 'Masaje' },
+    { id: idCompartido, nombre: 'Manicure' },
+    { nombre: 'Pedicure' },
+  ], 40);
+  ok(out.length === 3, 'devuelve los 3 servicios');
+  ok(out[0].id === idCompartido, 'el primero conserva el id original');
+  ok(isValidServiceId(out[1].id) && out[1].id !== idCompartido, `el duplicado recibe un id NUEVO (${out[1].id})`);
+  ok(isValidServiceId(out[2].id), 'el tercero (sin id) recibe uno propio, válido');
+  const ids = out.map((s) => s.id);
+  ok(new Set(ids).size === ids.length, 'los 3 ids finales son todos distintos entre sí');
+}
+
+console.log('\n11. migrate-service-ids.mjs: migrateClient() — legacy menu-only se promueve a services+menu');
+{
+  const { migrateClient } = await import('../scripts/migrate-service-ids.mjs');
+
+  // Cliente legacy: sin services, con menu sin ids.
+  const legacyClient = {
+    businessName: 'Spa Legacy',
+    menu: [
+      { nombre: 'Masaje', precio: '35', duracion: '45', descripcion: '' },
+      { nombre: 'Manicure', precio: '15', duracion: '30', descripcion: '' },
+    ],
+  };
+  const r1 = migrateClient(legacyClient);
+  ok(r1.changed === true, 'detecta que el cliente legacy necesita migración');
+  ok(r1.wasLegacy === true, 'lo marca como legacy (venía sin services)');
+  ok(Array.isArray(r1.updatedClient.services) && r1.updatedClient.services.length === 2, 'crea client.services con los 2 items');
+  ok(r1.updatedClient.services.every((s) => isValidServiceId(s.id)), 'todos los services migrados tienen id válido');
+  ok(Array.isArray(r1.updatedClient.menu) && r1.updatedClient.menu.length === 2, 'client.menu queda derivado, con 2 items');
+  ok(r1.updatedClient.menu[0].id === r1.updatedClient.services[0].id && r1.updatedClient.menu[1].id === r1.updatedClient.services[1].id,
+    'services y menu comparten exactamente los mismos ids, en el mismo orden');
+  ok(legacyClient.menu[0].id === undefined, 'el objeto original no se muta (migrateClient devuelve uno nuevo)');
+
+  // Cliente ya migrado (services con ids válidos): no debe tocarse nada.
+  const yaMigrado = {
+    businessName: 'Spa Al Día',
+    services: [{ id: 'svc_abc123abc123', nombre: 'Corte', precio: '20', duracion: '30', descripcion: '' }],
+    menu: [{ id: 'svc_abc123abc123', nombre: 'Corte', precio: '20', duracion: '30', descripcion: '' }],
+  };
+  const r2 = migrateClient(yaMigrado);
+  ok(r2.changed === false, 'cliente con todos los ids válidos no necesita cambios');
+  ok(r2.updatedClient === yaMigrado, 'devuelve el mismo objeto, sin copiarlo, cuando no hay nada que migrar');
+
+  // Cliente no-legacy con services mezclando ids válidos e inválidos.
+  const mixto = {
+    businessName: 'Spa Mixto',
+    services: [
+      { id: 'svc_facade000001', nombre: 'Facial', precio: '40', duracion: '60', descripcion: '' },
+      { nombre: 'Depilación', precio: '25', duracion: '20', descripcion: '' },
+    ],
+    menu: [],
+  };
+  const r3 = migrateClient(mixto);
+  ok(r3.changed === true && r3.wasLegacy === false, 'cliente con services (aunque incompletos) no se cuenta como legacy');
+  ok(r3.updatedClient.services[0].id === 'svc_facade000001', 'conserva el id ya válido tal cual');
+  ok(isValidServiceId(r3.updatedClient.services[1].id), 'genera id nuevo solo para el que faltaba');
+  ok(r3.updatedClient.menu.map((m) => m.id).join(',') === r3.updatedClient.services.map((s) => s.id).join(','),
+    'menu queda como espejo exacto de services, mismo orden e ids');
+}
+
+console.log('\n12. admin.html: uploadServicePhoto() bloquea si el servicio no tiene id');
+{
+  const html = readFileSync(join(root, 'admin.html'), 'utf8');
+  const guardMatch = html.match(/if \(!item\.id\) \{\n([\s\S]*?)\n {6}\}/);
+  ok(!!guardMatch, 'se encontró el guard real de item.id en uploadServicePhoto()');
+
+  const runGuard = (item) => {
+    let message = null;
+    let reachedFetch = false;
+    const showServiceMediaMessage = (text, isOk) => { message = { text, isOk }; };
+    // Ejecuta el bloque real tal cual está en admin.html: si dispara
+    // `return`, el Function simplemente termina ahí (mismo comportamiento
+    // que dentro de uploadServicePhoto).
+    const wrapped = new Function('item', 'showServiceMediaMessage', 'markReached', `
+      if (!item.id) {
+      ${guardMatch[1]}
+      }
+      markReached();
+    `);
+    wrapped(item, showServiceMediaMessage, () => { reachedFetch = true; });
+    return { message, reachedFetch };
+  };
+
+  const sinId = runGuard({ nombre: 'Masaje' });
+  ok(sinId.message && sinId.message.isOk === false, 'servicio sin id: muestra un mensaje de error');
+  ok(sinId.message.text.includes('Masaje') && sinId.message.text.toLowerCase().includes('id estable'), 'el mensaje nombra el servicio y explica que falta el id estable');
+  ok(sinId.reachedFetch === false, 'servicio sin id: NUNCA llega al código que haría la subida (linkedItemId undefined)');
+
+  const conId = runGuard({ id: 'svc_111111111111', nombre: 'Masaje' });
+  ok(conId.message === null, 'servicio con id: no muestra ningún mensaje de bloqueo');
+  ok(conId.reachedFetch === true, 'servicio con id: sigue de largo hacia el flujo normal de subida');
+}
+
 if (failures) { console.error(`\n${failures} fallo(s)`); process.exit(1); }
 console.log('\nTodas las pruebas del sistema de IDs de servicios pasan.');

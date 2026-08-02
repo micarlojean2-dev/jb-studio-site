@@ -4049,6 +4049,15 @@ LÍMITES ESTRICTOS:
     // asociada, para no dejar al servicio sin foto si algo falla a mitad de
     // camino.
     async function uploadServicePhoto(client, item, file, btn) {
+      // Sin id estable no hay linkedItemId válido: el PUT lo mandaría como
+      // undefined (se cae del JSON) y el backend lo guardaría como
+      // linkedItemId: null — una asociación "confirmada" que no aparece en
+      // ningún lado (loadClientMedia exige linkedItemId string). Bloquear
+      // aquí es más simple y seguro que intentar migrar desde este botón.
+      if (!item.id) {
+        showServiceMediaMessage(`"${item.nombre || 'Este servicio'}" todavía no tiene un id estable. Guarda los cambios en "Editar servicios" (o ejecuta la migración de ids) antes de subir su foto.`, false);
+        return;
+      }
       if (!file.type.startsWith('image/')) {
         showServiceMediaMessage('El archivo debe ser una imagen.', false);
         return;
