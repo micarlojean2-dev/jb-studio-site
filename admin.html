@@ -3132,22 +3132,11 @@ LÍMITES ESTRICTOS:
               <label>Correo del dueño</label>
               <input type="email" id="e-email" class="admin-input">
             </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label>Plan</label>
-                <select id="e-plan" class="admin-input">
-                  <option value="basic">Básico</option>
-                  <option value="pro">Pro</option>
-                  <option value="premium">Premium</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Idioma</label>
-                <select id="e-lang" class="admin-input">
-                  <option value="es">Español</option>
-                  <option value="en">Inglés</option>
-                </select>
-              </div>
+            <div class="form-group" style="margin-bottom:14px">
+              <label>Correos adicionales para recibir reservas <span>(opcional)</span></label>
+              <div id="e-extra-emails"></div>
+              <button type="button" id="e-extra-email-add" class="copy-link" style="font-size:12px;margin-top:6px;">+ Agregar correo</button>
+              <div id="e-extra-email-err" class="create-msg err" style="display:none;margin-top:8px;"></div>
             </div>
             <div class="form-group" style="margin-top:14px">
               <label>WhatsApp / teléfono <span>(opcional)</span></label>
@@ -4481,6 +4470,58 @@ LÍMITES ESTRICTOS:
       renderEditServices();
     });
 
+    // Correos adicionales de aviso (client.notificationEmails): el dueño
+    // (e-email) ya recibe siempre los avisos vía destinatariosAviso()
+    // (lib/reservation-emails.js), así que esta lista es SOLO lo adicional
+    // — nunca incluye al dueño. Máximo 9 (el dueño ocupa 1 de los 10
+    // destinatarios que acepta normalizeNotificationEmails() en el backend).
+    // Reutiliza el mismo estilo de fila que ya usa el wizard de "Completar
+    // configuración" (.setup-email-row/.setup-email-inp/.setup-email-del).
+    const EMAIL_RE_EDIT = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    const MAX_EXTRA_EMAILS = 9;
+
+    function editExtraEmailRow(valor) {
+      const row = document.createElement('div');
+      row.className = 'setup-email-row';
+      const inp = document.createElement('input');
+      inp.type = 'email'; inp.className = 'admin-input setup-email-inp';
+      inp.placeholder = 'empleado@negocio.com'; inp.value = valor || '';
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'setup-email-del'; del.textContent = 'Eliminar';
+      del.addEventListener('click', () => row.remove());
+      row.appendChild(inp); row.appendChild(del);
+      return row;
+    }
+    function renderEditExtraEmails(lista) {
+      const cont = document.getElementById('e-extra-emails');
+      cont.innerHTML = '';
+      (lista || []).forEach((e) => cont.appendChild(editExtraEmailRow(e)));
+    }
+    // Limpia espacios, pasa a minúsculas, valida formato, quita duplicados y
+    // nunca deja pasar el correo del dueño (ya cuenta como destinatario).
+    // { emails, invalido }: invalido=true bloquea el guardado (formato real
+    // mal escrito); duplicados y repetir al dueño se descartan en silencio,
+    // igual que ya hace leerSetupEmails() para el mismo tipo de lista.
+    function leerEditExtraEmails() {
+      const ownerEmail = String(document.getElementById('e-email').value || '').trim().toLowerCase();
+      const vistos = {};
+      const out = [];
+      let invalido = false;
+      document.querySelectorAll('#e-extra-emails .setup-email-inp').forEach((inp) => {
+        const v = String(inp.value || '').trim().toLowerCase();
+        if (!v) return;
+        if (!EMAIL_RE_EDIT.test(v)) { invalido = true; return; }
+        if (v === ownerEmail) return;
+        if (!vistos[v]) { vistos[v] = 1; out.push(v); }
+      });
+      return { emails: out.slice(0, MAX_EXTRA_EMAILS), invalido };
+    }
+    document.getElementById('e-extra-email-add').addEventListener('click', () => {
+      const cont = document.getElementById('e-extra-emails');
+      if (cont.querySelectorAll('.setup-email-row').length >= MAX_EXTRA_EMAILS) return;
+      cont.appendChild(editExtraEmailRow(''));
+    });
+
     function openEditModal(c, section) {
       editClient  = c;
       editSection = section;
@@ -4497,9 +4538,15 @@ LÍMITES ESTRICTOS:
         document.getElementById('e-bname').value = c.businessName || '';
         document.getElementById('e-owner').value = c.ownerName || '';
         document.getElementById('e-email').value = c.ownerEmail || '';
-        document.getElementById('e-plan').value  = c.plan || 'basic';
-        document.getElementById('e-lang').value  = c.language || 'es';
         document.getElementById('e-wa').value    = c.whatsapp || '';
+        // Siembra solo lo ADICIONAL: si un cliente viejo guardó el correo
+        // del dueño dentro de notificationEmails (patrón previo del wizard
+        // de setup), no lo repetimos aquí como si fuera una fila extra.
+        const ownerEmailNorm = String(c.ownerEmail || '').trim().toLowerCase();
+        const seedEmails = (Array.isArray(c.notificationEmails) ? c.notificationEmails : [])
+          .filter((e) => String(e || '').trim().toLowerCase() !== ownerEmailNorm);
+        renderEditExtraEmails(seedEmails);
+        document.getElementById('e-extra-email-err').style.display = 'none';
       } else if (section === 'design') {
         const color = c.color || '#1a4a2e';
         eColor.value = color;
@@ -4531,8 +4578,6 @@ LÍMITES ESTRICTOS:
         body.businessName = document.getElementById('e-bname').value.trim();
         body.ownerName    = document.getElementById('e-owner').value.trim();
         body.ownerEmail    = document.getElementById('e-email').value.trim();
-        body.plan          = document.getElementById('e-plan').value;
-        body.language       = document.getElementById('e-lang').value;
         body.whatsapp       = document.getElementById('e-wa').value.trim();
         if (!body.businessName) {
           editMsg.textContent = 'Falta el nombre del negocio.';
@@ -4540,6 +4585,15 @@ LÍMITES ESTRICTOS:
           editMsg.style.display = 'block';
           return;
         }
+        const extraEmails = leerEditExtraEmails();
+        const extraErr = document.getElementById('e-extra-email-err');
+        if (extraEmails.invalido) {
+          extraErr.textContent = 'Hay un correo adicional con formato inválido. Revísalo o elimínalo.';
+          extraErr.style.display = 'block';
+          return;
+        }
+        extraErr.style.display = 'none';
+        body.notificationEmails = extraEmails.emails;
       } else if (editSection === 'design') {
         body.color = eColor.value.trim();
         if (!/^#[0-9a-fA-F]{3,6}$/.test(body.color)) {

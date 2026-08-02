@@ -68,4 +68,42 @@ const reservation = { clientId: 'c1', nombre: 'QA', email: 'customer@qa.test', s
   if (prev !== undefined) process.env.RESEND_API_KEY = prev;
 }
 
+// 5) [CAMBIO 2] El dueño ve teléfono/email del cliente; el cliente no ve nada nuevo.
+{
+  const sentEmails = [];
+  const resend = { emails: { send: async (a) => { sentEmails.push(a); return { data: { id: 'msg' } }; } } };
+  const reservationConContacto = { ...reservation, telefono: '555-1234' };
+  await sendReservationEmails(client, reservationConContacto, 'created', { resend });
+  const ownerSends = sentEmails.filter((a) => a.to !== reservationConContacto.email);
+  const customerSend = sentEmails.find((a) => a.to === reservationConContacto.email);
+  check(ownerSends.length > 0 && ownerSends.every((a) => /<strong>Teléfono:<\/strong> 555-1234/.test(a.html)), 'el dueño ve el teléfono del cliente');
+  check(ownerSends.every((a) => /<strong>Email:<\/strong> customer@qa\.test/.test(a.html)), 'el dueño ve el email del cliente');
+  check(!!customerSend, 'el cliente sigue recibiendo su propio email');
+  check(customerSend && !/Teléfono:/.test(customerSend.html) && !/<strong>Email:<\/strong>/.test(customerSend.html),
+    'el email del cliente NO incluye las líneas de contacto (solo las ve el dueño)');
+}
+
+// 6) [CAMBIO 2] Sin teléfono ni email en la reserva no se generan líneas vacías.
+{
+  const sentEmails = [];
+  const resend = { emails: { send: async (a) => { sentEmails.push(a); return { data: { id: 'msg' } }; } } };
+  const reservationSinContacto = { ...reservation, telefono: '', email: '' };
+  await sendReservationEmails(client, reservationSinContacto, 'created', { resend });
+  check(sentEmails.length > 0, 'se intentó enviar al menos al dueño');
+  check(sentEmails.every((a) => !/Teléfono:/.test(a.html) && !/<strong>Email:<\/strong>/.test(a.html)),
+    'sin teléfono/email, no aparecen líneas "Teléfono:"/"Email:" vacías');
+}
+
+// 7) [CAMBIO 2] El teléfono/email del dueño usa el escapado HTML existente (esc()).
+{
+  const sentEmails = [];
+  const resend = { emails: { send: async (a) => { sentEmails.push(a); return { data: { id: 'msg' } }; } } };
+  const reservationConXSS = { ...reservation, telefono: '<script>1</script>', email: 'a<b>@qa.test' };
+  await sendReservationEmails(client, reservationConXSS, 'created', { resend });
+  const ownerSend = sentEmails.find((a) => a.to === ownerEmail);
+  check(ownerSend && !/<script>1<\/script>/.test(ownerSend.html) && /&lt;script&gt;1&lt;\/script&gt;/.test(ownerSend.html),
+    'el teléfono se escapa con la función esc() existente (sin HTML crudo)');
+  check(ownerSend && /a&lt;b&gt;@qa\.test/.test(ownerSend.html), 'el email se escapa con la función esc() existente');
+}
+
 console.log(`email-flow.test.mjs: ${count} checks passed`);
