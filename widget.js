@@ -141,6 +141,24 @@
 
   // ── State ────────────────────────────────────────────────────────────────
   var cfg     = { businessName: 'Chat', color: '#1a4a2e', language: 'es', active: true };
+  var LANGUAGE_SESS = SESS + '_language';
+
+  function isSpaBilingual() {
+    return cfg.templateId === 'spa' && Array.isArray(cfg.languages) && cfg.languages.indexOf('es') !== -1 && cfg.languages.indexOf('en') !== -1;
+  }
+  function lockLanguage(text) {
+    if (!isSpaBilingual() || !/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(String(text || ''))) return;
+    var locked = '';
+    try { locked = sessionStorage.getItem(LANGUAGE_SESS) || ''; } catch (e) {}
+    if (locked !== 'en' && locked !== 'es') {
+      locked = CORE.detectarIdioma(text);
+      try { sessionStorage.setItem(LANGUAGE_SESS, locked); } catch (e) {}
+    }
+    cfg.language = locked;
+  }
+  function isCancellationRequest(text) {
+    return CANCEL_TRIGGERS.test(text) || (isSpaBilingual() && /\bi want to cancel my appointment\b/i.test(text));
+  }
 
   // Feature gating — legacy clients (no cfg.features at all) keep every
   // behavior enabled, exactly like before this was added. Only a client
@@ -157,6 +175,7 @@
   var bookingStep = 0;   // 0 = idle, >0 = en modo reserva (DeepSeek conduce)
   var bookingPending = null;   // campo que DeepSeek está pidiendo ahora
   var bookingReview = false;   // el resumen final está a la vista, esperando confirmación
+  var resumenBotones = null;   // botones del resumen activo, para no dejar un par duplicado
   var submitting = false;      // evita envíos duplicados de la reserva
   var bookingData = {};
 
@@ -170,6 +189,8 @@
   var dupAttempts = 0;
   var spamUntil = 0;
   var modifyMode = false;
+  var dupPending = false;   // se ofrecieron los botones Modificar/Cancelar/Mantener; nada de chat libre hasta que se use uno
+  var accionesBotones = null;  // botones de la reserva activa, para no dejar un par duplicado
   try { activeReservation = JSON.parse(sessionStorage.getItem(RESERVA_SESS) || 'null'); } catch (e) {}
   function saveReserva() { try {
     if (activeReservation) sessionStorage.setItem(RESERVA_SESS, JSON.stringify(activeReservation));
@@ -188,7 +209,7 @@
       bookingStep = restoredBooking.bookingStep || 0;
       bookingData = restoredBooking.bookingData || {};
       bookingPending = restoredBooking.bookingPending || null;
-      bookingReview = !!restoredBooking.bookingReview;
+      bookingReview = !!(restoredBooking.awaitingConfirmation || restoredBooking.bookingReview);
       horaPendiente = restoredBooking.horaPendiente || null;
     }
   } catch (e) {}
@@ -197,7 +218,7 @@
   function save() {
     try {
       sessionStorage.setItem(SESS, JSON.stringify(msgs.slice(-60)));
-      if (bookingStep) sessionStorage.setItem(BOOKING_SESS, JSON.stringify({ bookingStep: bookingStep, bookingData: bookingData, bookingPending: bookingPending, bookingReview: bookingReview, horaPendiente: horaPendiente, language: cfg.language }));
+      if (bookingStep) sessionStorage.setItem(BOOKING_SESS, JSON.stringify({ bookingStep: bookingStep, bookingData: bookingData, bookingPending: bookingPending, bookingReview: bookingReview, awaitingConfirmation: bookingReview, horaPendiente: horaPendiente, language: cfg.language }));
       else sessionStorage.removeItem(BOOKING_SESS);
     } catch (e) {}
   }
@@ -259,6 +280,7 @@
     '.jbw-hi h4{margin:0;font-size:15.5px;font-weight:650;color:#fff;line-height:1.25;}',
     '.jbw-hi p{margin:3px 0 0;font-size:11.5px;color:rgba(255,255,255,.75);',
     'display:flex;align-items:center;gap:5px;font-weight:500;}',
+    '#jbw-version{margin-top:3px;font:10px ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(255,255,255,.62);}',
     '.jbw-dot{width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block;}',
 
     '#jbw-msgs{flex:1;overflow-y:auto;padding:18px 16px;display:flex;',
@@ -315,7 +337,7 @@
     '.jbw-card{display:flex;flex-direction:column;align-items:center;text-align:center;',
     'gap:2px;width:100%;font-family:inherit;cursor:pointer;background:#fff;',
     'border:1.5px solid rgba(0,0,0,.06);border-radius:18px;padding:16px 12px 14px;',
-    'min-height:124px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.05);',
+    'min-height:172px;box-shadow:0 1px 2px rgba(0,0,0,.04),0 4px 14px rgba(0,0,0,.05);',
     'transition:transform .18s cubic-bezier(.22,1,.36,1),box-shadow .18s,border-color .18s;',
     'opacity:0;animation:jbw-card-in .34s cubic-bezier(.22,1,.36,1) forwards;}',
     '@keyframes jbw-card-in{from{opacity:0;transform:translateY(10px) scale(.97);}to{opacity:1;transform:none;}}',
@@ -324,17 +346,22 @@
     '.jbw-card:active{transform:translateY(-1px) scale(.97);}',
     '.jbw-card-ico{width:52px;height:52px;border-radius:15px;margin-bottom:8px;',
     'display:flex;align-items:center;justify-content:center;font-size:25px;}',
-    '.jbw-card-img{width:52px;height:52px;border-radius:15px;object-fit:cover;',
-    'margin-bottom:8px;display:block;background:#f2f2f4;}',
+    '.jbw-card-img{width:100px;height:100px;border-radius:15px;object-fit:cover;',
+    'margin-bottom:10px;display:block;background:#f2f2f4;}',
     '.jbw-card-no-image{justify-content:center;min-height:100px;padding:18px 12px;}',
+    '.jbw-gallery-heading{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8a8f98;margin:2px 0 8px;}',
     '.jbw-gallery{width:100%;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:4px 0;}',
-    '.jbw-gallery img{width:100%;aspect-ratio:1.35;object-fit:cover;border-radius:12px;background:#f2f2f4;}',
+    '.jbw-gallery-card{overflow:hidden;border:1px solid rgba(0,0,0,.07);border-radius:12px;background:#fff;}',
+    '.jbw-gallery-card img{width:100%;aspect-ratio:1.35;object-fit:cover;display:block;background:#f2f2f4;}',
+    '.jbw-gallery-copy{padding:8px 9px 9px;}.jbw-gallery-name{font-size:12px;font-weight:700;line-height:1.3;color:#16181d;}',
+    '.jbw-gallery-meta{margin-top:3px;color:#6b6f76;font-size:11px;line-height:1.3;}',
     '.jbw-gallery-more{border:0;background:none;color:var(--jbw-color,#1a4a2e);font:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:6px 0;}',
     '.jbw-card-name{font-size:13px;font-weight:650;line-height:1.3;color:#16181d;}',
     '.jbw-card-price{font-size:14.5px;font-weight:700;margin-top:4px;}',
     '.jbw-card-badge{font-size:10px;font-weight:600;margin-top:5px;padding:3px 8px;',
     'border-radius:20px;background:#fff5e0;color:#8a5a00;}',
     '.jbw-card-desc{font-size:11px;color:#6b6f76;line-height:1.4;margin-top:6px;}',
+    '.jbw-card-cta{font-size:11px;font-weight:700;margin-top:8px;}',
     '.jbw-quick{display:flex;flex-wrap:wrap;gap:7px;padding:2px 0 2px 34px;}',
     '.jbw-quick-btn{font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;',
     'background:#fff;border:1.5px solid rgba(0,0,0,.08);border-radius:20px;padding:8px 13px;',
@@ -370,6 +397,7 @@
       '<div class="jbw-hi">' +
         '<h4 id="jbw-name">Assistant</h4>' +
         '<p><span class="jbw-dot"></span> <span id="jbw-status">Online now</span></p>' +
+        '<div id="jbw-version" hidden></div>' +
       '</div>' +
       '<button id="jbw-close" aria-label="Cerrar chat">' +
         '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"' +
@@ -397,6 +425,16 @@
   var nameEl  = document.getElementById('jbw-name');
   var headEl  = document.getElementById('jbw-head');
   var statusEl = document.getElementById('jbw-status');
+  var versionEl = document.getElementById('jbw-version');
+
+  fetch(API + '/api/build', { cache: 'no-store' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !/^(?:dpl_[a-z0-9]+|[a-f0-9]{7,64}|local)$/i.test(d.version)) return;
+      versionEl.textContent = 'Versión: ' + d.version.slice(0, 11);
+      versionEl.hidden = false;
+    })
+    .catch(function () {});
 
   // ── Apply color theme ────────────────────────────────────────────────────
   function greeting() {
@@ -450,6 +488,11 @@
     .then(function (d) {
       if (!d) return;
       Object.assign(cfg, d);
+      if (isSpaBilingual()) {
+        var firstCustomer = msgs.find(function (message) { return message.role === 'user' && /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(String(message.content || '')); });
+        if (firstCustomer) lockLanguage(firstCustomer.content);
+        else { try { var savedLanguage = sessionStorage.getItem(LANGUAGE_SESS); if (savedLanguage === 'en' || savedLanguage === 'es') cfg.language = savedLanguage; } catch (e) {} }
+      }
       paint();
       // Snippet antiguo sin data-position: respetamos lo guardado del cliente.
       if (!position && d.widgetPosition) {
@@ -554,11 +597,11 @@
       name.textContent = item.nombre || 'Servicio';
       card.appendChild(name);
 
-      if (item.precio) {
+      if (item.precio || item.duracion) {
         var price = document.createElement('div');
         price.className = 'jbw-card-price';
         price.style.color = cfg.color;
-        price.textContent = item.precio;
+        price.textContent = [item.precio, item.duracion].filter(Boolean).join(' · ');
         card.appendChild(price);
       }
 
@@ -576,13 +619,16 @@
         card.appendChild(desc);
       }
 
+      var cta = document.createElement('div');
+      cta.className = 'jbw-card-cta';
+      cta.style.color = cfg.color;
+      cta.textContent = CORE.bookServiceLabel(cfg.language);
+      card.appendChild(cta);
+
       card.addEventListener('click', function () {
         if (inp.disabled) return;
-        var restaurant = cfg.templateId === 'restaurant';
-        var nom = item.nombre || (restaurant ? 'este plato' : 'este servicio');
-        send(cfg.language === 'en'
-          ? (restaurant ? 'I am interested in this menu item: ' : 'I am interested in the service: ') + nom
-          : (restaurant ? 'Me interesa este plato: ' : 'Me interesa el servicio: ') + nom);
+        if (wrap.parentNode) wrap.remove();
+        send(CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant'));
       });
 
       row.appendChild(card);
@@ -590,24 +636,86 @@
 
     wrap.appendChild(row);
     msgsEl.appendChild(wrap);
-    CORE.irAlFondo(msgsEl, );
+    // "estaAlFondo" mide contra el scrollHeight actual: justo tras crecer con
+    // este bloque, el usuario que ya estaba al fondo del mensaje de texto
+    // anterior deja de estarlo respecto al nuevo alto, así que el scroll
+    // "inteligente" (pensado para no interrumpir a quien lee arriba) se
+    // negaba a bajar — el bloque quedaba renderizado pero fuera de vista.
+    // Esto es una reacción directa al propio mensaje del cliente, igual que
+    // el "role === 'user'" de addMsg: siempre debe forzar. [BUG-SCROLL-GALERIA]
+    CORE.irAlFondo(msgsEl, true);
+  }
+
+  function renderServicesWithPhotos() {
+    var items = (Array.isArray(cfg.menu) ? cfg.menu : []).filter(function (item) { return item && item.imagen; });
+    if (!items.length) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'jbw-cards-wrap';
+    var row = document.createElement('div');
+    row.className = 'jbw-cards';
+    items.forEach(function (item, idx) {
+      var card = document.createElement('button');
+      card.className = 'jbw-card';
+      card.type = 'button';
+      card.style.animationDelay = (idx * 55) + 'ms';
+      var image = document.createElement('img');
+      image.className = 'jbw-card-img';
+      image.src = item.imagen;
+      image.alt = item.nombre || 'Servicio';
+      image.loading = 'lazy';
+      card.appendChild(image);
+      var name = document.createElement('div');
+      name.className = 'jbw-card-name';
+      name.textContent = item.nombre || 'Servicio';
+      card.appendChild(name);
+      var meta = [item.precio, item.duracion].filter(Boolean).join(' · ');
+      if (meta) { var price = document.createElement('div'); price.className = 'jbw-card-price'; price.style.color = cfg.color; price.textContent = meta; card.appendChild(price); }
+      if (item.descripcion) { var desc = document.createElement('div'); desc.className = 'jbw-card-desc'; desc.textContent = item.descripcion; card.appendChild(desc); }
+      var cta = document.createElement('div');
+      cta.className = 'jbw-card-cta'; cta.style.color = cfg.color; cta.textContent = CORE.bookServiceLabel(cfg.language); card.appendChild(cta);
+      card.addEventListener('click', function () { if (inp.disabled) return; if (wrap.parentNode) wrap.remove(); send(CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant')); });
+      row.appendChild(card);
+    });
+    wrap.appendChild(row);
+    msgsEl.appendChild(wrap);
+    CORE.irAlFondo(msgsEl, true);
   }
 
   function renderGallery() {
-    var images = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
+    var generalImages = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
+    var serviceImages = (Array.isArray(cfg.menu) ? cfg.menu : []).filter(function (item) {
+      return item && item.imagen && generalImages.indexOf(item.imagen) === -1;
+    }).map(function (item) { return { url: item.imagen, item: item }; });
+    var images = generalImages.map(function (url) { return { url: url, item: null }; }).concat(serviceImages);
     if (!images.length) return;
     var wrap = document.createElement('div');
     wrap.className = 'jbw-cards-wrap';
+    var heading = document.createElement('div');
+    heading.className = 'jbw-gallery-heading';
+    heading.textContent = CORE.galleryHeading(cfg.language);
+    wrap.appendChild(heading);
     var grid = document.createElement('div');
     grid.className = 'jbw-gallery';
     var shown = 4;
     function appendImages(limit) {
-      images.slice(grid.children.length, limit).forEach(function (url) {
+      images.slice(grid.children.length, limit).forEach(function (entry) {
+        var card = document.createElement('div');
+        card.className = 'jbw-gallery-card';
         var image = document.createElement('img');
-        image.src = url;
-        image.alt = cfg.language === 'en' ? 'Gallery image' : 'Imagen de galería';
+        image.src = entry.url;
+        image.alt = entry.item && entry.item.nombre ? entry.item.nombre : (cfg.language === 'en' ? 'Spa gallery' : 'Galería del Spa');
         image.loading = 'lazy';
-        grid.appendChild(image);
+        card.appendChild(image);
+        var copy = document.createElement('div');
+        copy.className = 'jbw-gallery-copy';
+        var name = document.createElement('div');
+        name.className = 'jbw-gallery-name';
+        name.textContent = entry.item && entry.item.nombre ? entry.item.nombre : (cfg.language === 'en' ? 'Spa gallery' : 'Galería del Spa');
+        copy.appendChild(name);
+        var meta = [entry.item && entry.item.precio, entry.item && entry.item.duracion].filter(Boolean).join(' · ');
+        if (meta) { var details = document.createElement('div'); details.className = 'jbw-gallery-meta'; details.textContent = meta; copy.appendChild(details); }
+        card.appendChild(copy);
+        grid.appendChild(card);
       });
     }
     appendImages(shown);
@@ -620,12 +728,15 @@
       more.addEventListener('click', function () {
         appendImages(images.length);
         more.remove();
-        CORE.irAlFondo(msgsEl, );
+        CORE.irAlFondo(msgsEl, true);
       });
       wrap.appendChild(more);
     }
     msgsEl.appendChild(wrap);
-    CORE.irAlFondo(msgsEl, );
+    // Mismo motivo que en renderMenu(): reacción directa al mensaje del
+    // cliente, la galería recién agregada es la que debe quedar visible.
+    // [BUG-SCROLL-GALERIA]
+    CORE.irAlFondo(msgsEl, true);
   }
 
   // ── Submit cancel request to /api/cancel-reservation ────────────────────
@@ -886,12 +997,7 @@ function extractBooking(text, menu) {
     // The model never speaks for a complete booking; only the POST decides it.
     if (completo) { showBookingSummary(); return; }
     if (bookingPending === 'specialRequests') {
-      var requestQuestion = cfg.templateId === 'restaurant'
-        ? (lang === 'en' ? 'Do you have any allergy, intolerance, table preference, or special request?' : '¿Tienes alguna alergia, intolerancia, preferencia de mesa o petición especial?')
-        : cfg.templateId === 'barber'
-          ? '¿Tienes alguna preferencia de estilo, diseño, sensibilidad o petición especial?'
-          : '¿Tienes alguna sensibilidad, alergia, embarazo, lesión o petición especial?';
-      addMsg('bot', requestQuestion + (lang === 'en' ? ' Write "No" if you do not have one.' : ' Escribe "No" si no tienes ninguna.'));
+      addMsg('bot', CORE.specialRequestsQuestion(cfg.templateId, lang));
       return;
     }
     busy = true; inp.disabled = true; snd.disabled = true;
@@ -929,10 +1035,33 @@ function extractBooking(text, menu) {
   function seguirDesdeLoQueFalta(lang) { askBookingTurn(lang); }
 
 
+  function pedirCorreccion(campo, lang) {
+    if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
+    resumenBotones = null;
+    delete bookingData[campo];
+    bookingStep = 1;
+    bookingPending = campo;
+    bookingReview = false;
+    var etiqueta = CORE.summaryLabel(cfg, campo, lang).toLowerCase();
+    addMsg('bot', lang === 'en'
+      ? 'Sure 😊 What is the correct ' + etiqueta + '?'
+      : 'Claro 😊 ¿cuál es el dato correcto de ' + etiqueta + '?');
+    save();
+  }
+
   // Revisar antes de guardar: un dedazo en el teléfono o la fecha se corrige
   // aquí, no cuando el dueño intenta llamar y el número no existe.
   function showBookingSummary() {
     var lang = cfg.language === 'en' ? 'en' : 'es';
+    // Si el mensaje del cliente no fue ni una confirmación clara ni una
+    // corrección reconocida (ej. "todo está correcto" antes de ampliar
+    // CONFIRMACIONES), el flujo caía aquí de nuevo con el resumen ya visible
+    // y su par de botones aún en pantalla: se agregaba un SEGUNDO resumen con
+    // un SEGUNDO par de botones, sin quitar el primero. Se quita el anterior
+    // antes de mostrar uno nuevo para que solo exista un botón real a la vez.
+    // [BUG-RESUMEN-DUPLICADO]
+    if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
+
     var lineas = CORE.summaryFields(cfg).concat(['contacto'])
       .filter(function (k) { return bookingData[k]; })
       .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + CORE.summaryLabel(cfg, k, lang) + ': ' + bookingData[k]; });
@@ -945,6 +1074,7 @@ function extractBooking(text, menu) {
 
     var wrap = document.createElement('div');
     wrap.className = 'jbw-quick';
+    resumenBotones = wrap;
     [{ label: lang === 'en' ? '✅ Yes, confirm it' : '✅ Sí, confirmar cita', ok: true },
      { label: lang === 'en' ? '✏️ I want to change something' : '✏️ Quiero cambiar algo', ok: false }
     ].forEach(function (a, i) {
@@ -955,6 +1085,7 @@ function extractBooking(text, menu) {
       b.style.animationDelay = (i * 60) + 'ms';
       b.addEventListener('click', function () {
         wrap.remove();
+        if (resumenBotones === wrap) resumenBotones = null;
         addMsg('user', a.label);
         if (a.ok) { submitBooking(); return; }
         bookingStep = 1;
@@ -965,8 +1096,14 @@ function extractBooking(text, menu) {
       wrap.appendChild(b);
     });
     msgsEl.appendChild(wrap);
-    CORE.irAlFondo(msgsEl, );
-    bookingReview = true;   // el cliente puede confirmar por botón o por texto
+    // Mismo bug que la galería: el resumen (potencialmente varias líneas) ya
+    // hizo crecer el contenedor antes de que estos botones se agreguen, así
+    // que el scroll "inteligente" podía negarse a bajar y dejar el botón
+    // real de confirmación fuera de vista. Reacción directa al mensaje del
+    // cliente: siempre debe forzar. [BUG-SCROLL-GALERIA]
+    CORE.irAlFondo(msgsEl, true);
+    bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva
+    save();
   }
 
   function submitBooking() {
@@ -1045,19 +1182,33 @@ function extractBooking(text, menu) {
   // ── Reserva activa: acciones (idénticas a asistente.html vía chat-core) ──
   function offerReservationActions(lang) {
     var T = CORE.reservaTextos(lang);
+    // Mismo bug que el resumen de reserva: si esto se llama de nuevo (más
+    // intentos de doble reserva) con el par anterior aún en pantalla, se
+    // apilaba un segundo Modificar/Cancelar/Mantener. [BUG-RESUMEN-DUPLICADO]
+    if (accionesBotones && accionesBotones.parentNode) accionesBotones.remove();
     var wrap = document.createElement('div');
     wrap.className = 'jbw-quick';
+    accionesBotones = wrap;
     [{ label: T.modify, act: 'modify' }, { label: T.cancel, act: 'cancel' }, { label: T.keep, act: 'keep' }
     ].forEach(function (o, i) {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'jbw-quick-btn'; b.textContent = o.label; b.style.animationDelay = (i * 60) + 'ms';
-      b.addEventListener('click', function () { wrap.remove(); addMsg('user', o.label); handleReservationAction(o.act, lang); });
+      b.addEventListener('click', function () {
+        wrap.remove();
+        if (accionesBotones === wrap) accionesBotones = null;
+        addMsg('user', o.label);
+        handleReservationAction(o.act, lang);
+      });
       wrap.appendChild(b);
     });
-    msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, );
+    msgsEl.appendChild(wrap);
+    // Reacción directa al mensaje del cliente: forzar, igual que la galería y
+    // el resumen de reserva. [BUG-SCROLL-GALERIA]
+    CORE.irAlFondo(msgsEl, true);
   }
 
   function handleReservationAction(act, lang) {
+    dupPending = false;
     if (!activeReservation) return;
     var T = CORE.reservaTextos(lang);
     if (act === 'keep') { addMsg('bot', T.keepMsg); return; }
@@ -1116,6 +1267,7 @@ function extractBooking(text, menu) {
   function handleDuplicateAttempt(lang) {
     var s = CORE.duplicateAttemptState(activeReservation, dupAttempts, spamUntil, Date.now(), lang);
     dupAttempts = s.attempts; spamUntil = s.spamUntil;
+    dupPending = true;
     addMsg('bot', s.text);
     offerReservationActions(lang);
   }
@@ -1125,6 +1277,7 @@ function extractBooking(text, menu) {
     if (busy || !text.trim()) return;
 
     var t    = text.trim();
+    lockLanguage(t);
     var lang = cfg.language === 'en' ? 'en' : 'es';
 
     // ── Active cancel flow: collect next field ───────────────────────────
@@ -1164,9 +1317,29 @@ function extractBooking(text, menu) {
     if (activeReservation && bookingStep === 0 && featureOn('reservations')) {
       var preARW = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
       var looksNewW = CORE.pareceReserva(t, preARW) || BOOKING_TRIGGERS.test(t);
-      if (CANCEL_TRIGGERS.test(t)) { addMsg('user', t); submitActiveCancel(lang); return; }
+      if (isCancellationRequest(t)) {
+        dupPending = false;
+        if (accionesBotones && accionesBotones.parentNode) accionesBotones.remove();
+        accionesBotones = null;
+        addMsg('user', t); submitActiveCancel(lang); return;
+      }
       if (MODIFY_TRIGGERS.test(t)) { addMsg('user', t); handleReservationAction('modify', lang); return; }
       if (looksNewW) { addMsg('user', t); handleDuplicateAttempt(lang); return; }
+    }
+
+    // Se ofrecieron los botones Modificar/Cancelar/Mantener y el cliente
+    // escribió otra cosa en vez de tocar uno: antes esto caía directo al chat
+    // libre, y el modelo -sin saber que hay una reserva activa esperando una
+    // decisión- improvisaba su propio "resumen" y pedía un "sí" que nunca
+    // crea nada real (el flujo real ya terminó, solo faltan los botones de
+    // arriba). Se recuerda usar los botones en vez de dejarlo hablar solo.
+    // [BUG-DUPLICADO-CHAT-LIBRE]
+    if (dupPending) {
+      addMsg('user', t);
+      addMsg('bot', lang === 'en'
+        ? 'You already have an active reservation — please choose one of the options above (✏️ Modify / ❌ Cancel / ✅ Keep) 😊'
+        : 'Ya tienes una reserva activa — elige una de las opciones de arriba (✏️ Modificar / ❌ Cancelar / ✅ Mantener) 😊');
+      return;
     }
 
     // ── Active booking flow: collect next field ──────────────────────────
@@ -1175,16 +1348,23 @@ function extractBooking(text, menu) {
         bookingStep = 0;
         bookingData = {};
         bookingReview = false;
+        if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
+        resumenBotones = null;
         addMsg('user', t);
         addMsg('bot', lang === 'en'
           ? 'Reservation cancelled. Is there anything else I can help with?'
           : 'Reserva cancelada. ¿Hay algo más en lo que pueda ayudarte?');
         return;
       }
-      // Confirmación por texto en el resumen final → crea la reserva de verdad.
-      if (bookingReview && CORE.esConfirmacion(t)) {
+      // La reserva SOLO se crea con el botón "✅ Sí, confirmar cita": un "sí"
+      // escrito nunca debe confirmarla por su cuenta (puede ser una respuesta
+      // apresurada sin haber revisado bien el resumen). Se pide que use el
+      // botón en vez de dar la reserva por hecha. [BUG-CONFIRMACION-TEXTO]
+      if (bookingReview || (function () { try { return JSON.parse(sessionStorage.getItem(BOOKING_SESS) || '{}').awaitingConfirmation === true; } catch (e) { return false; } })()) {
         addMsg('user', t);
-        submitBooking();
+        if (CORE.esConfirmacion(t, lang)) submitBooking();
+        else if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);
+        else showBookingSummary();
         return;
       }
       bookingReview = false;
@@ -1193,9 +1373,10 @@ function extractBooking(text, menu) {
       if (resolverHoraPendiente(t, lang)) return;
 
       var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
-      var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
-      var traidos = Object.keys(yaVisto);
-      traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
+       var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
+       var traidos = Object.keys(yaVisto);
+       traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
+       var campoCorreccion = CORE.campoCorreccion(t);
 
       // Preferencias que el cliente dice en su propio mensaje ("prefiero una
       // habitación silenciosa"), sin depender de que DeepSeek emita [NOTA:].
@@ -1203,13 +1384,27 @@ function extractBooking(text, menu) {
        if (notasU.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasU);
        recordFoodRequest(t, lang);
 
-      if (!traidos.length && CORRECCION_RE.test(t)) {
-        for (var ci = 0; ci < CAMPO_MENCIONADO.length; ci++) {
-          if (CAMPO_MENCIONADO[ci][0].test(t)) { delete bookingData[CAMPO_MENCIONADO[ci][1]]; break; }
-        }
-      } else if (!traidos.length && bookingPending && BARE_OK[bookingPending] &&
+      // Antes se exigía "nada se extrajo en este mensaje" (!traidos.length)
+      // para aceptar el texto libre como respuesta al dato pendiente. Si el
+      // cliente repetía un dato YA capturado en la misma frase donde
+      // contestaba lo que se le pedía ("mi correo es X, como ya te dije, y no
+      // tengo ninguna petición especial"), esa repetición SÍ se detectaba
+      // (traidos.length > 0 por el correo), así que la respuesta real
+      // quedaba descartada y el asistente repetía la misma pregunta sin fin
+       // — el cliente sentía que "no lo escuchaba". Ahora solo importa si el
+       // dato pendiente EN SÍ sigue sin capturarse. [BUG-MEMORIA-REPETIDA]
+       var pendienteSinCapturar = bookingPending && traidos.indexOf(bookingPending) === -1;
+       if (campoCorreccion && traidos.indexOf(campoCorreccion) === -1) {
+         pedirCorreccion(campoCorreccion, lang);
+         return;
+       } else if (pendienteSinCapturar && CORRECCION_RE.test(t)) {
+         // Sin campo mencionado, "prefiero"/"mejor" es la respuesta al campo pendiente, no una corrección vacía. [BUG-CORRECCION-PENDIENTE]
+         if (BARE_OK[bookingPending] && !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
+           bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
+         }
+      } else if (pendienteSinCapturar && BARE_OK[bookingPending] &&
                  !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
-         bookingData[bookingPending] = bookingPending === 'specialRequests' && /^(no|ninguna|ninguno)$/i.test(t.trim()) ? '' : t;
+         bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
       }
 
        if (amb) { preguntarHoraAmbigua(amb, lang); return; }
@@ -1219,7 +1414,7 @@ function extractBooking(text, menu) {
     }
 
     // ── Cancel intent detected: start flow ──────────────────────────────
-    if (featureOn('cancellation') && CANCEL_TRIGGERS.test(t)) {
+    if (featureOn('cancellation') && isCancellationRequest(t)) {
       addMsg('user', t);
       cancelStep = 1;
       var cancelIntro = lang === 'en'
@@ -1274,14 +1469,19 @@ function extractBooking(text, menu) {
         hideTyping();
         if (d.error === 'inactive') {
           addMsg('bot', d.message || (cfg.language === 'en'
-            ? 'This service is temporarily unavailable.'
-            : 'Este servicio no está disponible temporalmente.'));
+            ? 'This assistant is temporarily out of service. Please contact the business directly.'
+            : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio.'));
         } else if (d.text) {
-          var showMenu   = /\[MOSTRAR_MENU\]/.test(d.text);
+          var showMenu    = /\[MOSTRAR_MENU\]/.test(d.text);
+          var showGallery = /\[MOSTRAR_GALERIA\]/.test(d.text);
+          var showServicePhotos = /\[MOSTRAR_SERVICIOS_CON_FOTOS\]/.test(d.text);
           var cleanText  = CORE.limpiarMarcadores(d.text);
           if (cleanText) addMsg('bot', cleanText);
-          if (showMenu) { renderMenu(); renderGallery(); }
-          // La acción interna (mostrar menú) ya se extrajo de d.text; al
+          // Pedir fotos ya no fuerza el catálogo completo: cada marcador
+          // controla solo su propio bloque. [BUG-FOTOS-GALERIA]
+          if (showServicePhotos) renderServicesWithPhotos();
+          else { if (showMenu) renderMenu(); if (showGallery) renderGallery(); }
+          // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
           // historial va solo el texto limpio, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: cleanText });
           save();

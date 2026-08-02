@@ -4,7 +4,7 @@
   <script src="/sentry-init.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Citas — JB Studio</title>
+  <title>Appointments — JB Studio</title>
   <meta name="robots" content="noindex, nofollow">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -65,6 +65,7 @@
     .rname { font-size: 17px; font-weight: 650; }
     .rnotes { margin-top: 11px; padding: 10px 12px; background: #faf8f2; border: 1px solid var(--line); border-radius: 10px; font-size: 13.5px; line-height: 1.45; color: var(--ink); }
     .rnotes-t { color: var(--muted); font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    .rremaining { margin-top: 10px; color: var(--accent); font-size: 13px; font-weight: 600; }
     .rfoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line); }
     .rcreated { font-size: 11.5px; color: var(--muted); text-align: right; }
     .estado { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 11px; border-radius: 20px; white-space: nowrap; }
@@ -72,6 +73,14 @@
     .estado.reprogramada { background: #e6effb; color: #1f5fae; }   /* azul */
     .estado.cancelada    { background: #fbe9e9; color: #b23b3b; }   /* rojo */
     .estado.pendiente    { background: #fdf0e0; color: #b5721a; }   /* naranja */
+
+    .activity { margin: 0 0 18px; }
+    .activity h2 { font-size: 16px; margin: 0 0 10px; }
+    .activity-list { display: grid; gap: 8px; }
+    .activity-item { background: var(--card); border: 1px solid var(--line); border-radius: 11px; padding: 11px 13px; }
+    .activity-title { font-size: 13.5px; font-weight: 700; }
+    .activity-meta { color: var(--muted); font-size: 12.5px; line-height: 1.45; margin-top: 3px; }
+    .activity-empty { color: var(--muted); font-size: 13px; padding: 4px 0; }
 
     .empty { grid-column: 1 / -1; padding: 40px 20px; text-align: center; color: var(--muted); font-size: 14px; }
     .updated { font-size: 12px; color: var(--muted); margin-top: 14px; text-align: right; }
@@ -86,6 +95,40 @@
     .login-go { width: 100%; margin-top: 10px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 12px; }
     .login-go:disabled { opacity: .6; cursor: not-allowed; }
     .login-err { display: none; color: var(--cancel); font-size: 13px; margin-top: 10px; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+    /* ── Agenda profesional ── */
+    :root { --bg:#f2f5f3; --card-soft:#f8faf9; --line:#dce5e0; --ink:#17251e; --muted:#66736c; --accent:#17633f; --accent-dark:#10432c; --today:#a86611; --urgent:#b64043; --reprogrammed:#3769a7; --radius:18px; --ease-out:cubic-bezier(.23,1,.32,1); }
+    .hdr { background:var(--accent-dark); color:#fff; border-bottom-color:rgba(255,255,255,.08); padding:15px max(20px,calc((100vw - 1120px)/2)); }
+    .hdr-biz { font-size:15px; font-weight:700; letter-spacing:-.01em; }
+    .hdr-btn { background:rgba(255,255,255,.12); color:#fff; border-color:rgba(255,255,255,.2); border-radius:10px; padding:9px 13px; font-weight:650; transition:background 160ms ease,transform 160ms var(--ease-out); }
+    .hdr-btn:hover { background:rgba(255,255,255,.2); border-color:rgba(255,255,255,.2); }
+    .hdr-btn:active,.filter-btn:active { transform:scale(.97); }
+    .hdr-btn.ghost { color:rgba(255,255,255,.78); border-color:transparent; background:transparent; }
+    .wrap { max-width:1120px; padding:32px 20px 72px; }
+    .agenda-intro { display:flex; align-items:end; justify-content:space-between; gap:20px; margin-bottom:22px; }
+    .eyebrow { color:var(--accent); font-size:11px; font-weight:750; letter-spacing:.11em; text-transform:uppercase; margin-bottom:5px; }
+    h1 { font-size:clamp(28px,4vw,38px); line-height:1.04; letter-spacing:-.045em; font-weight:740; }
+    .sub { margin-top:7px; margin-bottom:0; }
+    .agenda-live { color:var(--muted); font-size:12px; white-space:nowrap; }
+    .agenda-live::before { content:''; display:inline-block; width:7px; height:7px; border-radius:50%; background:#3aaa69; margin-right:7px; box-shadow:0 0 0 4px #d9f0e1; }
+    .summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:28px; }
+    .summary-card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:15px 16px; min-width:0; }
+    .summary-value { display:block; color:var(--ink); font-size:27px; line-height:1; letter-spacing:-.05em; font-weight:720; }
+    .summary-label { display:block; color:var(--muted); font-size:12px; font-weight:600; margin-top:7px; }
+    .summary-card.is-today { border-top:3px solid var(--today); }.summary-card.is-upcoming { border-top:3px solid var(--accent); }.summary-card.is-rescheduled { border-top:3px solid var(--reprogrammed); }.summary-card.is-cancelled { border-top:3px solid var(--cancel); }
+    .agenda-list-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin:4px 0 14px; }
+    .agenda-list-header h2,.activity h2 { font-size:16px; letter-spacing:-.018em; }
+    .filters { gap:7px; margin-bottom:0; }.filter-btn { min-height:38px; background:transparent; border-color:transparent; border-radius:10px; padding:9px 11px; font-size:12px; font-weight:700; transition:color 160ms ease,background 160ms ease,transform 160ms var(--ease-out); }.filter-btn:hover { background:#e8efeb; color:var(--ink); }.filter-btn.active { background:var(--accent-dark); color:#fff; border-color:var(--accent-dark); }
+    .sheet { grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:12px; }
+    .rcard { position:relative; background:var(--card); border-color:var(--line); border-radius:var(--radius); padding:18px; overflow:hidden; }.rcard::before { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:#88ae99; }.rcard.is-today::before { background:var(--today); }.rcard.is-urgent { border-color:#eac5c6; background:#fffafa; }.rcard.is-urgent::before { background:var(--urgent); }.rcard.is-reprogrammed::before { background:var(--reprogrammed); }.rcard.is-cancelled { background:#fbf8f8; border-color:#ead9da; opacity:.78; }.rcard.is-cancelled::before { background:var(--cancel); }
+    .card-top { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; }.rname { font-size:20px; line-height:1.1; letter-spacing:-.035em; font-weight:730; }.rservice { color:var(--muted); font-size:13px; font-weight:620; margin-top:5px; }.time-block { min-width:88px; text-align:right; }.time-label { display:block; color:var(--muted); font-size:10px; font-weight:750; letter-spacing:.1em; text-transform:uppercase; }.time-value { display:block; color:var(--ink); font-size:22px; font-weight:740; line-height:1.1; letter-spacing:-.045em; margin-top:3px; white-space:nowrap; }.rdate { color:var(--muted); font-size:12px; line-height:1.45; margin-top:14px; }
+    .rremaining { display:inline-flex; align-items:center; margin-top:13px; padding:6px 9px; border-radius:8px; background:#e8f3ec; color:var(--accent-dark); font-size:12px; font-weight:720; }.is-today .rremaining { background:#fff2de; color:#955c0b; }.is-urgent .rremaining { background:#fae6e7; color:#9d2d35; animation:urgency-pulse 2.2s ease-in-out infinite; }
+    .rmeta { display:grid; gap:5px; margin-top:15px; padding-top:13px; border-top:1px solid var(--line); }.rrow { gap:8px; color:var(--muted); font-size:12px; padding:0; }.rrow .ic { width:16px; opacity:.75; }.rrow .rlbl { display:none; }.rnotes { margin-top:13px; padding:10px 11px; background:var(--card-soft); border-color:#e8eeeb; font-size:12px; }.rnotes-t { font-size:10px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }.rfoot { margin-top:14px; padding-top:0; border-top:0; }.rcreated { font-size:11px; }.estado { font-size:11px; font-weight:750; letter-spacing:.04em; text-transform:uppercase; padding:4px 7px; border-radius:6px; }.estado.nueva { background:#e7f2ea; color:#17633f; }.estado.reprogramada { background:#e9effa; color:#315f9b; }.estado.cancelada { background:#f9e8e8; color:#a33c42; }.sheet.animate-cards .rcard { animation:card-in 220ms var(--ease-out) both; }.sheet.animate-cards .rcard:nth-child(2){animation-delay:45ms}.sheet.animate-cards .rcard:nth-child(3){animation-delay:90ms}.sheet.animate-cards .rcard:nth-child(4){animation-delay:135ms}
+    .activity { margin:34px 0 0; padding-top:22px; border-top:1px solid var(--line); }.activity-head { display:flex; align-items:baseline; gap:9px; margin-bottom:11px; }.activity-head p { color:var(--muted); font-size:12px; }.activity-list { gap:7px; }.activity-item { background:transparent; border:0; border-left:2px solid #bfd1c5; border-radius:0; padding:3px 0 3px 12px; }.activity-title { font-size:12.5px; }.activity-meta { font-size:12px; margin-top:2px; }.empty { background:var(--card); border:1px dashed #c7d4cc; border-radius:var(--radius); padding:54px 20px; }
+    @keyframes card-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } } @keyframes urgency-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(182,64,67,0); } 50% { box-shadow:0 0 0 4px rgba(182,64,67,.12); } }
+    @media (max-width:640px) { .hdr { padding:13px 16px; }.hdr-biz { flex-basis:100%; }.hdr-btn { min-height:40px; }.wrap { padding:24px 14px 52px; }.agenda-intro { align-items:flex-start; flex-direction:column; gap:8px; }.summary-grid { grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:24px; }.summary-card { padding:13px; }.summary-value { font-size:24px; }.agenda-list-header { align-items:stretch; flex-direction:column; gap:10px; }.filters { display:grid; grid-template-columns:repeat(3,1fr); width:100%; }.filter-btn { min-height:44px; padding:8px 5px; }.sheet { grid-template-columns:1fr; gap:10px; }.rcard { padding:16px; }.rname { font-size:19px; }.time-value { font-size:20px; }.activity { margin-top:28px; } }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; } }
   </style>
 </head>
 <body data-sentry-page="client_panel">
@@ -93,11 +136,13 @@
   <!-- Login -->
   <div id="login">
     <div class="login-card">
-      <h2>Tus citas</h2>
-      <p id="login-desc">Introduce tu clave de acceso para ver las citas de tu negocio.</p>
+      <label for="login-language" data-i18n="language">Idioma</label>
+      <select id="login-language" class="hdr-btn" onchange="setPanelLanguage(this.value)" aria-label="Language selector"><option value="es">Español</option><option value="en">English</option></select>
+      <h2 data-i18n="myAppointments">Tus citas</h2>
+      <p id="login-desc" data-i18n="loginDesc">Introduce tu clave de acceso para ver las citas de tu negocio.</p>
       <input class="login-inp" id="token-inp" type="password" placeholder="Clave de acceso" autocomplete="off">
-      <button class="login-go" id="login-btn" onclick="doLogin()">Entrar</button>
-      <div class="login-err" id="login-err">Clave incorrecta. Inténtalo de nuevo.</div>
+      <button class="login-go" id="login-btn" onclick="doLogin()" data-i18n="enter">Entrar</button>
+      <div class="login-err" id="login-err" data-i18n="loginError">Clave incorrecta. Inténtalo de nuevo.</div>
     </div>
   </div>
 
@@ -105,19 +150,45 @@
   <div id="panel" style="display:none">
     <div class="hdr">
       <span class="hdr-biz" id="hdr-biz"></span>
-      <button class="hdr-btn" id="refresh-btn" onclick="loadReservations()">↻ Actualizar</button>
-      <button class="hdr-btn ghost" onclick="logout()">Salir</button>
+      <label for="panel-language" class="sr-only" data-i18n="language">Idioma</label>
+      <select id="panel-language" class="hdr-btn" onchange="setPanelLanguage(this.value)" aria-label="Language selector"><option value="es">Español</option><option value="en">English</option></select>
+      <button class="hdr-btn" id="refresh-btn" onclick="loadReservations()" data-i18n="refresh">↻ Actualizar</button>
+      <button class="hdr-btn ghost" onclick="logout()" data-i18n="logout">Salir</button>
     </div>
     <div class="wrap">
-      <h1>Citas</h1>
-      <div class="sub" id="count">—</div>
-      <div class="filters">
-        <button class="filter-btn active" data-f="proximas" onclick="setFilter('proximas',this)">Próximas</button>
-        <button class="filter-btn" data-f="canceladas" onclick="setFilter('canceladas',this)">Canceladas</button>
-        <button class="filter-btn" data-f="reprogramadas" onclick="setFilter('reprogramadas',this)">Reprogramadas</button>
-      </div>
-      <div class="sheet" id="sheet"></div>
+      <section class="agenda-intro" aria-labelledby="agenda-title">
+        <div>
+          <div class="eyebrow" data-i18n="businessSchedule">Agenda del negocio</div>
+          <h1 id="agenda-title" data-i18n="myAppointments">Tus citas</h1>
+          <div class="sub" id="count">—</div>
+        </div>
+        <div class="agenda-live" data-i18n="autoRefresh">Actualización automática</div>
+      </section>
+
+      <section class="summary-grid" aria-label="Schedule summary">
+        <article class="summary-card is-today"><span class="summary-value" id="summary-today">0</span><span class="summary-label" data-i18n="todayAppointments">Citas de hoy</span></article>
+        <article class="summary-card is-upcoming"><span class="summary-value" id="summary-upcoming">0</span><span class="summary-label" data-i18n="upcomingAppointments">Próximas citas</span></article>
+        <article class="summary-card is-rescheduled"><span class="summary-value" id="summary-rescheduled">0</span><span class="summary-label" data-i18n="rescheduled">Reprogramadas</span></article>
+        <article class="summary-card is-cancelled"><span class="summary-value" id="summary-cancelled">0</span><span class="summary-label" data-i18n="cancelled">Canceladas</span></article>
+      </section>
+
+      <section aria-labelledby="list-title">
+        <div class="agenda-list-header">
+          <h2 id="list-title" data-i18n="schedule">Agenda</h2>
+          <div class="filters">
+            <button class="filter-btn active" data-f="proximas" onclick="setFilter('proximas',this)" data-i18n="upcoming">Próximas</button>
+            <button class="filter-btn" data-f="canceladas" onclick="setFilter('canceladas',this)" data-i18n="cancelled">Canceladas</button>
+            <button class="filter-btn" data-f="reprogramadas" onclick="setFilter('reprogramadas',this)" data-i18n="rescheduled">Reprogramadas</button>
+          </div>
+        </div>
+        <div class="sheet" id="sheet"></div>
+      </section>
       <div class="updated" id="updated"></div>
+
+      <section class="activity" aria-labelledby="activity-title">
+        <div class="activity-head"><h2 id="activity-title" data-i18n="recentActivity">Actividad reciente</h2><p data-i18n="latestChanges">Últimos cambios</p></div>
+        <div class="activity-list" id="activity-list"></div>
+      </section>
     </div>
   </div>
 
@@ -138,19 +209,44 @@
   }
 
   var clientId  = resolveClientId();
-  var API       = 'https://jbstudio.app';
+  // Same deployment in Preview and production: Preview data must never be
+  // fetched from production while validating a change.
+  var API       = window.location.origin;
   var STORE_KEY = 'jbr_' + clientId + '_token';
   var currentToken = '';
   var allData = [];
+  var activitiesData = [];
   var activeFilter = 'proximas';
   var refreshTimer = null;
+  var animateCards = true;
+  var LANGUAGE_STORE_KEY = 'jbr_panel_language';
+  var panelLanguage = localStorage.getItem(LANGUAGE_STORE_KEY) === 'en' ? 'en' : 'es';
+  var I18N = {
+    es: { language: 'Idioma', myAppointments: 'Tus citas', loginDesc: 'Introduce tu clave de acceso para ver las citas de tu negocio.', accessKey: 'Clave de acceso', enter: 'Entrar', loginError: 'Clave incorrecta. Inténtalo de nuevo.', refresh: '↻ Actualizar', logout: 'Salir', businessSchedule: 'Agenda del negocio', autoRefresh: 'Actualización automática', todayAppointments: 'Citas de hoy', upcomingAppointments: 'Próximas citas', rescheduled: 'Reprogramadas', cancelled: 'Canceladas', schedule: 'Agenda', upcoming: 'Próximas', recentActivity: 'Actividad reciente', latestChanges: 'Últimos cambios', invalidLink: 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio', verifying: 'Verificando…', new: 'Nueva', specialRequests: 'Peticiones especiales', noSpecialRequests: 'Sin peticiones especiales', reservation: 'Reserva', time: 'Hora', datePending: 'Fecha por confirmar', people: 'Personas', table: 'Mesa', barber: 'Barbero', phone: 'Teléfono', email: 'Correo', cancelledOn: 'Cancelada', by: 'Por', before: 'Antes', noRecentActivity: 'Aún no hay actividad reciente.', customer: 'Cliente', cancelledAppointment: 'canceló una cita', rescheduledAppointment: 'reagendó una cita', createdReservation: 'creó una nueva reserva', now: 'Ahora', createdSeconds: 'Creada hace unos segundos', createdMinutes: 'Creada hace ', createdHours: 'Creada hace ', createdOn: 'Creada el ', in: 'En ', tomorrowAt: 'Mañana a las ', remaining: 'Faltan ', minute: 'minuto', minutes: 'minutos', hour: 'hora', hours: 'horas', day: 'día', days: 'días', appointment: 'cita', appointments: 'citas', cancelledSuffix: 'canceladas', upcomingSuffix: 'próximas', emptyUpcoming: 'No hay citas próximas.', emptyCancelled: 'No hay citas canceladas.', updated: 'Actualizado ' },
+    en: { language: 'Language', myAppointments: 'Your appointments', loginDesc: 'Enter your access key to view your business appointments.', accessKey: 'Access key', enter: 'Sign in', loginError: 'Incorrect access key. Please try again.', refresh: '↻ Refresh', logout: 'Sign out', businessSchedule: 'Business schedule', autoRefresh: 'Auto-refresh', todayAppointments: "Today's appointments", upcomingAppointments: 'Upcoming appointments', rescheduled: 'Rescheduled', cancelled: 'Cancelled', schedule: 'Schedule', upcoming: 'Upcoming', recentActivity: 'Recent activity', latestChanges: 'Latest changes', invalidLink: 'Invalid link. Access jbstudio.app/reservas/your-business', verifying: 'Verifying…', new: 'New', specialRequests: 'Special requests', noSpecialRequests: 'No special requests', reservation: 'Reservation', time: 'Time', datePending: 'Date to be confirmed', people: 'People', table: 'Table', barber: 'Barber', phone: 'Phone', email: 'Email', cancelledOn: 'Cancelled', by: 'By', before: 'Before', noRecentActivity: 'No recent activity yet.', customer: 'Customer', cancelledAppointment: 'cancelled an appointment', rescheduledAppointment: 'rescheduled an appointment', createdReservation: 'created a new reservation', now: 'Now', createdSeconds: 'Created seconds ago', createdMinutes: 'Created ', createdHours: 'Created ', createdOn: 'Created on ', in: 'In ', tomorrowAt: 'Tomorrow at ', remaining: 'Remaining: ', minute: 'minute', minutes: 'minutes', hour: 'hour', hours: 'hours', day: 'day', days: 'days', appointment: 'appointment', appointments: 'appointments', cancelledSuffix: 'cancelled', upcomingSuffix: 'upcoming', emptyUpcoming: 'No upcoming appointments.', emptyCancelled: 'No cancelled appointments.', updated: 'Updated ' }
+  };
+  function tr(key) { return I18N[panelLanguage][key] || key; }
+  function setPanelLanguage(language) {
+    panelLanguage = language === 'en' ? 'en' : 'es';
+    localStorage.setItem(LANGUAGE_STORE_KEY, panelLanguage);
+    document.documentElement.lang = panelLanguage;
+    document.title = panelLanguage === 'en' ? 'Appointments — JB Studio' : 'Citas — JB Studio';
+    document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = tr(el.dataset.i18n); });
+    document.getElementById('token-inp').placeholder = tr('accessKey');
+    document.getElementById('login-language').value = panelLanguage;
+    document.getElementById('panel-language').value = panelLanguage;
+    document.querySelector('.summary-grid').setAttribute('aria-label', panelLanguage === 'en' ? 'Schedule summary' : 'Resumen de agenda');
+    if (!clientId) document.getElementById('login-desc').textContent = tr('invalidLink');
+    if (allData.length || activitiesData.length) render();
+  }
 
   if (!clientId) {
-    document.getElementById('login-desc').textContent = 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio';
+    document.getElementById('login-desc').textContent = tr('invalidLink');
     document.getElementById('login-btn').disabled = true;
   }
 
   window.addEventListener('DOMContentLoaded', function () {
+    setPanelLanguage(panelLanguage);
     var frag = '';
     if (window.location.hash && window.location.hash.indexOf('t=') !== -1) {
       frag = decodeURIComponent(window.location.hash.replace(/^#t=/, ''));
@@ -165,7 +261,7 @@
     var t = document.getElementById('token-inp').value.trim();
     if (!t) return;
     var b = document.getElementById('login-btn');
-    b.disabled = true; b.textContent = 'Verificando…';
+    b.disabled = true; b.textContent = tr('verifying');
     document.getElementById('login-err').style.display = 'none';
     tryToken(t);
   }
@@ -179,44 +275,53 @@
       });
   }
 
+  function fetchActivity(t) {
+    return fetch(API + '/api/reservations-list?clientId=' + encodeURIComponent(clientId) + '&token=' + encodeURIComponent(t) + '&scope=activity')
+      .then(function (r) {
+        if (!r.ok) throw new Error('activity error');
+        return r.json();
+      });
+  }
+
   function tryToken(t) {
-    fetchList(t)
-      .then(function (data) {
+    Promise.all([fetchList(t), fetchActivity(t)])
+      .then(function (results) {
         currentToken = t;
         localStorage.setItem(STORE_KEY, t);
-        showPanel(data);
+        showPanel(results[0], results[1].activities);
       })
       .catch(function (err) {
         localStorage.removeItem(STORE_KEY);
         var b = document.getElementById('login-btn');
-        b.disabled = false; b.textContent = 'Entrar';
+        b.disabled = false; b.textContent = tr('enter');
         if (err.message === 'unauthorized') document.getElementById('login-err').style.display = 'block';
       });
   }
 
-  function showPanel(data) {
+  function showPanel(data, activities) {
     document.getElementById('login').style.display = 'none';
     document.getElementById('panel').style.display = 'block';
     document.getElementById('hdr-biz').textContent = clientId.replace(/-/g, ' ');
     allData = data || [];
+    activitiesData = activities || [];
     render();
     startAutoRefresh();
   }
 
   // Carga bajo demanda (botón Actualizar). No hay polling continuo.
   function loadReservations() {
-    fetchList(currentToken)
-      .then(function (data) { allData = data || []; render(); })
+    Promise.all([fetchList(currentToken), fetchActivity(currentToken)])
+      .then(function (results) { allData = results[0] || []; activitiesData = results[1].activities || []; animateCards = false; render(); })
       .catch(function () {});
   }
 
-  // Refresco cada 5 min SOLO si la pestaña está visible — nada de peticiones
+  // Refresco cada 15 s SOLO si la pestaña está visible — nada de peticiones
   // en segundo plano. Se salta el ciclo si la pestaña está oculta.
   function startAutoRefresh() {
     if (refreshTimer) return;
     refreshTimer = setInterval(function () {
       if (document.visibilityState === 'visible') loadReservations();
-    }, 5 * 60 * 1000);
+    }, 15 * 1000);
   }
 
   function logout() {
@@ -227,11 +332,12 @@
     document.getElementById('login').style.display = 'flex';
     document.getElementById('token-inp').value = '';
     var b = document.getElementById('login-btn');
-    b.disabled = false; b.textContent = 'Entrar';
+    b.disabled = false; b.textContent = tr('enter');
   }
 
   function setFilter(f, btn) {
     activeFilter = f;
+    animateCards = true;
     document.querySelectorAll('.filter-btn').forEach(function (x) { x.classList.remove('active'); });
     btn.classList.add('active');
     render();
@@ -243,9 +349,9 @@
 
   // Estados que ve el dueño: Nueva / Reprogramada / Cancelada. Nada más.
   function estadoInfo(r) {
-    if (r.estado === 'cancelada' || r.estado === 'rechazada') return { cls: 'cancelada', txt: 'Cancelada' };
-    if (r.estado === 'reprogramada') return { cls: 'reprogramada', txt: 'Reprogramada' };
-    return { cls: 'nueva', txt: 'Nueva' };
+    if (r.estado === 'cancelada' || r.estado === 'rechazada') return { cls: 'cancelada', txt: tr('cancelled') };
+    if (r.estado === 'reprogramada') return { cls: 'reprogramada', txt: tr('rescheduled') };
+    return { cls: 'nueva', txt: tr('new') };
   }
 
   function filtered() {
@@ -263,13 +369,94 @@
     var d = new Date(iso);
     if (isNaN(d.getTime())) return '';
     var min = Math.floor((Date.now() - d.getTime()) / 60000);
-    if (min < 1)  return 'Creada hace unos segundos';
-    if (min < 60) return 'Creada hace ' + min + (min === 1 ? ' minuto' : ' minutos');
+    if (min < 1)  return tr('createdSeconds');
+    if (min < 60) return tr('createdMinutes') + min + ' ' + tr(min === 1 ? 'minute' : 'minutes') + (panelLanguage === 'en' ? ' ago' : '');
     var h = Math.floor(min / 60);
-    if (h < 24)   return 'Creada hace ' + h + (h === 1 ? ' hora' : ' horas');
-    var meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    var fecha = d.getDate() + ' ' + meses[d.getMonth()] + ' ' + d.getFullYear();
-    return 'Creada el ' + fecha + ' · ' + d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+    if (h < 24)   return tr('createdHours') + h + ' ' + tr(h === 1 ? 'hour' : 'hours') + (panelLanguage === 'en' ? ' ago' : '');
+    var fecha = d.toLocaleDateString(panelLanguage === 'en' ? 'en-US' : 'es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+    return tr('createdOn') + fecha + ' · ' + d.toLocaleTimeString(panelLanguage === 'en' ? 'en-US' : 'es-ES', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function fechaLegible(fechaISO, fallback) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fechaISO || ''))) return fallback || '';
+    var d = new Date(fechaISO + 'T12:00:00Z');
+    if (isNaN(d.getTime())) return fallback || '';
+    var text = new Intl.DateTimeFormat(panelLanguage === 'en' ? 'en-US' : 'es-ES', {
+      weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC'
+    }).format(d);
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  function partesEnZona(ms, timezone) {
+    try {
+      var values = {};
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+      }).formatToParts(new Date(ms)).forEach(function (part) {
+        values[part.type] = part.value;
+      });
+      if (!values.year || !values.month || !values.day || values.hour === undefined || values.minute === undefined) return null;
+      return {
+        year: Number(values.year), month: Number(values.month), day: Number(values.day),
+        hour: Number(values.hour), minute: Number(values.minute)
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function reservaUtcMs(fechaISO, horaISO, timezone) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fechaISO || ''))) return null;
+    if (!/^\d{2}:\d{2}$/.test(String(horaISO || '')) || !timezone) return null;
+    var date = fechaISO.split('-').map(Number);
+    var time = horaISO.split(':').map(Number);
+    var intended = Date.UTC(date[0], date[1] - 1, date[2], time[0], time[1]);
+    var guess = intended;
+
+    for (var i = 0; i < 2; i++) {
+      var parts = partesEnZona(guess, timezone);
+      if (!parts) return null;
+      var observed = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+      var offset = intended - observed;
+      if (!offset) break;
+      guess += offset;
+    }
+    return guess;
+  }
+
+  function tiempoRestante(r) {
+    var when = reservaUtcMs(r.fechaISO, r.horaISO, r.timezone);
+    if (when === null || when <= Date.now()) return '';
+    var now = partesEnZona(Date.now(), r.timezone);
+    if (!now) return '';
+
+    var reservationDate = r.fechaISO.split('-').map(Number);
+    var today = Date.UTC(now.year, now.month - 1, now.day);
+    var targetDay = Date.UTC(reservationDate[0], reservationDate[1] - 1, reservationDate[2]);
+    var days = Math.round((targetDay - today) / 86400000);
+
+    if (days === 0) {
+      var minutes = Math.max(1, Math.ceil((when - Date.now()) / 60000));
+      if (minutes < 60) return '⏳ ' + tr('in') + minutes + ' ' + tr(minutes === 1 ? 'minute' : 'minutes');
+      var hours = Math.ceil(minutes / 60);
+      return '⏳ ' + tr('in') + hours + ' ' + tr(hours === 1 ? 'hour' : 'hours');
+    }
+    if (days === 1) return '⏳ ' + tr('tomorrowAt') + (r.hora || r.horaISO);
+    return '⏳ ' + tr('remaining') + days + ' ' + tr(days === 1 ? 'day' : 'days');
+  }
+
+  function urgenciaCita(r) {
+    if (r.estado === 'cancelada' || r.estado === 'rechazada') return 'cancelled';
+    var when = reservaUtcMs(r.fechaISO, r.horaISO, r.timezone);
+    if (when === null || when <= Date.now()) return r.estado === 'reprogramada' ? 'reprogrammed' : 'future';
+    if (when - Date.now() < 60 * 60 * 1000) return 'urgent';
+    var now = partesEnZona(Date.now(), r.timezone);
+    if (!now) return r.estado === 'reprogramada' ? 'reprogrammed' : 'future';
+    var today = [now.year, String(now.month).padStart(2, '0'), String(now.day).padStart(2, '0')].join('-');
+    if (r.fechaISO === today) return 'today';
+    return r.estado === 'reprogramada' ? 'reprogrammed' : 'future';
   }
 
   function fila(icon, label, val) {
@@ -281,43 +468,94 @@
   function cardHTML(r) {
     var e = estadoInfo(r);
     var special = String(r.specialRequests == null ? (r.notes || '') : r.specialRequests).trim();
-    var notesHTML = '<div class="rnotes"><div class="rnotes-t">Peticiones especiales</div>' + esc(special || 'Sin peticiones especiales') + '</div>';
+    var notesHTML = '<div class="rnotes"><div class="rnotes-t">' + tr('specialRequests') + '</div>' + esc(special || tr('noSpecialRequests')) + '</div>';
     var creada = fechaCreacion(r.fechaSolicitud);
-    return '<div class="rcard">' +
-        '<div class="rrow"><span class="ic">👤</span><span class="rname">' + esc(r.nombre || '—') + '</span></div>' +
-        fila('💆', 'Servicio', r.servicio) +
-        fila('👥', 'Personas', r.partySize || r.personas) +
-        fila('📅', 'Fecha', r.fecha) +
-        fila('🕒', 'Hora', r.hora) +
-        fila('🪑', 'Mesa', r.tablePreference) +
-        fila('✂️', 'Barbero', r.barberPreference) +
-        fila('📞', 'Teléfono', r.telefono) +
-        fila('✉️', 'Correo', r.email) +
-        (r.estado === 'cancelada' ? fila('🗓️', 'Cancelada', r.fechaCancelacion ? new Date(r.fechaCancelacion).toLocaleString('es') : '') + fila('👤', 'Por', r.cancelledBy || '') : '') +
-        (r.estado === 'reprogramada' ? fila('↔️', 'Antes', (r.fechaAnterior || '') + ' ' + (r.horaAnterior || '')) : '') +
+    var fecha = fechaLegible(r.fechaISO, r.fecha);
+    var restante = (r.estado === 'confirmada' || r.estado === 'reprogramada') ? tiempoRestante(r) : '';
+    var urgencia = urgenciaCita(r);
+    return '<article class="rcard is-' + urgencia + ' is-' + e.cls + '">' +
+        '<div class="card-top"><div><h3 class="rname">' + esc(r.nombre || '—') + '</h3><div class="rservice">' + esc(r.servicio || tr('reservation')) + '</div></div>' +
+        '<div class="time-block"><span class="time-label">' + tr('time') + '</span><span class="time-value">' + esc(r.hora || '—') + '</span></div></div>' +
+        '<div class="rdate">' + esc(fecha || tr('datePending')) + '</div>' +
+        (restante ? '<div class="rremaining">' + esc(restante) + '</div>' : '') +
+        '<div class="rmeta">' +
+        fila('👥', tr('people'), r.partySize || r.personas) + fila('🪑', tr('table'), r.tablePreference) + fila('✂️', tr('barber'), r.barberPreference) + fila('📞', tr('phone'), r.telefono) + fila('✉️', tr('email'), r.email) +
+        (r.estado === 'cancelada' ? fila('🗓️', tr('cancelledOn'), r.fechaCancelacion ? new Date(r.fechaCancelacion).toLocaleString(panelLanguage === 'en' ? 'en-US' : 'es-ES') : '') + fila('👤', tr('by'), r.cancelledBy || '') : '') +
+        (r.estado === 'reprogramada' ? fila('↔️', tr('before'), (r.fechaAnterior || '') + ' ' + (r.horaAnterior || '')) : '') +
+        '</div>' +
         notesHTML +
         '<div class="rfoot"><span class="estado ' + e.cls + '">' + e.txt + '</span>' +
           (creada ? '<span class="rcreated">' + esc(creada) + '</span>' : '') +
         '</div>' +
-      '</div>';
+      '</article>';
+  }
+
+  function renderSummary() {
+    var today = allData.filter(function (r) {
+      if (r.estado === 'cancelada' || r.estado === 'rechazada' || !r.fechaISO || !r.timezone) return false;
+      var now = partesEnZona(Date.now(), r.timezone);
+      return now && r.fechaISO === [now.year, String(now.month).padStart(2, '0'), String(now.day).padStart(2, '0')].join('-');
+    }).length;
+    var upcoming = allData.filter(function (r) { return r.estado === 'confirmada' || r.estado === 'reprogramada'; }).length;
+    var rescheduled = allData.filter(function (r) { return r.estado === 'reprogramada'; }).length;
+    var cancelled = allData.filter(function (r) { return r.estado === 'cancelada' || r.estado === 'rechazada'; }).length;
+    document.getElementById('summary-today').textContent = today;
+    document.getElementById('summary-upcoming').textContent = upcoming;
+    document.getElementById('summary-rescheduled').textContent = rescheduled;
+    document.getElementById('summary-cancelled').textContent = cancelled;
+  }
+
+  function renderActivity() {
+    var list = document.getElementById('activity-list');
+    if (!activitiesData.length) {
+      list.innerHTML = '<div class="activity-empty">' + tr('noRecentActivity') + '</div>';
+      return;
+    }
+    list.innerHTML = activitiesData.map(function (a) {
+      var name = esc(a.cliente || tr('customer'));
+      var slot = [a.fecha, a.hora].filter(Boolean).join(' · ');
+      var previousSlot = [a.prevFecha, a.prevHora].filter(Boolean).join(' · ');
+      var title;
+      var details = '';
+
+      if (a.type === 'cancelled') {
+        title = '🔴 ' + name + ' ' + tr('cancelledAppointment');
+        details = [a.servicio, slot].filter(Boolean).map(esc).join('<br>');
+      } else if (a.type === 'rescheduled') {
+        title = '🔵 ' + name + ' ' + tr('rescheduledAppointment');
+        if (previousSlot) details += '<div>' + tr('before') + ':</div><div>' + esc(previousSlot) + '</div>';
+        if (slot) details += (details ? '<br>' : '') + '<div>' + tr('now') + ':</div><div>' + esc(slot) + '</div>';
+        if (!details && a.servicio) details = esc(a.servicio);
+      } else {
+        title = '🟢 ' + name + ' ' + tr('createdReservation');
+        details = [a.servicio, slot].filter(Boolean).map(esc).join('<br>');
+      }
+
+      return '<article class="activity-item"><div class="activity-title">' + title + '</div>' +
+        (details ? '<div class="activity-meta">' + details + '</div>' : '') + '</article>';
+    }).join('');
   }
 
   function render() {
+    renderActivity();
+    renderSummary();
     var data = filtered().slice().sort(function (a, b) {
       return String(a.fechaISO || '').localeCompare(String(b.fechaISO || '')) ||
              String(a.horaISO || '').localeCompare(String(b.horaISO || ''));
     });
     document.getElementById('count').textContent =
-      data.length + (data.length === 1 ? ' cita' : ' citas') + (activeFilter === 'canceladas' ? ' canceladas' : ' próximas');
+      data.length + ' ' + tr(data.length === 1 ? 'appointment' : 'appointments') + ' ' + tr(activeFilter === 'canceladas' ? 'cancelledSuffix' : 'upcomingSuffix');
 
     var sheet = document.getElementById('sheet');
+    sheet.classList.toggle('animate-cards', animateCards);
     if (!data.length) {
-      sheet.innerHTML = '<div class="empty">No hay citas ' + (activeFilter === 'canceladas' ? 'canceladas' : 'próximas') + '.</div>';
+      sheet.innerHTML = '<div class="empty">' + tr(activeFilter === 'canceladas' ? 'emptyCancelled' : 'emptyUpcoming') + '</div>';
     } else {
       sheet.innerHTML = data.map(cardHTML).join('');
     }
+    animateCards = false;
     var now = new Date();
-    document.getElementById('updated').textContent = 'Actualizado ' + now.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('updated').textContent = tr('updated') + now.toLocaleTimeString(panelLanguage === 'en' ? 'en-US' : 'es-ES', { hour: '2-digit', minute: '2-digit' });
   }
 </script>
 </body>

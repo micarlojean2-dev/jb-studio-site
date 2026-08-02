@@ -1,6 +1,8 @@
 import { Redis } from '@upstash/redis';
 import { createHash, randomUUID } from 'node:crypto';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
+import { loadClientMedia } from '../lib/media.js';
+import { findServiceByLinkedItemId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 
 initSentry();
@@ -18,42 +20,12 @@ export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
 // mismas que usan todas las demás funciones) — esto hacía que este endpoint
 // devolviera 500 en producción y que widget.js nunca cargara los datos
 // reales del cliente. Corregido para usar el mismo par que el resto de la API.
-function safeImageUrl(value) {
-  try {
-    var url = new URL(String(value || ''));
-    return url.protocol === 'https:' ? url.href : '';
-  } catch (_) {
-    return '';
-  }
-}
-
-function imageKeyBelongsTo(clientId, key, record) {
-  var publicId = record && record.publicId;
-  return typeof key === 'string'
-    && key === `client-images:${clientId}:${publicId}`
-    && typeof publicId === 'string'
-    && publicId.startsWith(`clients/${clientId}/`);
-}
-
-async function publicMedia(redis, clientId) {
-  const keys = await redis.keys(`client-images:${clientId}:*`);
-  const records = !keys.length ? [] : (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys));
-  const gallery = [];
-  const menu = [];
-
-  records.forEach((record, index) => {
-    if (!record || record.confirmed !== true || !imageKeyBelongsTo(clientId, keys[index], record)) return;
-    const imageUrl = safeImageUrl(record.imageUrl);
-    if (!imageUrl) return;
-    if (record.linkedType === 'gallery') gallery.push(imageUrl);
-    // `service` was used by the first admin media UI. Keep its stored refs
-    // visible while new associations use the clearer `menu` name.
-    if ((record.linkedType === 'menu' || record.linkedType === 'service') && typeof record.linkedItemId === 'string') {
-      menu.push({ itemId: record.linkedItemId, imageUrl });
-    }
-  });
-  return { gallery, menu };
-}
+//
+// La validación de qué imagen cuenta como confirmada y pública vive en
+// lib/media.js (loadClientMedia), compartida con confirmedMedia() en
+// api/client-chat.js — antes cada una tenía su propio criterio y podían
+// divergir (el modelo decía "hay fotos" que el widget nunca podía pintar).
+const publicMedia = loadClientMedia;
 
 export function createClientConfigHandler({ redis } = {}) {
   const store = redis || new Redis({
@@ -76,17 +48,36 @@ export function createClientConfigHandler({ redis } = {}) {
 
     // Return only public-safe fields — never expose prompt, panelToken, ownerEmail
     const media = await publicMedia(store, id);
-    const menuImageUrls = new Map(media.menu.map(image => [image.itemId, image.imageUrl]));
-    const menu = Array.isArray(client.menu) ? client.menu.map((item, index) => {
-      const itemId = String(item?.id || item?.nombre || index);
-      const imageUrl = menuImageUrls.get(itemId);
+    // findServiceByLinkedItemId (lib/services.js) es la única fuente de este
+    // fallback id→nombre — antes vivía reimplementado aquí a mano. Se arma
+    // por entrada de imagen (no por servicio) para conservar el mismo
+    // comportamiento de antes ante un conflicto: si dos imágenes terminan
+    // asociadas al mismo servicio, gana la última del array, igual que antes
+    // con el Map.
+    const clientMenu = Array.isArray(client.menu) ? client.menu : [];
+    const imageByService = new Map();
+    media.menu.forEach((entry) => {
+      const service = findServiceByLinkedItemId(clientMenu, entry.itemId);
+      if (service) imageByService.set(service, entry.imageUrl);
+    });
+    const menu = clientMenu.map((item) => {
+      const imageUrl = imageByService.get(item);
       return imageUrl ? { ...item, imagen: imageUrl } : item;
-    }) : [];
+    });
+    const languages = Array.isArray(client.languages)
+      ? client.languages.filter(language => ['es', 'en', 'pt', 'fr'].includes(language))
+      : [];
+    const language = client.language === 'en' ? 'en' : 'es';
+    if (!languages.length) languages.push(language);
+    const primaryLanguage = languages.includes(client.primaryLanguage) ? client.primaryLanguage : languages[0];
     const out = {
       businessName: client.businessName,
       templateId:   client.templateId || null,
       color:        client.color    || '#1a4a2e',
-      language:     client.language || 'es',
+      language,
+      // Additive for older consumers: `language` remains the legacy default.
+      languages,
+      primaryLanguage,
       active:       client.active !== false,
       menu,
       // Legacy clients have neither field stored: they keep the original
@@ -316,6 +307,24 @@ export function createClientImagesHandler({ redis: store, fetchImpl = fetch, env
 
 const HEALTH_TIMEOUT_MS = 1500;
 
+// Reuses this serverless function because the project is at Vercel's function
+// limit. Prefer Vercel's deployment ID so Preview builds made from local
+// changes are never mislabeled with an older Git commit.
+export function createBuildHandler(env = process.env) {
+  return function handler(req, res) {
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).json({ error: 'Method not allowed' });
+
+    var version = String(env.VERCEL_DEPLOYMENT_ID || env.VERCEL_GIT_COMMIT_SHA || env.GIT_COMMIT_SHA || '').trim();
+    if (!/^(?:dpl_[a-z0-9]+|[a-f0-9]{7,64})$/i.test(version)) version = 'local';
+    if (req.method === 'HEAD') return res.status(200).end();
+    return res.status(200).json({ version });
+  };
+}
+
 function createHealthHandler({ redis } = {}) {
   const store = redis || new Redis({
     url: process.env.UPSTASH_REDIS_REST_URL,
@@ -348,6 +357,7 @@ function createHealthHandler({ redis } = {}) {
 let productionHandler;
 let imagesHandler;
 let healthHandler;
+let buildHandler;
 export default async function handler(req, res) {
   // Las peticiones admin de imágenes entran reescritas con __scope=images y el
   // health check con __scope=health (vercel.json). El resto es el config
@@ -359,6 +369,10 @@ export default async function handler(req, res) {
   if (req.query?.__scope === 'health') {
     if (!healthHandler) healthHandler = createHealthHandler();
     return healthHandler(req, res);
+  }
+  if (req.query?.__scope === 'build') {
+    if (!buildHandler) buildHandler = createBuildHandler();
+    return buildHandler(req, res);
   }
   if (!productionHandler) productionHandler = createClientConfigHandler();
   return productionHandler(req, res);

@@ -1,4 +1,6 @@
 import { Redis } from '@upstash/redis';
+import { randomUUID } from 'node:crypto';
+import { sanitizeServiceList } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 
 initSentry();
@@ -50,6 +52,38 @@ function normalizeTimezone(tz) {
 function normalizeCapacity(v) {
   const n = parseInt(v, 10);
   return Number.isFinite(n) && n >= 1 && n <= 100 ? n : 1;   // por defecto, uno
+}
+
+// Cualquier entero razonable entre 0 y 240 minutos (antes: solo 0/15/30/45).
+// Number(), no parseInt(): parseInt('10.5')===10 truncaría un decimal en vez
+// de rechazarlo. Aquí basta con no persistir un valor fuera de rango; el
+// rechazo real ocurre antes, en missingTemplateFields.
+function normalizeBufferMinutes(v) {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 240 ? n : 0;
+}
+
+// Misma gramática que duracionMin() en api/reservations.js (replicada aquí:
+// no hay módulo compartido en este proyecto sin build step) — el guardado y
+// la reserva deben interpretar exactamente los mismos formatos, o un valor
+// que pasa aquí podría leerse distinto (o como 0) al reservar.
+// Formatos completos aceptados: "60", "60 min"/"mins"/"minuto"/"minutos",
+// "1h"/"1 h"/"1 hora"/"1 horas", "1h 30"/"1 hora 30" (con minutos sueltos).
+// Cada patrón está anclado con ^...$: "60 min basura" o "texto 60 min" no
+// matchean ninguno (antes, sin anclar, un patrón como /(\d+)\s*m/ podía
+// encontrar "60 m" dentro de basura arbitraria y aceptarla igual).
+function spaDurationMinutes(txt) {
+  const t = String(txt || '').trim().toLowerCase();
+  if (!t) return 0;
+  let m = t.match(/^(\d+)$/);
+  if (m) return +m[1];
+  m = t.match(/^(\d+)\s*(?:min|mins|minuto|minutos)$/);
+  if (m) return +m[1];
+  m = t.match(/^(\d+)\s*(?:h|hora|horas)$/);
+  if (m) return (+m[1]) * 60;
+  m = t.match(/^(\d+)\s*(?:h|hora|horas)\s+(\d+)$/);
+  if (m) return (+m[1]) * 60 + (+m[2]);
+  return 0;
 }
 
 function normalizeReservationInterval(v) {
@@ -109,6 +143,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // módulo compartido en este proyecto sin build step.
 const LANGUAGE_CODES = ['es', 'en', 'pt', 'fr'];
 const PHONE_COUNTRY_CODES = ['US', 'MX', 'CL', 'AR', 'CO', 'PE', 'BR', 'ES', 'GB', 'CA'];
+// Único mapa país -> código de marcado compartido en el backend. Antes
+// phoneCountry y phoneCountryCode se validaban por separado (cada uno con su
+// propia forma), así que "CL" + "+1" pasaba aunque Chile no sea +1. Solo se
+// exige la correspondencia para templateId === 'spa' (ver missingTemplateFields);
+// no cambia nada para restaurante, barbería ni el formulario legado.
+const PHONE_DIAL_CODES = { US: '+1', CA: '+1', MX: '+52', CL: '+56', AR: '+54', CO: '+57', PE: '+51', BR: '+55', ES: '+34', GB: '+44' };
 const TIME_RE = /^\d{2}:\d{2}$/;
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const DAY_LABELS = { monday: 'Lunes', tuesday: 'Martes', wednesday: 'Miércoles', thursday: 'Jueves', friday: 'Viernes', saturday: 'Sábado', sunday: 'Domingo' };
@@ -160,32 +200,17 @@ function businessHoursToText(businessHours) {
   }).join('\n');
 }
 
-function sanitizeServiceImage(raw) {
-  const v = String(raw || '').slice(0, 500);
-  if (/^data:/i.test(v)) return ''; // never persist local base64 blobs
-  return v;
-}
-
+// La generación/validación de id y el saneado de una lista de servicios
+// viven en lib/services.js — única fuente de verdad, compartida también con
+// api/generate-client-config.js. Antes cada archivo tenía su propia copia
+// (una de ellas ni siquiera generaba id), el mismo patrón de divergencia
+// que ya causó el bug de client.services/client.menu desincronizados.
 function sanitizeServices(services) {
-  if (!Array.isArray(services)) return [];
-  return services.slice(0, 40).map(item => ({
-    nombre:      String(item?.nombre      || '').slice(0, 80),
-    precio:      String(item?.precio      || '').slice(0, 30),
-    duracion:    String(item?.duracion    || '').slice(0, 30),
-    descripcion: String(item?.descripcion || '').slice(0, 200),
-    imagen:      sanitizeServiceImage(item?.imagen),
-  })).filter(item => item.nombre);
+  return sanitizeServiceList(services, 40);
 }
 
 function sanitizeMenu(menu) {
-  if (!Array.isArray(menu)) return [];
-  return menu.slice(0, 20).map(item => ({
-    nombre:      String(item?.nombre      || '').slice(0, 80),
-    precio:      String(item?.precio      || '').slice(0, 30),
-    descripcion: String(item?.descripcion || '').slice(0, 200),
-    duracion:    String(item?.duracion    || '').slice(0, 30),
-    imagen:      sanitizeServiceImage(item?.imagen),
-  })).filter(item => item.nombre);
+  return sanitizeServiceList(menu, 20);
 }
 
 // El plan es un TECHO, no un valor por defecto. Antes cualquier booleano que
@@ -225,6 +250,43 @@ function missingTemplateFields(template, values) {
   if (!values.services.length || values.services.some(service => !service.precio || (requiresDuration && !service.duracion))) missing.push('services');
   if (!values.features.reservations) missing.push('bookingEnabled');
   if (!values.notificationEmails.length) missing.push('notificationEmails');
+  if (template.id === 'spa') {
+    const capacity = parseInt(values.capacityPerSlot, 10);
+    // Number(), no parseInt(): un decimal como 10.5 debe rechazarse, no
+    // truncarse a 10. Rango 0-240 (antes: solo 0/15/30/45).
+    const buffer = Number(values.bufferMinutes);
+    if (!Number.isFinite(capacity) || capacity < 1 || capacity > 100) missing.push('capacityPerSlot');
+    if (!Number.isInteger(buffer) || buffer < 0 || buffer > 240) missing.push('bufferMinutes');
+
+    // El código de marcado debe corresponder al país declarado — antes se
+    // validaban por separado (cada uno con su propia forma), así que
+    // phoneCountry:"CL" + phoneCountryCode:"+1" pasaba sin error.
+    if (values.phoneCountry && values.phoneCountryCode && PHONE_DIAL_CODES[values.phoneCountry] !== values.phoneCountryCode) {
+      missing.push('phoneCountryCode');
+    }
+    // Longitud del número ya normalizado (solo dígitos): el frontend exige
+    // 6-14, pero antes el backend solo comprobaba que existiera algún valor.
+    if (values.phoneNumber && (values.phoneNumber.length < 6 || values.phoneNumber.length > 14)) {
+      missing.push('phone');
+    }
+
+    // Duración de cada servicio: obligatoria, 1-1440 minutos. Antes solo se
+    // exigía que service.duracion fuera una cadena no vacía — un POST
+    // directo con duracion:"pronto" pasaba la validación y luego
+    // durationFor() en api/reservations.js silenciosamente la leía como 0.
+    // Se valida con spaDurationMinutes(), el mismo parser que duracionMin()
+    // en api/reservations.js interpretará en tiempo real ("60", "60 min",
+    // "1 hora" son formatos válidos ahí) — validar con Number.isInteger()
+    // puro habría rechazado "60 min", que el creador oficial vía IA
+    // (api/generate-client-config.js, ver test/template-creation.test.mjs)
+    // ya envía legítimamente hoy. "pronto", "60abc", "10.5", "-1" y "" siguen
+    // rechazándose porque ninguno matchea ningún patrón reconocido.
+    const invalidDuration = values.services.some((service) => {
+      const n = spaDurationMinutes(service.duracion);
+      return n < 1 || n > 1440;
+    });
+    if (invalidDuration && !missing.includes('services')) missing.push('services');
+  }
   return missing;
 }
 
@@ -344,7 +406,7 @@ export default async function handler(req, res) {
       secondaryColor, style, address, hours, businessType, services, features, templateId, templateVersion,
       billingDay, trialEnabled, trialDays,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
-        displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, reservationIntervalMinutes, holidays, notificationEmails, templateData,
+      displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, bufferMinutes, reservationIntervalMinutes, holidays, notificationEmails, templateData,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -400,8 +462,11 @@ export default async function handler(req, res) {
     // null/undefined y no se guardan campos estructurados nuevos, pero los
     // campos legados (language/whatsapp/hours) se siguen guardando igual
     // que antes más abajo.
-    const languagesSafe = sanitizeLanguages(languages);
-    const primaryLanguageSafe = languagesSafe && languagesSafe.length
+    const requestedLanguages = sanitizeLanguages(languages);
+    // The official Spa experience is intentionally bilingual. This is server
+    // owned so neither the creator model nor a browser request can override it.
+    const languagesSafe = templateIdSafe === 'spa' ? ['es', 'en'] : requestedLanguages;
+    const primaryLanguageSafe = templateIdSafe === 'spa' ? 'es' : languagesSafe && languagesSafe.length
       ? (languagesSafe.includes(String(primaryLanguage || '').toLowerCase()) ? String(primaryLanguage).toLowerCase() : languagesSafe[0])
       : null;
     const businessHoursSafe = sanitizeBusinessHours(businessHours);
@@ -409,12 +474,37 @@ export default async function handler(req, res) {
       ? String(phoneCountry).toUpperCase() : null;
     const phoneCountryCodeSafe = phoneCountrySafe && /^\+\d{1,4}$/.test(String(phoneCountryCode || ''))
       ? String(phoneCountryCode) : null;
-    const phoneNumberSafe = phoneNumber != null ? String(phoneNumber).slice(0, 30) : '';
+    // Un número local puede empezar legítimamente con el mismo dígito que el
+    // código de país (ej. +1 y un número de EE. UU. que empieza en "1") —
+    // recortar por startsWith(codeDigits) a ciegas le comía un dígito real.
+    // Solo se recorta el código cuando el texto original indica explícitamente
+    // que es un número internacional completo: empieza con "+" o con "00".
+    // Misma regla que normalizePhoneNumber() en admin.html, server-side.
+    let phoneNumberSafe = '';
+    if (phoneNumber != null) {
+      const rawPhoneStr = String(phoneNumber).trim();
+      let digits = rawPhoneStr.replace(/[^0-9]/g, '');
+      let isInternational = false;
+      if (/^\+/.test(rawPhoneStr)) {
+        isInternational = true;
+      } else if (/^00/.test(rawPhoneStr)) {
+        isInternational = true;
+        digits = digits.replace(/^00/, '');
+      }
+      if (isInternational && phoneCountryCodeSafe) {
+        const codeDigits = phoneCountryCodeSafe.replace(/[^0-9]/g, '');
+        if (codeDigits && digits.startsWith(codeDigits) && digits.length > codeDigits.length) {
+          digits = digits.slice(codeDigits.length);
+        }
+      }
+      phoneNumberSafe = digits.slice(0, 30);
+    }
     const notificationEmailsSafe = normalizeNotificationEmails(notificationEmails);
 
     const missingTemplate = missingTemplateFields(template, {
       businessName: String(businessName || '').trim(),
       address: String(address || '').trim(),
+      phoneCountry: phoneCountrySafe,
       phoneCountryCode: phoneCountryCodeSafe,
       phoneNumber: phoneNumberSafe,
       ownerEmail: String(ownerEmail || '').trim(),
@@ -423,6 +513,8 @@ export default async function handler(req, res) {
       services: servicesSafe,
       features: featuresSafe,
       notificationEmails: notificationEmailsSafe,
+      capacityPerSlot,
+      bufferMinutes,
     });
     if (missingTemplate.length) {
       return res.status(400).json({ error: 'Missing required template fields', fields: missingTemplate });
@@ -435,8 +527,10 @@ export default async function handler(req, res) {
     // menu[] directly; it's still sanitized the same way.
     const menuSafe = Array.isArray(services)
       // duracion viaja al menu: el chat la necesita para no aceptar un servicio
-      // de 60 min a 15 minutos del cierre.
-      ? (featuresSafe.catalog ? servicesSafe.map(s => ({ nombre: s.nombre, precio: s.precio, descripcion: s.descripcion, imagen: s.imagen, duracion: s.duracion })) : [])
+      // de 60 min a 15 minutos del cierre. id también viaja: es la misma clave
+      // que usan las imágenes asociadas (client-images), y debe coincidir con
+      // client.services[].id para que el widget y el panel las encuentren.
+      ? (featuresSafe.catalog ? servicesSafe.map(s => ({ id: s.id, nombre: s.nombre, precio: s.precio, descripcion: s.descripcion, imagen: s.imagen, duracion: s.duracion })) : [])
       : sanitizeMenu(menu);
 
     try {
@@ -448,15 +542,13 @@ export default async function handler(req, res) {
       const mode     = normalizeDisplayMode(displayMode);
       const position = normalizeWidgetPosition(widgetPosition);
 
-      const { randomUUID } = await import('crypto');
-
       // Campos legados derivados: si el wizard nuevo mandó estructura,
       // language/whatsapp/hours se derivan de ella para que todo el código
       // viejo (prompt legado, widget, paneles) que todavía los lee como
       // texto plano siga funcionando sin cambios. Si no vino estructura
       // nueva (formulario legado), se guarda lo que mandó el request como
       // siempre.
-      const languageDerived = primaryLanguageSafe || (language === 'en' ? 'en' : 'es');
+      const languageDerived = templateIdSafe === 'spa' ? 'es' : primaryLanguageSafe || (language === 'en' ? 'en' : 'es');
       const whatsappDerived = phoneCountryCodeSafe && phoneNumberSafe
         ? `${phoneCountryCodeSafe}${phoneNumberSafe}`
         : String(whatsapp || '').slice(0, 30);
@@ -524,6 +616,7 @@ export default async function handler(req, res) {
         reservationIntervalMinutes: normalizeReservationInterval(reservationIntervalMinutes),
         holidays:        normalizeHolidays(holidays),
         notificationEmails: notificationEmailsSafe,
+        bufferMinutes:      normalizeBufferMinutes(bufferMinutes),
         widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}" data-position="${position}"></script>`,
         assistantUrl:  `https://jbstudio.app/asistente/${id}`,
       };
@@ -541,7 +634,7 @@ export default async function handler(req, res) {
   if (req.method === 'PUT') {
     const { id, active, prompt, businessName, ownerName, ownerEmail, plan,
             color, language, whatsapp, menu, services, features,
-             timezone, minNoticeHours, businessHours, capacityPerSlot, reservationIntervalMinutes, holidays, notificationEmails } = req.body || {};
+            timezone, minNoticeHours, businessHours, capacityPerSlot, bufferMinutes, reservationIntervalMinutes, holidays, notificationEmails } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id is required' });
 
     try {
@@ -566,6 +659,7 @@ export default async function handler(req, res) {
       if (timezone !== undefined) client.timezone = normalizeTimezone(timezone);
       if (minNoticeHours !== undefined) client.minNoticeHours = normalizeMinNotice(minNoticeHours);
       if (capacityPerSlot !== undefined) client.capacityPerSlot = normalizeCapacity(capacityPerSlot);
+      if (bufferMinutes !== undefined) client.bufferMinutes = normalizeBufferMinutes(bufferMinutes);
       if (reservationIntervalMinutes !== undefined) client.reservationIntervalMinutes = normalizeReservationInterval(reservationIntervalMinutes);
       if (holidays !== undefined) client.holidays = normalizeHolidays(holidays);
       if (notificationEmails === null) delete client.notificationEmails;
@@ -577,19 +671,23 @@ export default async function handler(req, res) {
         const bh = sanitizeBusinessHours(businessHours);
         if (bh) client.businessHours = bh;
       }
-      // services es la fuente con duración; menu se deriva de ella, igual que
-      // en la creación, para que no vuelvan a divergir.
+      // services es la fuente de verdad; menu siempre se deriva de ella. menu
+      // como entrada independiente solo existe por compatibilidad con paneles
+      // viejos que todavía lo mandan sin services: se trata como si fuera
+      // services (mismo saneador, gana un id estable) y se re-deriva menu
+      // desde ahí, igual que el camino normal — así nunca vuelven a
+      // divergir. Si llegan ambos, services manda: el menu de la petición se
+      // ignora por completo.
+      const deriveMenu = (svc) => svc.map(x => ({
+        id: x.id, nombre: x.nombre, precio: x.precio, descripcion: x.descripcion,
+        imagen: x.imagen, duracion: x.duracion,
+      }));
       if (services !== undefined && Array.isArray(services)) {
         client.services = sanitizeServices(services);
-        client.menu = client.services.map(x => ({
-          nombre: x.nombre, precio: x.precio, descripcion: x.descripcion,
-          imagen: x.imagen, duracion: x.duracion,
-        }));
-      }
-      if (menu      !== undefined && Array.isArray(menu)) {
-        // Reutiliza el saneador de la creación: el mapeo inline que había aquí
-        // descartaba `duracion` y saneaba la imagen peor.
-        client.menu = sanitizeMenu(menu);
+        client.menu = deriveMenu(client.services);
+      } else if (menu !== undefined && Array.isArray(menu)) {
+        client.services = sanitizeServices(menu);
+        client.menu = deriveMenu(client.services);
       }
 
       await redis.set(`client:${id}`, client);

@@ -110,6 +110,7 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN &
     let res = await callClients('POST', { headers: { 'x-admin-token': tok },
       body: { id, businessName: 'QA Clients Test', prompt: 'p' } });
     assert.equal(res.statusCode, 201, `seed debe crear (201), fue ${res.statusCode}`);
+    assert.match(res._json.panelToken || '', /^[0-9a-f-]{36}$/i, 'el cliente creado devuelve un panelToken');
     res = await callClients('GET', { headers: { 'x-admin-token': tok } });
     assert.equal(res.statusCode, 200, `token correcto debe ser 200, fue ${res.statusCode}`);
     assert.ok(Array.isArray(res._json) && res._json.some((c) => c.id === id), 'la lista incluye el cliente sembrado');

@@ -4,7 +4,7 @@
 // with existingReservationId instead of stacking another. [BUG-4]
 import assert from 'node:assert/strict';
 import { __test } from '../api/reservations.js';
-const { idempotencyFingerprint, duplicateReservationKey } = __test;
+const { idempotencyFingerprint, duplicateReservationKey, releaseInactiveIdempotencyLock } = __test;
 
 let count = 0;
 function check(v, m) { assert.ok(v, m); count++; }
@@ -32,5 +32,26 @@ check(duplicateReservationKey(existing, incoming) === 'reservations:c1:222', 're
 check(duplicateReservationKey([existing[0]], incoming) === null, 'cancelled reservation is not a duplicate');
 // Different contact → not a duplicate even at same time.
 check(duplicateReservationKey(existing, { fechaISO: '2026-07-24', horaISO: '13:00', telefono: '9999999999' }) === null, 'different contact is not a duplicate');
+
+// A cancelled/rejected reservation must release its completed retry lock so the
+// next identical confirmation can acquire it and create a new reservation.
+{
+  const data = new Map([
+    ['idempo:c1:retry', 'reservations:c1:111'],
+    ['reservations:c1:111', existing[0]],
+  ]);
+  const store = { get: async (key) => data.get(key), del: async (key) => data.delete(key) };
+  check(await releaseInactiveIdempotencyLock(store, 'idempo:c1:retry') === true, 'cancelled reservation releases completed retry lock');
+  check(!data.has('idempo:c1:retry'), 'cancelled reservation lock is removed');
+}
+{
+  const data = new Map([
+    ['idempo:c1:retry', 'reservations:c1:222'],
+    ['reservations:c1:222', existing[1]],
+  ]);
+  const store = { get: async (key) => data.get(key), del: async (key) => data.delete(key) };
+  check(await releaseInactiveIdempotencyLock(store, 'idempo:c1:retry') === false, 'active reservation retains completed retry lock');
+  check(data.has('idempo:c1:retry'), 'active reservation lock remains in place');
+}
 
 console.log(`booking-idempotency.test.mjs: ${count} checks passed`);

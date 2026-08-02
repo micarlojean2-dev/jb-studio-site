@@ -7,6 +7,7 @@ async function getOfficialTemplate(id) {
   return _templatesMod.getOfficialTemplate(id);
 }
 import { CREATOR_DRAFT_SCHEMA, OPENAI_CREATOR_INSTRUCTIONS } from '../lib/creator-schema.js';
+import { sanitizeServiceId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 
 initSentry();
@@ -177,6 +178,10 @@ function sanitizeBusinessHours(hours) {
 function sanitizeServices(services) {
   if (!Array.isArray(services)) return [];
   return services.slice(0, 40).map(item => ({
+    // id: misma generación/validación que api/clients.js (lib/services.js) —
+    // antes este generador de IA no asignaba id en absoluto, así que un
+    // servicio creado por este camino nunca tenía uno.
+    id:          sanitizeServiceId(item?.id),
     nombre:      sanitizeText(item?.name || item?.nombre || '', 80),
     precio:      sanitizeText(item?.price || item?.precio || '', 30),
     duracion:    sanitizeText(item?.duration || item?.duracion || '', 30),
@@ -453,6 +458,11 @@ function normalizeTemplateConfig(config, template, raw) {
   }
   config.template = { id: template.id, version: template.version, requiredFields: template.requiredFields };
   config.templateData = sanitizeTemplateData(raw.templateData, template);
+  if (template.id === 'spa') {
+    // Official Spa drafts are bilingual by product policy, never by model choice.
+    config.business.languages = ['es', 'en'];
+    config.business.primaryLanguage = 'es';
+  }
   config.systemPrompt = buildTemplatePrompt(config, template);
   return config;
 }

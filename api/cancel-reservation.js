@@ -1,6 +1,7 @@
 import { Redis }  from '@upstash/redis';
 import { registrarCambio } from '../lib/changes.js';
-import { Resend } from 'resend';
+import { registrarActividad } from '../lib/activity.js';
+import { sendReservationEmails } from '../lib/reservation-emails.js';
 import { initSentry, captureApiException, captureApiMessage } from '../lib/sentry.js';
 
 initSentry();
@@ -9,12 +10,6 @@ const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
-
-const FROM = 'reservas@jbstudio.app';
-
-function esc(value) {
-  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 // ── Rate limit: 5 cancelaciones/IP/hora ─────────────────────────────────────
 const ipStore = new Map();
@@ -110,6 +105,11 @@ export default async function handler(req, res) {
     match.cancelledBy = actionToken ? 'cliente' : 'cliente';
     await redis.set(matchKey, match);
     console.log(`[api/cancel-reservation] Cancelled ${matchKey}`);
+    const activity = await registrarActividad(clientId, {
+      type: 'cancelled', cliente: match.nombre, servicio: match.servicio,
+      fecha: match.fecha, hora: match.hora,
+    });
+    if (!activity.ok) console.error(`[api/cancel-reservation] actividad de cancelación no guardada: ${activity.error}`);
 
     // ── Sin correos inmediatos (Fase D). La cancelación aparece al instante
     //    en la hoja del dueño; el aviso va en el resumen diario agrupado. ──
@@ -123,47 +123,8 @@ export default async function handler(req, res) {
         { clientId, feature: 'redis', route: '/api/cancel-reservation' });
     }
 
-    // Notify immediately when mail is configured. Failure does not undo a
-    // cancellation because the slot must be released regardless. The outcome is
-    // reported truthfully — a missing key is surfaced, never faked as sent.
-    const email = {
-      configured: !!process.env.RESEND_API_KEY,
-      customer: { attempted: false, sent: false, messageId: null, error: null },
-      owners:   { attempted: false, sent: false, messageIds: [], recipients: [], error: null },
-      warning: null,
-    };
-    if (!process.env.RESEND_API_KEY) {
-      email.warning = 'RESEND_API_KEY missing: cancellation email NOT sent';
-      console.error(`[api/cancel-reservation] EMAIL SKIPPED (RESEND_API_KEY missing) for ${clientId} — cancellation saved, email not sent`);
-    } else {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      const recipients = Array.isArray(client.notificationEmails) && client.notificationEmails.length
-        ? client.notificationEmails : (client.ownerEmail ? [client.ownerEmail] : []);
-      const subject = `${client.businessName || 'Reserva'} - reserva cancelada`;
-      const html = `<p>La reserva de <strong>${esc(match.nombre)}</strong> para ${esc(match.fecha)} a las ${esc(match.hora)} fue cancelada.</p>`;
-      const idOf = (r) => (r && r.data && r.data.id) || (r && r.id) || null;
-      if (match.email) {
-        email.customer.attempted = true;
-        try { const r = await resend.emails.send({ from: FROM, to: match.email, subject, html });
-          if (r && r.error) email.customer.error = r.error.message || 'send failed';
-          else { email.customer.sent = true; email.customer.messageId = idOf(r); }
-        } catch (e) { email.customer.error = e.message; }
-      }
-      if (recipients.length) {
-        email.owners.attempted = true; email.owners.recipients = recipients;
-        for (const to of recipients) {
-          try { const r = await resend.emails.send({ from: FROM, to, subject, html });
-            if (r && r.error) email.owners.error = r.error.message || 'send failed';
-            else { email.owners.sent = true; const id = idOf(r); if (id) email.owners.messageIds.push(id); }
-          } catch (e) { email.owners.error = e.message; }
-        }
-      }
-      if (email.customer.error || email.owners.error) {
-        console.error(`[api/cancel-reservation] email error for ${clientId}:`, email.customer.error || email.owners.error);
-        captureApiMessage(`Resend cancellation email failed: ${email.customer.error || email.owners.error}`,
-          { clientId, feature: email.customer.error ? 'email_customer' : 'email_owner', route: '/api/cancel-reservation' });
-      }
-    }
+    // Failure does not undo cancellation: the slot is released regardless.
+    const email = await sendReservationEmails(client, match, 'cancelled');
 
     return res.status(200).json({ found: true, key: matchKey, aviso: { encolado: aviso.ok }, email, emailWarning: email.warning || null });
 

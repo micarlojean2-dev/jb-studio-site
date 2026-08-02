@@ -25,5 +25,8 @@ assert.match(source, /action !== 'reschedule' && \(!nombre \|\| !fecha \|\| !hor
 const assistant = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../asistente.html', import.meta.url), 'utf8'));
 assert.match(assistant, /if \(emailAction\) addMsg\('bot', emailAction\.action === 'cancel'/,
   'email action prompt is shown independently of a saved chat history');
+const panel = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../reservas.html', import.meta.url), 'utf8'));
+assert.match(panel, /var API\s*=\s*window\.location\.origin/,
+  'panel fetches APIs from its current Preview or production deployment');
 
 console.log('Reservation action links and confirmation email verified');

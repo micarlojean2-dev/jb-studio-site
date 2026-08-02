@@ -1,6 +1,8 @@
 import { Redis }  from '@upstash/redis';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { registrarCambio } from '../lib/changes.js';
+import { registrarActividad } from '../lib/activity.js';
+import { destinatariosAviso, reservationActionUrl, reservationEmailHtml, resendMessageId, sendReservationEmails } from '../lib/reservation-emails.js';
 import { Resend } from 'resend';
 import { randomUUID, createHash } from 'node:crypto';
 import { initSentry, captureApiException, captureApiMessage } from '../lib/sentry.js';
@@ -13,7 +15,6 @@ const redis  = new Redis({
 });
 
 const FROM = 'reservas@jbstudio.app';
-const APP_URL = 'https://jbstudio.app';
 
 // ── Rate limit: 5 reservas/IP/hora ──────────────────────────────────────────
 const ipStore = new Map();
@@ -236,6 +237,17 @@ async function waitForReservationKey(lockKey) {
   return null;
 }
 
+// A completed idempotency lock normally remains for retry safety. Once its
+// reservation is cancelled or rejected, it must no longer block the same slot.
+async function releaseInactiveIdempotencyLock(store, lockKey) {
+  const reservationKey = await store.get(lockKey);
+  if (typeof reservationKey !== 'string' || !reservationKey.startsWith('reservations:')) return false;
+  const existing = await store.get(reservationKey);
+  if (!existing || activa(existing)) return false;
+  await store.del(lockKey);
+  return true;
+}
+
 
 // Validación de reservas. Vive en el servidor a propósito: la del navegador
 // es cortesía (para responder bonito), pero cualquiera puede saltársela con
@@ -257,17 +269,25 @@ function fmt(min) {
   return h12 + ':' + String(m).padStart(2, '0') + ' ' + suf;
 }
 
-// "60 minutos", "1 hora", "45 min", "1h 30". Si no se entiende -> 0 (no se
-// aplica la regla en vez de inventar una duración).
+// "60", "60 minutos", "1 hora", "45 min", "1h 30". Si no se entiende -> 0
+// (no se aplica la regla en vez de inventar una duración). Misma gramática
+// que spaDurationMinutes() en api/clients.js — el guardado y la reserva
+// deben interpretar exactamente los mismos formatos. Cada patrón está
+// anclado con ^...$: antes, sin anclar, /(\d+)\s*m/ podía encontrar "60 m"
+// dentro de texto basura arbitrario ("60 min despues de la cita") y
+// aceptarlo igual; ahora la cadena completa debe ser uno de los formatos.
 function duracionMin(txt) {
-  const t = String(txt || '').toLowerCase();
+  const t = String(txt || '').trim().toLowerCase();
   if (!t) return 0;
-  const hm = t.match(/(\d+)\s*h(?:ora)?s?\s*(\d+)?/);
-  if (hm) return (+hm[1]) * 60 + (hm[2] ? +hm[2] : 0);
-  const m = t.match(/(\d+)\s*m/);
+  let m = t.match(/^(\d+)$/);
   if (m) return +m[1];
-  const solo = t.match(/^(\d+)$/);
-  return solo ? +solo[1] : 0;
+  m = t.match(/^(\d+)\s*(?:min|mins|minuto|minutos)$/);
+  if (m) return +m[1];
+  m = t.match(/^(\d+)\s*(?:h|hora|horas)$/);
+  if (m) return (+m[1]) * 60;
+  m = t.match(/^(\d+)\s*(?:h|hora|horas)\s+(\d+)$/);
+  if (m) return (+m[1]) * 60 + (+m[2]);
+  return 0;
 }
 
 function durationFor(client, servicio) {
@@ -275,6 +295,19 @@ function durationFor(client, servicio) {
     String(servicio).toLowerCase().indexOf(String(m.nombre).toLowerCase()) !== -1);
   return duracionMin(item && item.duracion) || duracionMin(client.reservationDuration ||
     ((client.config || {}).reservationDuration));
+}
+
+function spaBufferMinutes(client) {
+  const template = client && (client.templateId || (client.config && client.config.templateId));
+  // Cualquier entero 0-240 (antes: solo 0/15/30/45), consistente con
+  // normalizeBufferMinutes/missingTemplateFields en api/clients.js.
+  const n = Number(client && client.bufferMinutes);
+  return template === 'spa' && Number.isInteger(n) && n >= 0 && n <= 240 ? n : 0;
+}
+
+function occupiedDurationFor(client, servicio, storedDuration) {
+  const duration = Number.isFinite(storedDuration) ? storedDuration : durationFor(client, servicio);
+  return duration + spaBufferMinutes(client);
 }
 
 function rangosDelDia(businessHours, fechaISO) {
@@ -290,106 +323,6 @@ function rangosDelDia(businessHours, fechaISO) {
     if (a !== null && b !== null && b > a) out.push([a, b]);
   });
   return out.length ? out : [];
-}
-
-// Destinatarios de los avisos de reserva del negocio. Prefiere la lista
-// notificationEmails (Fase 3); si no existe, cae en ownerEmail (compatibilidad
-// con los clientes antiguos). Normaliza y quita duplicados.
-function destinatariosAviso(client) {
-  const lista = Array.isArray(client && client.notificationEmails) ? client.notificationEmails : null;
-  const raw = (lista && lista.length) ? lista : (client && client.ownerEmail ? [client.ownerEmail] : []);
-  const vistos = {};
-  const out = [];
-  raw.forEach((e) => {
-    const v = String(e || '').trim().toLowerCase();
-    if (v && !vistos[v]) { vistos[v] = 1; out.push(v); }
-  });
-  return out.slice(0, 10);
-}
-
-function reservationActionUrl(reservation, action) {
-  const params = new URLSearchParams({
-    reservation: reservation.actionToken,
-    action,
-  });
-  return `${APP_URL}/asistente/${encodeURIComponent(reservation.clientId)}?${params}`;
-}
-
-function reservationEmailHtml(client, reservation, type) {
-  const special = reservation.specialRequests || 'Sin peticiones especiales';
-  const service = reservation.servicio || (reservation.partySize ? `${reservation.partySize} personas` : 'Reserva');
-  const title = type === 'rescheduled' ? 'Reserva reprogramada' : 'Reserva confirmada';
-  const intro = type === 'rescheduled' ? 'fue reprogramada.' : 'está confirmada.';
-  return shell(`<p style="font-size:15px;line-height:1.55">Tu reserva en <strong>${esc(client.businessName)}</strong> ${intro}</p>
-    <p style="font-size:14px;line-height:1.7"><strong>${esc(service)}</strong><br>${esc(reservation.fecha)} · ${esc(reservation.hora)}${reservation.partySize ? `<br>${esc(reservation.partySize)} personas` : ''}<br><strong>Peticiones especiales:</strong> ${esc(special)}</p>
-    <p style="margin:20px 0 0"><a href="${esc(reservationActionUrl(reservation, 'cancel'))}" style="display:inline-block;background:#b23b3b;color:#fff;text-decoration:none;padding:11px 16px;border-radius:8px;font-weight:600">Cancelar</a> <a href="${esc(reservationActionUrl(reservation, 'reschedule'))}" style="display:inline-block;background:${esc(client.color || '#1a4a2e')};color:#fff;text-decoration:none;padding:11px 16px;border-radius:8px;font-weight:600">Reagendar</a></p>`,
-    title, client.color || '#1a4a2e', client.businessName || 'Reserva');
-}
-
-// The Resend SDK returns { data: { id }, error }. Older shapes exposed the id at
-// the top level, so read both.
-function resendMessageId(r) {
-  return (r && r.data && r.data.id) || (r && r.id) || null;
-}
-
-// Sends the reservation emails and reports EXACTLY what happened per recipient,
-// including the provider messageId, so the API never presents a skipped or
-// failed email as sent. `deps.resend` lets tests inject a controlled provider.
-// Owner notifications go out one-per-recipient: it yields a messageId for each
-// and avoids exposing the whole owner list to every recipient. [BUG-2]
-async function sendReservationEmails(client, reservation, type, deps) {
-  const result = {
-    configured: !!process.env.RESEND_API_KEY,
-    customer: { attempted: false, sent: false, messageId: null, error: null },
-    owners:   { attempted: false, sent: false, messageIds: [], recipients: [], error: null },
-    warning: null,
-  };
-  const resend = (deps && deps.resend) || (process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null);
-  if (!resend) {
-    // Never fake a send: the reservation still stands, but this is surfaced in
-    // the response and logged so a missing key is visible, not silent. [BUG-2]
-    result.warning = 'RESEND_API_KEY missing: confirmation email NOT sent';
-    console.error(`[api/reservations] EMAIL SKIPPED (RESEND_API_KEY missing) for ${reservation.clientId} — reservation saved, email not sent`);
-    return result;
-  }
-  const recipients = destinatariosAviso(client);
-  const subject = type === 'cancelled' ? `${client.businessName} - reserva cancelada`
-    : type === 'rescheduled' ? `${client.businessName} - reserva reprogramada`
-    : `${client.businessName} - reserva confirmada`;
-  const details = reservationEmailHtml(client, reservation, type);
-  const ownerHtml = shell(`<p style="font-size:15px;line-height:1.55"><strong>${esc(reservation.nombre)}</strong>: ${esc(reservation.servicio || `${reservation.partySize || ''} personas`)}</p><p>${esc(reservation.fecha)} · ${esc(reservation.hora)}</p><p><strong>Peticiones especiales:</strong> ${esc(reservation.specialRequests || 'Sin peticiones especiales')}</p>`, subject, client.color || '#1a4a2e', client.businessName || 'Reserva');
-
-  if (reservation.email) {
-    result.customer.attempted = true;
-    try {
-      const r = await resend.emails.send({ from: FROM, to: reservation.email, subject, html: details });
-      if (r && r.error) { result.customer.error = r.error.message || 'send failed'; }
-      else { result.customer.sent = true; result.customer.messageId = resendMessageId(r); }
-    } catch (e) { result.customer.error = e.message || 'send threw'; }
-    if (result.customer.error) {
-      console.error(`[api/reservations] customer email failed for ${reservation.clientId}:`, result.customer.error);
-      captureApiMessage(`Resend customer email failed: ${result.customer.error}`,
-        { clientId: reservation.clientId, feature: 'email_customer', route: '/api/reservations' });
-    }
-  }
-
-  if (recipients.length) {
-    result.owners.attempted = true;
-    result.owners.recipients = recipients;
-    for (const to of recipients) {
-      try {
-        const r = await resend.emails.send({ from: FROM, to, subject, html: ownerHtml });
-        if (r && r.error) { result.owners.error = r.error.message || 'send failed'; }
-        else { result.owners.sent = true; const id = resendMessageId(r); if (id) result.owners.messageIds.push(id); }
-      } catch (e) { result.owners.error = e.message || 'send threw'; }
-    }
-    if (result.owners.error) {
-      console.error(`[api/reservations] owner email failed for ${reservation.clientId}:`, result.owners.error);
-      captureApiMessage(`Resend owner email failed: ${result.owners.error}`,
-        { clientId: reservation.clientId, feature: 'email_owner', route: '/api/reservations' });
-    }
-  }
-  return result;
 }
 
 // Dos citas chocan si sus intervalos se pisan. Comparar solo la hora de inicio
@@ -414,7 +347,7 @@ function contarSolapes(reservas, fechaISO, iniMin, durMin, client) {
     if (!activa(r) || r.fechaISO !== fechaISO) continue;
     const ini = minutosDe(r.horaISO);
     if (ini === null) continue;                          // sin hora normalizada: no cuenta
-    const dur = Number.isFinite(r.duracion) ? r.duracion : durationFor(client || {}, r.servicio);
+    const dur = occupiedDurationFor(client || {}, r.servicio, r.duracion);
     if (solapan(iniMin, durMin, ini, dur)) n++;
   }
   return n;
@@ -458,6 +391,7 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
 
   // Duración: si el servicio no cabe antes del cierre, no vale.
   const dur = durationFor(client, servicio);
+  const occupiedDuration = occupiedDurationFor(client, servicio, dur);
 
   let dentro = null;
   for (const [a, b] of rangos) {
@@ -472,12 +406,12 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
       alternativa: pedido < primero[0] ? fmt(primero[0]) : null,
     };
   }
-  if (dur > 0 && pedido + dur > dentro[1]) {
+  if (occupiedDuration > 0 && pedido + occupiedDuration > dentro[1]) {
     return {
       ok: false,
       motivo: 'no_cabe_antes_del_cierre',
       mensaje: 'Este servicio necesita más tiempo del que queda disponible ese día.',
-      alternativa: dentro[1] - dur >= dentro[0] ? fmt(dentro[1] - dur) : null,
+      alternativa: dentro[1] - occupiedDuration >= dentro[0] ? fmt(dentro[1] - occupiedDuration) : null,
     };
   }
 
@@ -489,15 +423,15 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
     return { ok: false, motivo: 'intervalo_invalido', mensaje: 'Ese horario no coincide con los intervalos de reserva disponibles.' };
   }
 
-  if (staffRanges && staffRanges.length && !staffRanges.some(([a, b]) => pedido >= a && pedido + dur <= b)) {
+  if (staffRanges && staffRanges.length && !staffRanges.some(([a, b]) => pedido >= a && pedido + occupiedDuration <= b)) {
     return { ok: false, motivo: 'barbero_no_disponible', mensaje: 'Ese barbero no está disponible a esa hora.' };
   }
 
   if (template === 'barber' && selectedStaff && Array.isArray(reservas)) {
     const ocupado = reservas.some((r) => activa(r) && r.fechaISO === fechaISO &&
       String(r.barberPreference || '').toLowerCase() === String(selectedStaff.name || selectedStaff.id).toLowerCase() &&
-      solapan(pedido, dur, minutosDe(r.horaISO) || -1,
-        Number.isFinite(r.duracion) ? r.duracion : durationFor(client, r.servicio)));
+      solapan(pedido, occupiedDuration, minutosDe(r.horaISO) || -1,
+        occupiedDurationFor(client, r.servicio, r.duracion)));
     if (ocupado) return { ok: false, motivo: 'barbero_no_disponible', mensaje: 'Ese barbero ya tiene una cita a esa hora.' };
   }
 
@@ -525,7 +459,7 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
   // aparecen en la puerta.
   const cap = Number.isFinite(client.capacityPerSlot) ? client.capacityPerSlot : null;
   if (cap !== null && cap >= 1 && Array.isArray(reservas)) {
-    const ocupadas = contarSolapes(reservas, fechaISO, pedido, dur, client);
+    const ocupadas = contarSolapes(reservas, fechaISO, pedido, occupiedDuration, client);
     if (ocupadas >= cap) {
       return {
         ok: false,
@@ -533,7 +467,7 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
         mensaje: cap === 1
           ? 'Ese horario ya está ocupado.'
           : 'Ya no nos quedan huecos a esa hora.',
-        alternativa: proximoHueco(client, fechaISO, pedido, dur, dentro, reservas),
+        alternativa: proximoHueco(client, fechaISO, pedido, occupiedDuration, dentro, reservas),
       };
     }
   }
@@ -865,6 +799,12 @@ export default async function handler(req, res) {
       candidate.horaAnterior = existing.hora;
       candidate.fechaReprogramacion = new Date().toISOString();
       await redis.set(keys[index], candidate);
+      const activity = await registrarActividad(clientId, {
+        type: 'rescheduled', cliente: candidate.nombre, servicio: candidate.servicio,
+        fecha: candidate.fecha, hora: candidate.hora,
+        prevFecha: existing.fecha, prevHora: existing.hora,
+      });
+      if (!activity.ok) console.error(`[api/reservations] actividad de reagendado no guardada: ${activity.error}`);
       const aviso = await registrarCambio(clientId, {
         type: 'rescheduled', reservationId: keys[index], nombre: candidate.nombre,
         servicio: candidate.servicio, fecha: candidate.fecha, hora: candidate.hora,
@@ -953,6 +893,7 @@ export default async function handler(req, res) {
     const lockKey = `idempo:${clientId}:${idemRaw}`;
     let lockAcquired = false;
     try {
+      await releaseInactiveIdempotencyLock(redis, lockKey);
       const got = await redis.set(lockKey, 'pending', { nx: true, ex: 900 });
       lockAcquired = got === 'OK' || got === true;
     } catch (e) {
@@ -1032,6 +973,11 @@ export default async function handler(req, res) {
     // a concurrent loser) resolves to THIS reservation instead of a new one.
     await redis.set(lockKey, key, { ex: 24 * 60 * 60 }).catch(() => {});
     console.log(`[api/reservations] Saved ${key}`);
+    const activity = await registrarActividad(clientId, {
+      type: 'created', cliente: reservation.nombre, servicio: reservation.servicio,
+      fecha: reservation.fecha, hora: reservation.hora,
+    });
+    if (!activity.ok) console.error(`[api/reservations] actividad de creación no guardada: ${activity.error}`);
 
     const aviso = await registrarCambio(clientId, {
       type: 'created', reservationId: key,
@@ -1081,4 +1027,4 @@ export default async function handler(req, res) {
 export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
   configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml,
-  sendReservationEmails, resendMessageId };
+  sendReservationEmails, resendMessageId, releaseInactiveIdempotencyLock };
