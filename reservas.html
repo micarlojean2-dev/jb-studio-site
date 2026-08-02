@@ -73,6 +73,7 @@
     .estado.reprogramada { background: #e6effb; color: #1f5fae; }   /* azul */
     .estado.cancelada    { background: #fbe9e9; color: #b23b3b; }   /* rojo */
     .estado.pendiente    { background: #fdf0e0; color: #b5721a; }   /* naranja */
+    .estado.pasada       { background: #ececea; color: #7a7669; }   /* gris — solo visual, no toca r.estado */
 
     .activity { margin: 0 0 18px; }
     .activity h2 { font-size: 16px; margin: 0 0 10px; }
@@ -119,15 +120,15 @@
     .summary-card.is-today { border-top:3px solid var(--today); }.summary-card.is-upcoming { border-top:3px solid var(--accent); }.summary-card.is-rescheduled { border-top:3px solid var(--reprogrammed); }.summary-card.is-cancelled { border-top:3px solid var(--cancel); }
     .agenda-list-header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin:4px 0 14px; }
     .agenda-list-header h2,.activity h2 { font-size:16px; letter-spacing:-.018em; }
-    .filters { gap:7px; margin-bottom:0; }.filter-btn { min-height:38px; background:transparent; border-color:transparent; border-radius:10px; padding:9px 11px; font-size:12px; font-weight:700; transition:color 160ms ease,background 160ms ease,transform 160ms var(--ease-out); }.filter-btn:hover { background:#e8efeb; color:var(--ink); }.filter-btn.active { background:var(--accent-dark); color:#fff; border-color:var(--accent-dark); }
+    .filters { gap:7px; margin-bottom:0; flex-wrap:wrap; }.filter-btn { min-height:38px; background:transparent; border-color:transparent; border-radius:10px; padding:9px 11px; font-size:12px; font-weight:700; transition:color 160ms ease,background 160ms ease,transform 160ms var(--ease-out); }.filter-btn:hover { background:#e8efeb; color:var(--ink); }.filter-btn.active { background:var(--accent-dark); color:#fff; border-color:var(--accent-dark); }
     .sheet { grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:12px; }
-    .rcard { position:relative; background:var(--card); border-color:var(--line); border-radius:var(--radius); padding:18px; overflow:hidden; }.rcard::before { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:#88ae99; }.rcard.is-today::before { background:var(--today); }.rcard.is-urgent { border-color:#eac5c6; background:#fffafa; }.rcard.is-urgent::before { background:var(--urgent); }.rcard.is-reprogrammed::before { background:var(--reprogrammed); }.rcard.is-cancelled { background:#fbf8f8; border-color:#ead9da; opacity:.78; }.rcard.is-cancelled::before { background:var(--cancel); }
-    .card-top { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; }.rname { font-size:20px; line-height:1.1; letter-spacing:-.035em; font-weight:730; }.rservice { color:var(--muted); font-size:13px; font-weight:620; margin-top:5px; }.time-block { min-width:88px; text-align:right; }.time-label { display:block; color:var(--muted); font-size:10px; font-weight:750; letter-spacing:.1em; text-transform:uppercase; }.time-value { display:block; color:var(--ink); font-size:22px; font-weight:740; line-height:1.1; letter-spacing:-.045em; margin-top:3px; white-space:nowrap; }.rdate { color:var(--muted); font-size:12px; line-height:1.45; margin-top:14px; }
+    .rcard { position:relative; background:var(--card); border-color:var(--line); border-radius:var(--radius); padding:18px; overflow:hidden; }.rcard::before { content:''; position:absolute; inset:0 auto 0 0; width:4px; background:#88ae99; }.rcard.is-today::before { background:var(--today); }.rcard.is-urgent { border-color:#eac5c6; background:#fffafa; }.rcard.is-urgent::before { background:var(--urgent); }.rcard.is-reprogrammed::before { background:var(--reprogrammed); }.rcard.is-cancelled { background:#fbf8f8; border-color:#ead9da; opacity:.78; }.rcard.is-cancelled::before { background:var(--cancel); }.rcard.is-past { background:#f7f6f2; border-color:#e4e0d3; opacity:.72; }.rcard.is-past::before { background:#b7b29f; }
+    .card-top { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; }.rname { font-size:20px; line-height:1.1; letter-spacing:-.035em; font-weight:730; }.rservice { color:var(--muted); font-size:13px; font-weight:620; margin-top:5px; }.date-block { min-width:112px; text-align:right; display:flex; flex-direction:column; align-items:flex-end; }.date-weekday { display:block; color:var(--muted); font-size:10px; font-weight:750; letter-spacing:.1em; text-transform:uppercase; }.date-day { display:block; color:var(--ink); font-size:19px; font-weight:760; line-height:1.15; letter-spacing:-.03em; margin-top:2px; white-space:nowrap; }.date-time { display:block; color:var(--muted); font-size:13px; font-weight:650; margin-top:3px; white-space:nowrap; }.date-block .rremaining { margin-top:6px; }.is-past .rremaining { background:#efeee9; color:#82806f; }
     .rremaining { display:inline-flex; align-items:center; margin-top:13px; padding:6px 9px; border-radius:8px; background:#e8f3ec; color:var(--accent-dark); font-size:12px; font-weight:720; }.is-today .rremaining { background:#fff2de; color:#955c0b; }.is-urgent .rremaining { background:#fae6e7; color:#9d2d35; animation:urgency-pulse 2.2s ease-in-out infinite; }
     .rmeta { display:grid; gap:5px; margin-top:15px; padding-top:13px; border-top:1px solid var(--line); }.rrow { gap:8px; color:var(--muted); font-size:12px; padding:0; }.rrow .ic { width:16px; opacity:.75; }.rrow .rlbl { display:none; }.rnotes { margin-top:13px; padding:10px 11px; background:var(--card-soft); border-color:#e8eeeb; font-size:12px; }.rnotes-t { font-size:10px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }.rfoot { margin-top:14px; padding-top:0; border-top:0; }.rcreated { font-size:11px; }.estado { font-size:11px; font-weight:750; letter-spacing:.04em; text-transform:uppercase; padding:4px 7px; border-radius:6px; }.estado.nueva { background:#e7f2ea; color:#17633f; }.estado.reprogramada { background:#e9effa; color:#315f9b; }.estado.cancelada { background:#f9e8e8; color:#a33c42; }.sheet.animate-cards .rcard { animation:card-in 220ms var(--ease-out) both; }.sheet.animate-cards .rcard:nth-child(2){animation-delay:45ms}.sheet.animate-cards .rcard:nth-child(3){animation-delay:90ms}.sheet.animate-cards .rcard:nth-child(4){animation-delay:135ms}
     .activity { margin:34px 0 0; padding-top:22px; border-top:1px solid var(--line); }.activity-head { display:flex; align-items:baseline; gap:9px; margin-bottom:11px; }.activity-head p { color:var(--muted); font-size:12px; }.activity-list { gap:7px; }.activity-item { background:transparent; border:0; border-left:2px solid #bfd1c5; border-radius:0; padding:3px 0 3px 12px; }.activity-title { font-size:12.5px; }.activity-meta { font-size:12px; margin-top:2px; }.empty { background:var(--card); border:1px dashed #c7d4cc; border-radius:var(--radius); padding:54px 20px; }
     @keyframes card-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } } @keyframes urgency-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(182,64,67,0); } 50% { box-shadow:0 0 0 4px rgba(182,64,67,.12); } }
-    @media (max-width:640px) { .hdr { padding:13px 16px; }.hdr-biz { flex-basis:100%; }.hdr-btn { min-height:40px; }.wrap { padding:24px 14px 52px; }.agenda-intro { align-items:flex-start; flex-direction:column; gap:8px; }.summary-grid { grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:24px; }.summary-card { padding:13px; }.summary-value { font-size:24px; }.agenda-list-header { align-items:stretch; flex-direction:column; gap:10px; }.filters { display:grid; grid-template-columns:repeat(3,1fr); width:100%; }.filter-btn { min-height:44px; padding:8px 5px; }.sheet { grid-template-columns:1fr; gap:10px; }.rcard { padding:16px; }.rname { font-size:19px; }.time-value { font-size:20px; }.activity { margin-top:28px; } }
+    @media (max-width:640px) { .hdr { padding:13px 16px; }.hdr-biz { flex-basis:100%; }.hdr-btn { min-height:40px; }.wrap { padding:24px 14px 52px; }.agenda-intro { align-items:flex-start; flex-direction:column; gap:8px; }.summary-grid { grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:24px; }.summary-card { padding:13px; }.summary-value { font-size:24px; }.agenda-list-header { align-items:stretch; flex-direction:column; gap:10px; }.filters { display:grid; grid-template-columns:repeat(3,1fr); width:100%; }.filter-btn { min-height:44px; padding:8px 5px; }.sheet { grid-template-columns:1fr; gap:10px; }.rcard { padding:16px; }.rname { font-size:19px; }.date-day { font-size:17px; }.activity { margin-top:28px; } }
     @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; } }
   </style>
 </head>
@@ -176,9 +177,12 @@
         <div class="agenda-list-header">
           <h2 id="list-title" data-i18n="schedule">Agenda</h2>
           <div class="filters">
+            <button class="filter-btn" data-f="todas" onclick="setFilter('todas',this)" data-i18n="all">Todas</button>
             <button class="filter-btn active" data-f="proximas" onclick="setFilter('proximas',this)" data-i18n="upcoming">Próximas</button>
+            <button class="filter-btn" data-f="hoy" onclick="setFilter('hoy',this)" data-i18n="todayFilter">Hoy</button>
+            <button class="filter-btn" data-f="manana" onclick="setFilter('manana',this)" data-i18n="tomorrowFilter">Mañana</button>
+            <button class="filter-btn" data-f="pasadas" onclick="setFilter('pasadas',this)" data-i18n="pastFilter">Pasadas</button>
             <button class="filter-btn" data-f="canceladas" onclick="setFilter('canceladas',this)" data-i18n="cancelled">Canceladas</button>
-            <button class="filter-btn" data-f="reprogramadas" onclick="setFilter('reprogramadas',this)" data-i18n="rescheduled">Reprogramadas</button>
           </div>
         </div>
         <div class="sheet" id="sheet"></div>
@@ -222,8 +226,8 @@
   var LANGUAGE_STORE_KEY = 'jbr_panel_language';
   var panelLanguage = localStorage.getItem(LANGUAGE_STORE_KEY) === 'en' ? 'en' : 'es';
   var I18N = {
-    es: { language: 'Idioma', myAppointments: 'Tus citas', loginDesc: 'Introduce tu clave de acceso para ver las citas de tu negocio.', accessKey: 'Clave de acceso', enter: 'Entrar', loginError: 'Clave incorrecta. Inténtalo de nuevo.', refresh: '↻ Actualizar', logout: 'Salir', businessSchedule: 'Agenda del negocio', autoRefresh: 'Actualización automática', todayAppointments: 'Citas de hoy', upcomingAppointments: 'Próximas citas', rescheduled: 'Reprogramadas', cancelled: 'Canceladas', schedule: 'Agenda', upcoming: 'Próximas', recentActivity: 'Actividad reciente', latestChanges: 'Últimos cambios', invalidLink: 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio', verifying: 'Verificando…', new: 'Nueva', specialRequests: 'Peticiones especiales', noSpecialRequests: 'Sin peticiones especiales', reservation: 'Reserva', time: 'Hora', datePending: 'Fecha por confirmar', people: 'Personas', table: 'Mesa', barber: 'Barbero', phone: 'Teléfono', email: 'Correo', cancelledOn: 'Cancelada', by: 'Por', before: 'Antes', noRecentActivity: 'Aún no hay actividad reciente.', customer: 'Cliente', cancelledAppointment: 'canceló una cita', rescheduledAppointment: 'reagendó una cita', createdReservation: 'creó una nueva reserva', now: 'Ahora', createdSeconds: 'Creada hace unos segundos', createdMinutes: 'Creada hace ', createdHours: 'Creada hace ', createdOn: 'Creada el ', in: 'En ', tomorrowAt: 'Mañana a las ', remaining: 'Faltan ', minute: 'minuto', minutes: 'minutos', hour: 'hora', hours: 'horas', day: 'día', days: 'días', appointment: 'cita', appointments: 'citas', cancelledSuffix: 'canceladas', upcomingSuffix: 'próximas', emptyUpcoming: 'No hay citas próximas.', emptyCancelled: 'No hay citas canceladas.', updated: 'Actualizado ' },
-    en: { language: 'Language', myAppointments: 'Your appointments', loginDesc: 'Enter your access key to view your business appointments.', accessKey: 'Access key', enter: 'Sign in', loginError: 'Incorrect access key. Please try again.', refresh: '↻ Refresh', logout: 'Sign out', businessSchedule: 'Business schedule', autoRefresh: 'Auto-refresh', todayAppointments: "Today's appointments", upcomingAppointments: 'Upcoming appointments', rescheduled: 'Rescheduled', cancelled: 'Cancelled', schedule: 'Schedule', upcoming: 'Upcoming', recentActivity: 'Recent activity', latestChanges: 'Latest changes', invalidLink: 'Invalid link. Access jbstudio.app/reservas/your-business', verifying: 'Verifying…', new: 'New', specialRequests: 'Special requests', noSpecialRequests: 'No special requests', reservation: 'Reservation', time: 'Time', datePending: 'Date to be confirmed', people: 'People', table: 'Table', barber: 'Barber', phone: 'Phone', email: 'Email', cancelledOn: 'Cancelled', by: 'By', before: 'Before', noRecentActivity: 'No recent activity yet.', customer: 'Customer', cancelledAppointment: 'cancelled an appointment', rescheduledAppointment: 'rescheduled an appointment', createdReservation: 'created a new reservation', now: 'Now', createdSeconds: 'Created seconds ago', createdMinutes: 'Created ', createdHours: 'Created ', createdOn: 'Created on ', in: 'In ', tomorrowAt: 'Tomorrow at ', remaining: 'Remaining: ', minute: 'minute', minutes: 'minutes', hour: 'hour', hours: 'hours', day: 'day', days: 'days', appointment: 'appointment', appointments: 'appointments', cancelledSuffix: 'cancelled', upcomingSuffix: 'upcoming', emptyUpcoming: 'No upcoming appointments.', emptyCancelled: 'No cancelled appointments.', updated: 'Updated ' }
+    es: { language: 'Idioma', myAppointments: 'Tus citas', loginDesc: 'Introduce tu clave de acceso para ver las citas de tu negocio.', accessKey: 'Clave de acceso', enter: 'Entrar', loginError: 'Clave incorrecta. Inténtalo de nuevo.', refresh: '↻ Actualizar', logout: 'Salir', businessSchedule: 'Agenda del negocio', autoRefresh: 'Actualización automática', todayAppointments: 'Citas de hoy', upcomingAppointments: 'Próximas citas', rescheduled: 'Reprogramadas', cancelled: 'Canceladas', schedule: 'Agenda', upcoming: 'Próximas', recentActivity: 'Actividad reciente', latestChanges: 'Últimos cambios', invalidLink: 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio', verifying: 'Verificando…', new: 'Nueva', specialRequests: 'Peticiones especiales', noSpecialRequests: 'Sin peticiones especiales', reservation: 'Reserva', time: 'Hora', datePending: 'Fecha por confirmar', people: 'Personas', table: 'Mesa', barber: 'Barbero', phone: 'Teléfono', email: 'Correo', cancelledOn: 'Cancelada', by: 'Por', before: 'Antes', noRecentActivity: 'Aún no hay actividad reciente.', customer: 'Cliente', cancelledAppointment: 'canceló una cita', rescheduledAppointment: 'reagendó una cita', createdReservation: 'creó una nueva reserva', now: 'Ahora', createdSeconds: 'Creada hace unos segundos', createdMinutes: 'Creada hace ', createdHours: 'Creada hace ', createdOn: 'Creada el ', in: 'En ', tomorrowAt: 'Mañana a las ', remaining: 'Faltan ', minute: 'minuto', minutes: 'minutos', hour: 'hora', hours: 'horas', day: 'día', days: 'días', appointment: 'cita', appointments: 'citas', cancelledSuffix: 'canceladas', upcomingSuffix: 'próximas', emptyUpcoming: 'No hay citas próximas.', emptyCancelled: 'No hay citas canceladas.', emptyGeneric: 'No hay citas para este filtro.', all: 'Todas', todayFilter: 'Hoy', tomorrowFilter: 'Mañana', pastFilter: 'Pasadas', past: 'Pasada', updated: 'Actualizado ' },
+    en: { language: 'Language', myAppointments: 'Your appointments', loginDesc: 'Enter your access key to view your business appointments.', accessKey: 'Access key', enter: 'Sign in', loginError: 'Incorrect access key. Please try again.', refresh: '↻ Refresh', logout: 'Sign out', businessSchedule: 'Business schedule', autoRefresh: 'Auto-refresh', todayAppointments: "Today's appointments", upcomingAppointments: 'Upcoming appointments', rescheduled: 'Rescheduled', cancelled: 'Cancelled', schedule: 'Schedule', upcoming: 'Upcoming', recentActivity: 'Recent activity', latestChanges: 'Latest changes', invalidLink: 'Invalid link. Access jbstudio.app/reservas/your-business', verifying: 'Verifying…', new: 'New', specialRequests: 'Special requests', noSpecialRequests: 'No special requests', reservation: 'Reservation', time: 'Time', datePending: 'Date to be confirmed', people: 'People', table: 'Table', barber: 'Barber', phone: 'Phone', email: 'Email', cancelledOn: 'Cancelled', by: 'By', before: 'Before', noRecentActivity: 'No recent activity yet.', customer: 'Customer', cancelledAppointment: 'cancelled an appointment', rescheduledAppointment: 'rescheduled an appointment', createdReservation: 'created a new reservation', now: 'Now', createdSeconds: 'Created seconds ago', createdMinutes: 'Created ', createdHours: 'Created ', createdOn: 'Created on ', in: 'In ', tomorrowAt: 'Tomorrow at ', remaining: 'Remaining: ', minute: 'minute', minutes: 'minutes', hour: 'hour', hours: 'hours', day: 'day', days: 'days', appointment: 'appointment', appointments: 'appointments', cancelledSuffix: 'cancelled', upcomingSuffix: 'upcoming', emptyUpcoming: 'No upcoming appointments.', emptyCancelled: 'No cancelled appointments.', emptyGeneric: 'No appointments for this filter.', all: 'All', todayFilter: 'Today', tomorrowFilter: 'Tomorrow', pastFilter: 'Past', past: 'Past', updated: 'Updated ' }
   };
   function tr(key) { return I18N[panelLanguage][key] || key; }
   function setPanelLanguage(language) {
@@ -347,20 +351,78 @@
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  // Estados que ve el dueño: Nueva / Reprogramada / Cancelada. Nada más.
-  function estadoInfo(r) {
+  // Estado que VE el dueño: Nueva / Reprogramada / Cancelada / Pasada.
+  // Solo presentación — nunca cambia ni sustituye a r.estado. Una reserva
+  // "confirmada" cuya fecha ya pasó se sigue guardando como "confirmada"
+  // (no se toca), pero se MUESTRA como "Pasada".
+  function displayStatus(r) {
     if (r.estado === 'cancelada' || r.estado === 'rechazada') return { cls: 'cancelada', txt: tr('cancelled') };
+    if (reservationTemporalState(r) === 'past') return { cls: 'pasada', txt: tr('past') };
     if (r.estado === 'reprogramada') return { cls: 'reprogramada', txt: tr('rescheduled') };
     return { cls: 'nueva', txt: tr('new') };
   }
 
+  // Timestamp UTC (ms) de una reserva, o null si fecha/hora/timezone no son
+  // válidos. Única fuente: envuelve reservaUtcMs() para que ningún otro
+  // sitio del panel repita el parsing fecha+hora+timezone.
+  function reservationTimestamp(r) {
+    return reservaUtcMs(r && r.fechaISO, r && r.horaISO, r && r.timezone);
+  }
+
+  // Clasificación temporal PURAMENTE visual (nunca toca r.estado): future /
+  // today / tomorrow / past / cancelled / invalid. Compara por DÍA (no por
+  // minuto) en el timezone del propio negocio (reservation.timezone) — mismo
+  // criterio que ya usaba renderSummary() para "Citas de hoy": una cita de
+  // hoy sigue siendo "hoy" aunque su hora ya haya pasado, y solo pasa a
+  // "pasada" al día siguiente. Única fuente de esta clasificación: filtered()
+  // /sortReservations()/renderSummary()/urgenciaCita() la reutilizan en vez
+  // de recalcular el diff de fechas cada una por su lado.
+  function reservationTemporalState(r) {
+    if (!r) return 'invalid';
+    if (r.estado === 'cancelada' || r.estado === 'rechazada') return 'cancelled';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.fechaISO || '')) || !r.timezone) return 'invalid';
+    var now = partesEnZona(Date.now(), r.timezone);
+    if (!now) return 'invalid';
+    var reservationDate = r.fechaISO.split('-').map(Number);
+    var today = Date.UTC(now.year, now.month - 1, now.day);
+    var targetDay = Date.UTC(reservationDate[0], reservationDate[1] - 1, reservationDate[2]);
+    var days = Math.round((targetDay - today) / 86400000);
+    if (days < 0) return 'past';
+    if (days === 0) return 'today';
+    if (days === 1) return 'tomorrow';
+    return 'future';
+  }
+
+  // Futuras (future/today/tomorrow): más cercana primero. Pasadas/canceladas:
+  // más reciente primero. Inválidas: al final, sin orden entre ellas.
+  var TEMPORAL_SORT_RANK = { future: 0, today: 0, tomorrow: 0, past: 1, cancelled: 2, invalid: 3 };
+  function sortReservations(list) {
+    return list.slice().sort(function (a, b) {
+      var rankA = TEMPORAL_SORT_RANK[reservationTemporalState(a)];
+      var rankB = TEMPORAL_SORT_RANK[reservationTemporalState(b)];
+      if (rankA !== rankB) return rankA - rankB;
+      var tsA = reservationTimestamp(a), tsB = reservationTimestamp(b);
+      if (tsA === null && tsB === null) return 0;
+      if (tsA === null) return 1;
+      if (tsB === null) return -1;
+      return rankA === 0 ? (tsA - tsB) : (tsB - tsA);
+    });
+  }
+
   function filtered() {
-    if (activeFilter === 'canceladas') {
-      return allData.filter(function (r) { return r.estado === 'cancelada' || r.estado === 'rechazada'; });
-    }
-    if (activeFilter === 'reprogramadas') return allData.filter(function (r) { return r.estado === 'reprogramada'; });
-    // Próximas excludes cancelled and historical reprogramming-only entries.
-    return allData.filter(function (r) { return r.estado !== 'cancelada' && r.estado !== 'rechazada'; });
+    if (activeFilter === 'todas') return allData.slice();
+    if (activeFilter === 'canceladas') return allData.filter(function (r) { return reservationTemporalState(r) === 'cancelled'; });
+    if (activeFilter === 'pasadas') return allData.filter(function (r) { return reservationTemporalState(r) === 'past'; });
+    if (activeFilter === 'hoy') return allData.filter(function (r) { return reservationTemporalState(r) === 'today'; });
+    if (activeFilter === 'manana') return allData.filter(function (r) { return reservationTemporalState(r) === 'tomorrow'; });
+    // 'proximas' (por defecto): todo lo que no está cancelado ni pasado.
+    // Incluye 'invalid' (fecha/hora/timezone incompletos, p.ej. reservas
+    // legacy) a propósito: antes de esta clasificación, filtered() las
+    // mostraba igual (solo excluía canceladas) — no deben desaparecer.
+    return allData.filter(function (r) {
+      var state = reservationTemporalState(r);
+      return state === 'future' || state === 'today' || state === 'tomorrow' || state === 'invalid';
+    });
   }
 
   // "Creada hace 12 minutos" si es reciente; si no, fecha real almacenada.
@@ -377,14 +439,18 @@
     return tr('createdOn') + fecha + ' · ' + d.toLocaleTimeString(panelLanguage === 'en' ? 'en-US' : 'es-ES', { hour: '2-digit', minute: '2-digit' });
   }
 
-  function fechaLegible(fechaISO, fallback) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fechaISO || ''))) return fallback || '';
+  // Día de la semana y "día + mes" por separado (mayúsculas), para la
+  // tarjeta nueva: LUNES / 3 AGOSTO. Devuelve null si la fecha no es válida
+  // (cardHTML cae entonces a r.fecha o al mensaje "Fecha por confirmar").
+  function fechaPartes(fechaISO) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fechaISO || ''))) return null;
     var d = new Date(fechaISO + 'T12:00:00Z');
-    if (isNaN(d.getTime())) return fallback || '';
-    var text = new Intl.DateTimeFormat(panelLanguage === 'en' ? 'en-US' : 'es-ES', {
-      weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC'
-    }).format(d);
-    return text.charAt(0).toUpperCase() + text.slice(1);
+    if (isNaN(d.getTime())) return null;
+    var locale = panelLanguage === 'en' ? 'en-US' : 'es-ES';
+    var weekday = new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(d);
+    var month = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' }).format(d);
+    var day = Number(fechaISO.split('-')[2]);
+    return { weekday: weekday.toUpperCase(), dayMonth: (day + ' ' + month).toUpperCase() };
   }
 
   function partesEnZona(ms, timezone) {
@@ -427,7 +493,7 @@
   }
 
   function tiempoRestante(r) {
-    var when = reservaUtcMs(r.fechaISO, r.horaISO, r.timezone);
+    var when = reservationTimestamp(r);
     if (when === null || when <= Date.now()) return '';
     var now = partesEnZona(Date.now(), r.timezone);
     if (!now) return '';
@@ -447,15 +513,16 @@
     return '⏳ ' + tr('remaining') + days + ' ' + tr(days === 1 ? 'day' : 'days');
   }
 
+  // Clase visual del borde de la tarjeta. Reutiliza reservationTemporalState()
+  // (cancelled/past ya vienen de ahí) y solo añade el matiz "urgent" — dentro
+  // de la próxima hora — que esa clasificación por día no distingue.
   function urgenciaCita(r) {
-    if (r.estado === 'cancelada' || r.estado === 'rechazada') return 'cancelled';
-    var when = reservaUtcMs(r.fechaISO, r.horaISO, r.timezone);
-    if (when === null || when <= Date.now()) return r.estado === 'reprogramada' ? 'reprogrammed' : 'future';
-    if (when - Date.now() < 60 * 60 * 1000) return 'urgent';
-    var now = partesEnZona(Date.now(), r.timezone);
-    if (!now) return r.estado === 'reprogramada' ? 'reprogrammed' : 'future';
-    var today = [now.year, String(now.month).padStart(2, '0'), String(now.day).padStart(2, '0')].join('-');
-    if (r.fechaISO === today) return 'today';
+    var state = reservationTemporalState(r);
+    if (state === 'cancelled') return 'cancelled';
+    if (state === 'past') return 'past';
+    var when = reservationTimestamp(r);
+    if (when !== null && when > Date.now() && when - Date.now() < 60 * 60 * 1000) return 'urgent';
+    if (state === 'today') return 'today';
     return r.estado === 'reprogramada' ? 'reprogrammed' : 'future';
   }
 
@@ -466,39 +533,55 @@
   }
 
   function cardHTML(r) {
-    var e = estadoInfo(r);
+    var status = displayStatus(r);
+    var temporal = reservationTemporalState(r);
     var special = String(r.specialRequests == null ? (r.notes || '') : r.specialRequests).trim();
     var notesHTML = '<div class="rnotes"><div class="rnotes-t">' + tr('specialRequests') + '</div>' + esc(special || tr('noSpecialRequests')) + '</div>';
     var creada = fechaCreacion(r.fechaSolicitud);
-    var fecha = fechaLegible(r.fechaISO, r.fecha);
-    var restante = (r.estado === 'confirmada' || r.estado === 'reprogramada') ? tiempoRestante(r) : '';
+    var fp = fechaPartes(r.fechaISO);
+    // Pasada: "Pasada" en vez del countdown (que tiempoRestante() ya
+    // devuelve vacío para fechas pasadas). Opcional-simple, tal como pide
+    // la tarea, en lugar de "Hace N días".
+    var restante = temporal === 'past' ? tr('past')
+      : ((r.estado === 'confirmada' || r.estado === 'reprogramada') ? tiempoRestante(r) : '');
     var urgencia = urgenciaCita(r);
-    return '<article class="rcard is-' + urgencia + ' is-' + e.cls + '">' +
+    var dateBlockHTML = (fp
+        ? '<span class="date-weekday">' + esc(fp.weekday) + '</span><span class="date-day">' + esc(fp.dayMonth) + '</span>'
+        : '<span class="date-day">' + esc(r.fecha || tr('datePending')) + '</span>') +
+      '<span class="date-time">' + esc(r.hora || r.horaISO || '—') + '</span>' +
+      (restante ? '<div class="rremaining">' + esc(restante) + '</div>' : '');
+    return '<article class="rcard is-' + urgencia + ' is-' + status.cls + '">' +
         '<div class="card-top"><div><h3 class="rname">' + esc(r.nombre || '—') + '</h3><div class="rservice">' + esc(r.servicio || tr('reservation')) + '</div></div>' +
-        '<div class="time-block"><span class="time-label">' + tr('time') + '</span><span class="time-value">' + esc(r.hora || '—') + '</span></div></div>' +
-        '<div class="rdate">' + esc(fecha || tr('datePending')) + '</div>' +
-        (restante ? '<div class="rremaining">' + esc(restante) + '</div>' : '') +
+        '<div class="date-block">' + dateBlockHTML + '</div></div>' +
         '<div class="rmeta">' +
         fila('👥', tr('people'), r.partySize || r.personas) + fila('🪑', tr('table'), r.tablePreference) + fila('✂️', tr('barber'), r.barberPreference) + fila('📞', tr('phone'), r.telefono) + fila('✉️', tr('email'), r.email) +
         (r.estado === 'cancelada' ? fila('🗓️', tr('cancelledOn'), r.fechaCancelacion ? new Date(r.fechaCancelacion).toLocaleString(panelLanguage === 'en' ? 'en-US' : 'es-ES') : '') + fila('👤', tr('by'), r.cancelledBy || '') : '') +
         (r.estado === 'reprogramada' ? fila('↔️', tr('before'), (r.fechaAnterior || '') + ' ' + (r.horaAnterior || '')) : '') +
         '</div>' +
         notesHTML +
-        '<div class="rfoot"><span class="estado ' + e.cls + '">' + e.txt + '</span>' +
+        '<div class="rfoot"><span class="estado ' + status.cls + '">' + status.txt + '</span>' +
           (creada ? '<span class="rcreated">' + esc(creada) + '</span>' : '') +
         '</div>' +
       '</article>';
   }
 
+  // "Próximas citas" NO debe contar pasadas — usa la misma clasificación
+  // temporal que filtered()/sortReservations(), en vez de mirar solo
+  // r.estado (ese era el bug: una cita "confirmada" vieja se contaba igual
+  // que una futura).
   function renderSummary() {
-    var today = allData.filter(function (r) {
-      if (r.estado === 'cancelada' || r.estado === 'rechazada' || !r.fechaISO || !r.timezone) return false;
-      var now = partesEnZona(Date.now(), r.timezone);
-      return now && r.fechaISO === [now.year, String(now.month).padStart(2, '0'), String(now.day).padStart(2, '0')].join('-');
+    var today = allData.filter(function (r) { return reservationTemporalState(r) === 'today'; }).length;
+    var upcoming = allData.filter(function (r) {
+      // Mismo filtro por estado que ya existía (confirmada/reprogramada);
+      // solo se le agrega la exclusión de pasadas, que era el bug.
+      // 'invalid' (fecha/hora/timezone incompletos) se cuenta igual que
+      // antes de esta clasificación, para no romper reservas legacy.
+      if (r.estado !== 'confirmada' && r.estado !== 'reprogramada') return false;
+      var state = reservationTemporalState(r);
+      return state === 'future' || state === 'today' || state === 'tomorrow' || state === 'invalid';
     }).length;
-    var upcoming = allData.filter(function (r) { return r.estado === 'confirmada' || r.estado === 'reprogramada'; }).length;
     var rescheduled = allData.filter(function (r) { return r.estado === 'reprogramada'; }).length;
-    var cancelled = allData.filter(function (r) { return r.estado === 'cancelada' || r.estado === 'rechazada'; }).length;
+    var cancelled = allData.filter(function (r) { return reservationTemporalState(r) === 'cancelled'; }).length;
     document.getElementById('summary-today').textContent = today;
     document.getElementById('summary-upcoming').textContent = upcoming;
     document.getElementById('summary-rescheduled').textContent = rescheduled;
@@ -539,17 +622,19 @@
   function render() {
     renderActivity();
     renderSummary();
-    var data = filtered().slice().sort(function (a, b) {
-      return String(a.fechaISO || '').localeCompare(String(b.fechaISO || '')) ||
-             String(a.horaISO || '').localeCompare(String(b.horaISO || ''));
-    });
+    // futuras (más cercana primero) arriba, pasadas (más reciente primero)
+    // abajo — nunca new Date(fecha+hora): sortReservations() usa
+    // reservationTimestamp()/reservationTemporalState(), que respetan
+    // reservation.timezone vía reservaUtcMs()/partesEnZona().
+    var data = sortReservations(filtered());
     document.getElementById('count').textContent =
-      data.length + ' ' + tr(data.length === 1 ? 'appointment' : 'appointments') + ' ' + tr(activeFilter === 'canceladas' ? 'cancelledSuffix' : 'upcomingSuffix');
+      data.length + ' ' + tr(data.length === 1 ? 'appointment' : 'appointments');
 
     var sheet = document.getElementById('sheet');
     sheet.classList.toggle('animate-cards', animateCards);
     if (!data.length) {
-      sheet.innerHTML = '<div class="empty">' + tr(activeFilter === 'canceladas' ? 'emptyCancelled' : 'emptyUpcoming') + '</div>';
+      var emptyKey = activeFilter === 'canceladas' ? 'emptyCancelled' : (activeFilter === 'proximas' ? 'emptyUpcoming' : 'emptyGeneric');
+      sheet.innerHTML = '<div class="empty">' + tr(emptyKey) + '</div>';
     } else {
       sheet.innerHTML = data.map(cardHTML).join('');
     }

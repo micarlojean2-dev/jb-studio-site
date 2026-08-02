@@ -69,7 +69,11 @@ console.log('7. Fecha legible y tiempo restante usan datos normalizados');
 {
   const fixedNow = Date.UTC(2026, 10, 27, 23, 45);
   window.Date.now = () => fixedNow;
-  ok(window.fechaLegible('2026-11-28', 'mañana') === 'Sábado, 28 de noviembre', 'fechaISO se muestra en formato legible');
+  {
+    const fp = window.fechaPartes('2026-11-28');
+    ok(fp && fp.weekday === 'SÁBADO' && fp.dayMonth === '28 NOVIEMBRE', `fechaISO se muestra en weekday/día+mes separados y en mayúsculas (${fp && fp.weekday} / ${fp && fp.dayMonth})`);
+    ok(window.fechaPartes('no-es-una-fecha') === null, 'fechaPartes() devuelve null ante una fecha inválida (cardHTML cae a r.fecha)');
+  }
   ok(window.tiempoRestante({ fechaISO: '2026-11-27', horaISO: '23:59', hora: '11:59 PM', timezone: 'UTC' }) === '⏳ En 14 minutos', 'muestra minutos para una reserva próxima');
   ok(window.tiempoRestante({ fechaISO: '2026-11-28', horaISO: '14:00', hora: '2:00 PM', timezone: 'UTC' }) === '⏳ Mañana a las 2:00 PM', 'muestra mañana con la hora guardada');
   ok(window.tiempoRestante({ fechaISO: '2026-12-01', horaISO: '10:00', hora: '10:00 AM', timezone: 'UTC' }) === '⏳ Faltan 4 días', 'muestra días para reservas futuras');
