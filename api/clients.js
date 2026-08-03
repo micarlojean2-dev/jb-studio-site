@@ -13,6 +13,14 @@ async function getOfficialTemplate(id) {
   if (!_templatesMod) _templatesMod = await import('../lib/assistant-templates.mjs');
   return _templatesMod.getOfficialTemplate(id);
 }
+async function listOfficialTemplates() {
+  if (!_templatesMod) _templatesMod = await import('../lib/assistant-templates.mjs');
+  return _templatesMod.listOfficialTemplates();
+}
+async function buildTemplatePrompt(businessData, template) {
+  if (!_templatesMod) _templatesMod = await import('../lib/assistant-templates.mjs');
+  return _templatesMod.buildTemplatePrompt(businessData, template);
+}
 
 const redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
@@ -380,6 +388,18 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── GET ?action=templates: official template registry for the admin's
+  // creator UI (name/requiredFields/features only — never promptBase). ──
+  if (req.method === 'GET' && req.query?.action === 'templates') {
+    try {
+      return res.status(200).json(await listOfficialTemplates());
+    } catch (err) {
+      console.error('[api/clients] templates:', err.message);
+      captureApiException(err, { feature: 'client_panel', route: '/api/clients?action=templates' });
+      return res.status(500).json({ error: 'Template configuration error' });
+    }
+  }
+
   // ── GET: list all clients ───────────────────────────────────────────────
   if (req.method === 'GET') {
     try {
@@ -411,8 +431,11 @@ export default async function handler(req, res) {
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
 
-    if (!id || !businessName || !prompt)
-      return res.status(400).json({ error: 'id, businessName, and prompt are required' });
+    const missingBasic = [];
+    if (!id) missingBasic.push('id');
+    if (!businessName) missingBasic.push('businessName');
+    if (missingBasic.length)
+      return res.status(400).json({ error: 'Missing required fields', fields: missingBasic });
     if (!/^[a-z0-9-]+$/.test(id))
       return res.status(400).json({ error: 'id must be lowercase letters, numbers, and hyphens only' });
     if (id.length > 80)
@@ -446,6 +469,13 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Unknown or mismatched template version' });
       }
     }
+    // Con una plantilla oficial válida, el prompt SIEMPRE se deriva del
+    // promptBase server-side (más abajo, vía buildTemplatePrompt) — nunca se
+    // confía en el prompt del body, aunque lo mande. Solo los clientes
+    // legado sin plantilla (formularios antiguos) siguen requiriendo y
+    // usando el prompt manual del body, igual que siempre.
+    if (!template && !prompt)
+      return res.status(400).json({ error: 'Missing required fields', fields: ['prompt'] });
     const templateIdSafe = template ? template.id : '';
     const templateVersionSafe = template ? template.version : '';
     const runtime = templateRuntime(template);
@@ -556,6 +586,18 @@ export default async function handler(req, res) {
         ? businessHoursToText(businessHoursSafe)
         : String(hours || '').slice(0, 200);
 
+      // El prompt nunca viene del body cuando hay una plantilla oficial: se
+      // deriva del promptBase de esa plantilla + los datos ya validados del
+      // negocio (mismo builder que usa api/generate-client-config.js). Sin
+      // plantilla (cliente legado), se conserva el prompt manual del body.
+      const promptSafe = template
+        ? await buildTemplatePrompt({
+            businessName, address,
+            phoneCountryCode: phoneCountryCodeSafe, phoneNumber: phoneNumberSafe,
+            services: servicesSafe, businessHours: businessHoursSafe,
+          }, template)
+        : String(prompt).slice(0, 6000);
+
       const client = {
         id,
         businessName: String(businessName).slice(0, 120),
@@ -569,14 +611,17 @@ export default async function handler(req, res) {
         style:        STYLES.includes(style) ? style : 'Moderno',
         address:      String(address || '').slice(0, 200),
         hours:        hoursDerived,
-        businessType: String(businessType || '').slice(0, 80),
+        // Con plantilla oficial, el tipo de negocio SIEMPRE es el id de la
+        // plantilla — nunca un valor suelto del body que podría no
+        // corresponder (ej. businessType:'spa' con templateId:'restaurant').
+        businessType: templateIdSafe || String(businessType || '').slice(0, 80),
         ...(templateIdSafe && templateVersionSafe
           ? { templateId: templateIdSafe, templateVersion: templateVersionSafe, templateData: templateDataSafe }
           : {}),
         // Canonical runtime staff list. `templateData.barberStaff` remains the
         // factual template payload; reservations read this normalized field.
         ...(templateIdSafe === 'barber' ? { staff: templateDataSafe.barberStaff } : {}),
-        prompt:       String(prompt).slice(0, 6000),
+        prompt:       promptSafe,
         menu:         menuSafe,
         services:     servicesSafe,
         features:     featuresSafe,

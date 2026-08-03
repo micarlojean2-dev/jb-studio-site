@@ -9,24 +9,77 @@ const admin = readFileSync(join(root, 'admin.html'), 'utf8');
 assert.match(admin, /id="open-spa-creator-btn"[^>]*>\s*\+ Crear chatbot</);
 assert.doesNotMatch(admin, />\+ Crear auto</);
 assert.doesNotMatch(admin, /\/api\/generate-client-config/);
-assert.match(admin, /id="spa-type"[\s\S]*?<option value="spa">Spa<\/option>/);
-for (const id of ['spa-name', 'spa-address', 'spa-phone-country', 'spa-phone-number', 'spa-email', 'spa-timezone', 'spa-hours', 'spa-services', 'spa-capacity', 'spa-buffer']) {
+for (const id of ['spa-type', 'spa-name', 'spa-address', 'spa-phone-country', 'spa-phone-number', 'spa-email', 'spa-timezone', 'spa-hours', 'spa-services', 'spa-capacity', 'spa-buffer']) {
   assert.match(admin, new RegExp(`id="${id}"`), `missing ${id}`);
 }
 assert.match(admin, /Nombre \| Precio \| Duración/);
-assert.match(admin, /templateId:'spa', templateVersion:'1\.0'/);
-assert.match(admin, /languages:\['es','en'\], primaryLanguage:'es', language:'es', plan:'pro'/);
-assert.match(admin, /reservationIntervalMinutes:15, minNoticeHours:0, holidays:\[\], displayMode:'fullscreen', widgetPosition:'bottom-right'/);
+assert.match(admin, /reservationIntervalMinutes: 15, minNoticeHours: 0, holidays: \[\]/);
 assert.match(admin, /\.spa-hours-row, \.spa-service-row/);
-assert.match(admin, /SPA_PROMPT_BASE/);
+
+// ── Auditoría "creador multi plantilla": ya no es un formulario Spa-only ──
+// El selector #spa-type ya no está deshabilitado ni trae una única opción
+// fija; se puebla en runtime desde el registro oficial de plantillas
+// (GET /api/clients?action=templates), la misma fuente de verdad que usa
+// el backend — nunca una lista de nombres duplicada en el HTML.
+assert.doesNotMatch(admin, /id="spa-type" class="admin-input" disabled/, 'spa-type ya no debe estar deshabilitado');
+assert.doesNotMatch(admin, /<option value="spa">Spa<\/option>\s*<\/select>/, 'spa-type ya no debe traer una única opción "Spa" fija en el HTML');
+assert.match(admin, /fetch\('\/api\/clients\?action=templates'/, 'el creador debe pedir la lista real de plantillas al backend');
+assert.match(admin, /let TEMPLATES = \[\];/);
+assert.match(admin, /let selectedTemplate = null;/);
+
+const spaCreatorScriptMatch = admin.match(/<script>\s*\(\(\) => \{[\s\S]*?\}\)\(\);\s*<\/script>/);
+assert.ok(spaCreatorScriptMatch, 'no se encontró el <script> del creador activo');
+const spaCreatorScript = spaCreatorScriptMatch[0];
+
+// El prompt ya NO se manda desde el navegador: el backend lo deriva de la
+// plantilla oficial (api/clients.js, buildTemplatePrompt). Antes existía
+// una constante SPA_PROMPT_BASE embebida — ese es exactamente el hueco de
+// seguridad que se cerró.
+assert.doesNotMatch(spaCreatorScript, /SPA_PROMPT_BASE/, 'ya no debe existir un prompt hardcodeado en el navegador');
+assert.doesNotMatch(spaCreatorScript, /\bprompt\s*:/, 'el payload de creación ya no debe mandar prompt: el servidor lo deriva de la plantilla');
+assert.doesNotMatch(spaCreatorScript, /businessType\s*:/, 'el payload ya no debe mandar businessType: el servidor lo fija desde templateId');
+assert.doesNotMatch(spaCreatorScript, /templateId:\s*'spa'/, 'templateId ya no puede estar fijo a spa');
+assert.match(spaCreatorScript, /templateId:\s*selectedTemplate\.id,\s*templateVersion:\s*selectedTemplate\.version/,
+  'templateId/templateVersion deben venir de la plantilla realmente seleccionada, no de un literal');
+
+// capacityPerSlot aplica a las 3 plantillas (api/reservations.js lo usa para
+// "cuántas citas simultáneas admite el negocio: barberos, cabinas, mesas") —
+// nunca debe ocultarse ni omitirse fuera de Spa. bufferMinutes SÍ es
+// exclusivo de Spa (spaBufferMinutes() en api/reservations.js lo ignora para
+// cualquier otra plantilla), así que solo ese campo se oculta/omite.
+assert.match(spaCreatorScript, /capacityPerSlot:\s*\+\$\('spa-capacity'\)\.value,[\s\S]{0,200}?\.\.\.\(isSpa \? \{ bufferMinutes: \+\$\('spa-buffer'\)\.value \} : \{\}\)/,
+  'capacityPerSlot debe ir siempre en el payload; bufferMinutes solo cuando el tipo elegido es Spa');
+assert.match(admin, /id="spa-buffer-group"/, 'solo el grupo del buffer debe poder ocultarse; la capacidad debe seguir visible para todas las plantillas');
+assert.doesNotMatch(admin, /id="spa-capacity"[^>]*hidden|id="spa-reservas-section"/, 'la capacidad (y su sección) ya no deben poder ocultarse por completo');
+
+// Duración de servicio: obligatoria para Spa/Barbería, opcional para Restaurante.
+assert.match(spaCreatorScript, /const durationOk = isRestaurant \|\| \(Number\.isInteger\(\+service\.duracion\) && \+service\.duracion >= 1\)/);
+
+// Límites explícitos en el frontend (antes el backend los recortaba en
+// silencio: sanitizeBusinessHours a 2 rangos/día, sanitizeServices a 40).
+assert.match(spaCreatorScript, /const MAX_SERVICES = 40;/);
+assert.match(spaCreatorScript, /const MAX_RANGES_PER_DAY = 2;/);
+
+// XSS: los datos de un servicio (nombre/precio/duración, incluida la
+// importación por texto pegado) ya no se insertan sin escapar en innerHTML.
+assert.match(spaCreatorScript, /const esc = s =>/, 'falta el helper de escape HTML');
+assert.match(spaCreatorScript, /value="\$\{esc\(service\.name\)\}"/, 'el nombre del servicio debe escaparse al insertarse en innerHTML');
+assert.doesNotMatch(spaCreatorScript, /value="\$\{service\.name \|\| ''\}"/, 'ya no debe quedar la inserción sin escapar de service.name');
+
+// "Fila vacía inicial": Importar lista debe limpiar filas vacías antes de agregar.
+assert.match(spaCreatorScript, /if \(empty\) row\.remove\(\);/, 'Importar lista debe quitar filas de servicio vacías antes de importar');
+
+// Errores del backend: si vienen fields específicos, deben mostrarse, no solo el mensaje genérico.
+assert.match(spaCreatorScript, /client\.fields/, 'el manejo de errores debe leer client.fields, no solo client.error');
+
+// Teléfono: la etiqueta debe aclarar que es el teléfono público del negocio.
+assert.match(admin, /Teléfono del negocio \(lo verán tus clientes\)/, 'la etiqueta del teléfono debe aclarar que es pública/del negocio');
 
 // ── Teléfono internacional: selector de país obligatorio, sin "US"/"+1" fijos ──
 // (el wizard viejo inerte, en <script type="application/x-jb-legacy-wizard">,
 // todavía contiene ese literal como código muerto — no se toca, así que este
-// check se limita al bloque del creador Spa activo, no a todo el archivo.)
-const spaCreatorScriptMatch = admin.match(/<script>\s*\(\(\) => \{[\s\S]*?\}\)\(\);\s*<\/script>/);
-assert.ok(spaCreatorScriptMatch, 'no se encontró el <script> del creador Spa activo');
-const spaCreatorScript = spaCreatorScriptMatch[0];
+// check se limita al bloque del creador activo, no a todo el archivo.
+// spaCreatorScript ya se extrajo más arriba.)
 assert.doesNotMatch(spaCreatorScript, /phoneCountry:\s*'US'\s*,/, 'phoneCountry ya no puede ser un literal fijo en el payload del creador Spa');
 assert.doesNotMatch(spaCreatorScript, /phoneCountryCode:\s*'\+1'\s*,/, 'phoneCountryCode ya no puede ser un literal fijo en el payload del creador Spa');
 for (const code of ['US|+1', 'CA|+1', 'MX|+52', 'CL|+56', 'AR|+54', 'CO|+57', 'PE|+51', 'BR|+55', 'ES|+34', 'GB|+44']) {
@@ -65,7 +118,7 @@ assert.doesNotMatch(disabledRuleBody, /opacity:\s*0\.6/, 'no debe reutilizar la 
 assert.match(admin, /\.action-btn:disabled\s*\{\s*opacity:\s*0\.6;\s*cursor:\s*not-allowed;\s*\}/,
   '.action-btn:disabled no debe tocarse: así se confirma que ningún otro botón del panel cambió');
 
-console.log('Spa-only manual creator contract verified (static checks)');
+console.log('Multi-template manual creator contract verified (static checks)');
 
 // ── Ejecución real de normalizePhoneNumber, extraída tal cual del archivo ───
 // No se reimplementa la función: se recorta el bloque exacto del código

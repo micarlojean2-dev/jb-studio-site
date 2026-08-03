@@ -6,6 +6,10 @@ async function getOfficialTemplate(id) {
   if (!_templatesMod) _templatesMod = await import('../lib/assistant-templates.mjs');
   return _templatesMod.getOfficialTemplate(id);
 }
+async function buildTemplatePrompt(businessData, template) {
+  if (!_templatesMod) _templatesMod = await import('../lib/assistant-templates.mjs');
+  return _templatesMod.buildTemplatePrompt(businessData, template);
+}
 import { CREATOR_DRAFT_SCHEMA, OPENAI_CREATOR_INSTRUCTIONS } from '../lib/creator-schema.js';
 import { sanitizeServiceId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
@@ -432,7 +436,7 @@ function normalizeConfig(raw, additionalInstructions, serverOwned) {
   };
 }
 
-function normalizeTemplateConfig(config, template, raw) {
+async function normalizeTemplateConfig(config, template, raw) {
   if (!template) return config;
 
   // The template, not the model response or browser request, decides runtime capabilities.
@@ -463,23 +467,11 @@ function normalizeTemplateConfig(config, template, raw) {
     config.business.languages = ['es', 'en'];
     config.business.primaryLanguage = 'es';
   }
-  config.systemPrompt = buildTemplatePrompt(config, template);
+  config.systemPrompt = await buildTemplatePrompt(
+    { ...config.business, services: config.services, businessHours: config.businessHours },
+    template
+  );
   return config;
-}
-
-function buildTemplatePrompt(config, template) {
-  const b = config.business;
-  const services = config.services.map(service =>
-    `- ${service.nombre}${service.precio ? `: ${service.precio}` : ''}${service.duracion ? ` (${service.duracion})` : ''}`
-  ).join('\n') || '- No especificados';
-  const hours = DAYS.map(day => {
-    const value = config.businessHours[day];
-    if (!value || value.unknown) return '';
-    if (!value.enabled || !value.ranges.length) return `${day}: Cerrado`;
-    return `${day}: ${value.ranges.map(range => `${range.start}-${range.end}`).join(', ')}`;
-  }).filter(Boolean).join('\n') || 'No especificados';
-
-  return `${template.promptBase}\n\nDATOS VALIDADOS DEL NEGOCIO\nNombre: ${b.businessName || 'No especificado'}\nDirección: ${b.address || 'No especificada'}\nTeléfono: ${b.phoneCountryCode || ''}${b.phoneNumber || 'No especificado'}\n\nHORARIOS\n${hours}\n\nSERVICIOS\n${services}`.slice(0, 6000);
 }
 
 function addUnknownDayInfo(missing, hours) {
@@ -592,7 +584,7 @@ export default async function handler(req, res) {
       }
     }
 
-    const config = normalizeTemplateConfig(normalizeConfig(parsed, sanitizedExtra, true), template, parsed);
+    const config = await normalizeTemplateConfig(normalizeConfig(parsed, sanitizedExtra, true), template, parsed);
 
     if (!config.systemPrompt && config.business.businessName) {
       config.systemPrompt = generateFallbackPrompt(config);
