@@ -1578,14 +1578,31 @@ function extractBooking(text, menu) {
           var showGallery = /\[MOSTRAR_GALERIA\]/.test(d.text);
           var showServicePhotos = /\[MOSTRAR_SERVICIOS_CON_FOTOS\]/.test(d.text);
           var cleanText = CORE.limpiarMarcadores(d.text);
-          if (cleanText) addMsg('bot', cleanText);
+          var shownTexts = [];
+          if (showMenu && !showServicePhotos) {
+            // Determinista: nunca se confía en que el modelo haya sido
+            // breve. Se muestra SIEMPRE esta frase, construida por código,
+            // antes de las tarjetas — y se descarta la parte del texto del
+            // modelo que solo repite el catálogo (2+ servicios nombrados);
+            // si trae algo más útil, se conserva. [Objetivo 2]
+            var intro = CORE.catalogIntro(cfg, lang);
+            addMsg('bot', intro);
+            shownTexts.push(intro);
+            if (cleanText && !CORE.looksLikeCatalogRestatement(cleanText, cfg.menu)) {
+              addMsg('bot', cleanText);
+              shownTexts.push(cleanText);
+            }
+          } else if (cleanText) {
+            addMsg('bot', cleanText);
+            shownTexts.push(cleanText);
+          }
           // Pedir fotos ya no fuerza el catálogo completo: cada marcador
           // controla solo su propio bloque. [BUG-FOTOS-GALERIA]
           if (showServicePhotos) renderServicesWithPhotos();
           else { if (showMenu) renderMenu(); if (showGallery) renderGallery(); }
           // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
-          // historial va solo el texto limpio, nunca el marcador crudo.
-          msgs.push({ role: 'assistant', content: cleanText });
+          // historial va solo lo que realmente se mostró, nunca el marcador crudo.
+          msgs.push({ role: 'assistant', content: shownTexts.join('\n\n') });
           save();
         } else {
           addMsg('bot', cfg.language === 'en' ? "Sorry, I didn't catch that 😅 Could you say it again?" : 'Perdona, no te entendí bien 😅 ¿Me lo repites?');

@@ -63,8 +63,8 @@ console.log('\n3. Catálogo — todos los elementos, con o sin foto, mismo orden
 {
   ok(CORE.catalogItems({ menu: [{ nombre: 'A' }, { nombre: 'B', imagen: 'x.jpg' }] }).length === 2, 'catalogItems() no filtra por imagen');
   ok(CORE.catalogItems({}).length === 0, 'catalogItems() sin menu -> []');
-  ok(CORE.catalogIntro('es') === 'Aquí tienes nuestros servicios 😊', 'intro breve en español');
-  ok(CORE.catalogIntro('en') === 'Here are our services 😊', 'intro breve en inglés');
+  ok(CORE.catalogIntro({}, 'es') === 'Aquí tienes nuestros servicios 😊', 'intro breve en español');
+  ok(CORE.catalogIntro({}, 'en') === 'Here are our services 😊', 'intro breve en inglés');
 
   for (const [name, source] of [['widget.js', widget], ['asistente.html', asistente]]) {
     // La función que antes filtraba (renderServicesWithPhotos) ahora delega
@@ -179,6 +179,192 @@ console.log('\n8. Tono humano por plantilla (Objetivo 6) — el modelo no decide
   // El precio sigue viniendo SIEMPRE de los datos reales, nunca del modelo:
   // ya cubierto por la regla de "nunca inventes precio ni duración" arriba.
   ok(!/bookingPending\s*=\s*data\.pedirle_al_modelo/.test(clientChat), 'el modelo no decide qué campo falta (bookingRequirements sigue siendo del frontend)');
+}
+
+console.log('\n9. Catálogo: introducción determinista, no depende del modelo (auditoría)');
+{
+  ok(CORE.catalogIntro({ templateId: 'restaurant' }, 'es') === 'Aquí tienes nuestro menú 😊', 'restaurante: intro específica del menú (es)');
+  ok(CORE.catalogIntro({ templateId: 'restaurant' }, 'en').toLowerCase().includes('menu'), 'restaurante: intro específica del menú (en)');
+  ok(CORE.looksLikeCatalogRestatement('Tenemos Masaje relajante y Facial hidratante disponibles hoy',
+    [{ nombre: 'Masaje relajante' }, { nombre: 'Facial hidratante' }]) === true, 'detecta 2+ servicios nombrados como repetición del catálogo');
+  ok(CORE.looksLikeCatalogRestatement('Claro, aceptamos tarjeta y efectivo',
+    [{ nombre: 'Masaje relajante' }, { nombre: 'Facial hidratante' }]) === false, 'texto sin nombrar servicios: se conserva (no es duplicación)');
+
+  for (const [name, source] of [['widget.js', widget], ['asistente.html', asistente]]) {
+    ok(source.includes('CORE.catalogIntro(cfg, lang)'), `${name}: usa la intro determinista de chat-core.js`);
+    ok(source.includes('CORE.looksLikeCatalogRestatement(cleanText, cfg.menu)'), `${name}: filtra el texto del modelo si repite el catálogo`);
+    ok(/if \(showMenu && !showServicePhotos\) \{/.test(source), `${name}: la intro se muestra SIEMPRE que llegue [MOSTRAR_MENU] (no depende de que el modelo haya escrito algo)`);
+    // No debe borrar texto útil: si el modelo NO repite el catálogo, su
+    // texto se sigue mostrando junto a la intro.
+    ok(/if \(cleanText && !CORE\.looksLikeCatalogRestatement\(cleanText, cfg\.menu\)\) \{\s*addMsg\('bot', cleanText\);/.test(source),
+      `${name}: el texto útil del modelo (que no repite el catálogo) NO se borra`);
+  }
+}
+
+console.log('\n10. Prueba EXACTA del mensaje con nombre (auditoría)');
+{
+  const cfg = { menu: [{ nombre: 'Masaje relajante', precio: '40', duracion: '60' }], businessHours: null };
+  const texto = 'miércoles a las 5pm,me llamo mike,micarlojean2@gmail.com 2067421261';
+  const extraido = CORE.extractBooking(texto, cfg.menu, cfg.businessHours, 'es', cfg);
+  ok(extraido.fecha === 'miércoles', `fecha: "miércoles" (fue: ${JSON.stringify(extraido.fecha)})`);
+  ok(extraido.hora === '5:00 PM', `hora: "5:00 PM" (fue: ${JSON.stringify(extraido.hora)})`);
+  ok(extraido.nombre === 'mike', `nombre: "mike" (fue: ${JSON.stringify(extraido.nombre)})`);
+  ok(extraido.email === 'micarlojean2@gmail.com', `email: "micarlojean2@gmail.com" (fue: ${JSON.stringify(extraido.email)})`);
+  ok(extraido.telefono && extraido.telefono.replace(/\D/g, '') === '2067421261', `teléfono: "2067421261" (fue: ${JSON.stringify(extraido.telefono)})`);
+  ok(extraido.servicio === undefined, 'este mensaje no nombra ningún servicio (se espera que venga de selectedService, no inventado)');
+
+  // Servicio previamente seleccionado: como el mensaje no lo repite,
+  // bookingData.servicio debe caer al selectedService ya elegido antes.
+  const bookingData = Object.assign({}, extraido);
+  bookingData.servicio = CORE.resolveServicio(bookingData, 'Masaje relajante');
+  ok(bookingData.servicio === 'Masaje relajante', 'conserva el servicio previamente seleccionado (selectedService) sin perder los demás campos');
+  ok(bookingData.nombre === 'mike' && bookingData.fecha === 'miércoles' && bookingData.email === 'micarlojean2@gmail.com' && bookingData.telefono === '2067421261',
+    'ningún campo se pierde al aplicar el respaldo de servicio');
+
+  // Debe preguntar de forma natural si "Mike" es el nombre completo, SIN
+  // borrar los demás datos ya capturados (bookingRequirements sigue
+  // pidiendo "nombre" hasta que se confirme).
+  ok(CORE.esNombreUnaPalabra(extraido.nombre) === true, '"mike" es una sola palabra: dispara la confirmación natural');
+  const faltan = CORE.bookingRequirements({ templateId: 'barber' }, bookingData);
+  ok(faltan.includes('nombre'), 'con el nombre sin confirmar, bookingRequirements() lo vuelve a pedir (no lo da por bueno en silencio)');
+  ok(CORE.nombreConfirmacionMensaje('mike', 'es').includes('mike'), 'el mensaje de confirmación nombra exactamente lo capturado');
+  bookingData.__nombreConfirmado = true;
+  const faltanTrasConfirmar = CORE.bookingRequirements({ templateId: 'barber' }, bookingData);
+  ok(!faltanTrasConfirmar.includes('nombre'), 'confirmado, ya no se vuelve a pedir');
+  ok(bookingData.nombre === 'mike' && bookingData.fecha === 'miércoles' && bookingData.email === 'micarlojean2@gmail.com' && bookingData.telefono === '2067421261' && bookingData.servicio === 'Masaje relajante',
+    'todos los datos siguen intactos después de confirmar el nombre');
+}
+
+console.log('\n11. d.emailWarning nunca decide "se envió al cliente" — solo d.email.customer.sent === true');
+{
+  const cfg = { businessName: 'Spa Luna' };
+  const sentConWarning = CORE.mensajeReservaGuardada(cfg, {
+    email: { customer: { sent: true }, owners: { sent: false, error: 'algo falló con el dueño' } },
+    emailWarning: 'RESEND_API_KEY missing para uno de los destinatarios',
+  }, 'es');
+  ok(sentConWarning.includes('Te enviamos los detalles a tu correo'), 'customer.sent=true: SÍ dice que se enviaron los detalles, aunque exista un emailWarning general');
+  ok(!sentConWarning.includes('No pudimos enviar'), 'customer.sent=true: no muestra el mensaje de fallo');
+
+  const noEnviado = CORE.mensajeReservaGuardada(cfg, {
+    email: { customer: { sent: false } },
+    emailWarning: null,
+  }, 'es');
+  ok(!/te enviamos los detalles/i.test(noEnviado), 'customer.sent=false: NO afirma que se envió (aunque no haya ningún warning)');
+  ok(noEnviado.includes('No pudimos enviar el correo'), 'customer.sent=false: usa el mensaje de fallo');
+
+  const sinEmail = CORE.mensajeReservaGuardada(cfg, { emailWarning: 'RESEND_API_KEY missing' }, 'es');
+  ok(!/te enviamos los detalles/i.test(sinEmail), 'sin d.email en absoluto (solo emailWarning): NO afirma que se envió');
+  ok(sinEmail.includes('No pudimos enviar el correo'), 'sin d.email: usa el mensaje de fallo (el warning nunca es la fuente principal)');
+
+  // d.emailWarning=truthy pero customer.sent=true igual debe afirmar envío
+  // (el warning es del DUEÑO, no del cliente).
+  ok(CORE.mensajeReservaGuardada(cfg, { email: { customer: { sent: true } }, emailWarning: 'owner email failed' }, 'en').includes('We sent the details'),
+    'en inglés: mismo criterio, el warning no bloquea la afirmación cuando customer.sent===true');
+}
+
+console.log('\n12. Condición de carrera del selector de idioma (widget.js) — ejecución real de maybeShowInitialExperience()');
+{
+  // Se extrae el CUERPO REAL de maybeShowInitialExperience() de widget.js
+  // (no se reimplementa) y se ejecuta con estado/DOM simulados, para poder
+  // controlar exactamente CUÁNDO "resuelve" la configuración — algo que un
+  // test estático (solo grep sobre el código) no puede probar.
+  const start = widget.indexOf('function maybeShowInitialExperience()');
+  const end = widget.indexOf("fab.addEventListener('click'");
+  ok(start !== -1 && end !== -1, 'se encontró el cuerpo real de maybeShowInitialExperience() en widget.js');
+  const fnSrc = widget.slice(start, end);
+
+  function makeRun(overrides) {
+    const state = Object.assign({
+      greeted: false, initialExperienceShown: false, openRequested: false, configReady: false,
+      cfg: { language: 'es' },
+    }, overrides.state || {});
+    const calls = { showLanguageChoice: 0, showGreetingNow: 0, showTyping: 0, hideTyping: 0 };
+    const spies = {
+      hasLanguageChoice: overrides.hasLanguageChoice || (() => false),
+      storedLanguage: overrides.storedLanguage || (() => ''),
+    };
+    const fn = new Function('state', 'spies', 'calls', `
+      var greeted = state.greeted;
+      var initialExperienceShown = state.initialExperienceShown;
+      var openRequested = state.openRequested;
+      var configReady = state.configReady;
+      var cfg = state.cfg;
+      function hideTyping() { calls.hideTyping++; }
+      function showTyping() { calls.showTyping++; }
+      function hasLanguageChoice() { return spies.hasLanguageChoice(); }
+      function storedLanguage() { return spies.storedLanguage(); }
+      function showLanguageChoice() { calls.showLanguageChoice++; }
+      function showGreetingNow() { calls.showGreetingNow++; }
+      ${fnSrc}
+      maybeShowInitialExperience();
+      state.greeted = greeted;
+      state.initialExperienceShown = initialExperienceShown;
+    `);
+    return function run() { fn(state, spies, calls); return { state, calls }; };
+  }
+
+  console.log('  A) abre antes de resolver config; luego llega config bilingüe -> selector, no saludo');
+  {
+    const overrides = { hasLanguageChoice: () => true, storedLanguage: () => '' };
+    const run = makeRun(overrides);
+    // 1) el usuario abre (openRequested=true) MIENTRAS la config sigue cargando
+    run().state.openRequested = true;
+    var r1 = run();
+    ok(r1.calls.showLanguageChoice === 0 && r1.calls.showGreetingNow === 0, 'A: mientras carga, no muestra selector ni saludo');
+    ok(r1.calls.showTyping >= 1, 'A: mientras carga, muestra el estado breve de "escribiendo"');
+    ok(r1.state.greeted === false, 'A: greeted NUNCA se marca antes de decidir');
+    // 2) llega la config (bilingüe)
+    r1.state.configReady = true;
+    var r2 = run();
+    ok(r2.calls.showLanguageChoice === 1 && r2.calls.showGreetingNow === 0, 'A: al llegar la config bilingüe, muestra el selector (no el saludo)');
+    ok(r2.state.greeted === true, 'A: greeted queda true recién después de decidir');
+  }
+
+  console.log('  B) abre antes de resolver config; luego llega config monolingüe -> un solo saludo');
+  {
+    const run = makeRun({ hasLanguageChoice: () => false, storedLanguage: () => '' });
+    run().state.openRequested = true;
+    var r1 = run();
+    ok(r1.calls.showGreetingNow === 0 && r1.calls.showLanguageChoice === 0, 'B: mientras carga, tampoco saluda de una');
+    r1.state.configReady = true;
+    var r2 = run();
+    ok(r2.calls.showGreetingNow === 1 && r2.calls.showLanguageChoice === 0, 'B: config monolingüe -> un solo saludo, sin selector');
+  }
+
+  console.log('  C) client-config falla -> fallback seguro, sin quedar bloqueado');
+  {
+    // Config "falla": no hay selector posible (cfg queda con sus valores por
+    // defecto), pero configReady igual se marca true para no bloquear.
+    const run = makeRun({ hasLanguageChoice: () => false, storedLanguage: () => '' });
+    run().state.openRequested = true;
+    run().state.configReady = true;   // el .catch()/d===null del fetch real marca configReady=true igual
+    var r = run();
+    ok(r.calls.showGreetingNow === 1, 'C: con la config caída, igual se muestra el saludo (fallback seguro)');
+    ok(r.state.greeted === true, 'C: el widget no queda esperando para siempre');
+  }
+
+  console.log('  D) varios clics mientras carga y después -> nunca duplica selector ni saludo');
+  {
+    const run = makeRun({ hasLanguageChoice: () => true, storedLanguage: () => '' });
+    var s;
+    for (let i = 0; i < 4; i++) { s = run(); s.state.openRequested = true; }   // varios "clics" mientras carga
+    ok(s.calls.showLanguageChoice === 0 && s.calls.showGreetingNow === 0, 'D: ningún clic durante la carga muestra nada todavía');
+    s.state.configReady = true;
+    for (let i = 0; i < 4; i++) s = run();   // varios "clics" después de que ya está lista
+    ok(s.calls.showLanguageChoice === 1, 'D: el selector se muestra UNA sola vez pese a varios clics');
+    ok(s.calls.showGreetingNow === 0, 'D: nunca aparece también el saludo duplicado');
+  }
+
+  console.log('  E) idioma ya guardado en sessionStorage -> no pregunta, saluda en ese idioma');
+  {
+    const run = makeRun({ hasLanguageChoice: () => true, storedLanguage: () => 'en' });
+    run().state.openRequested = true;
+    run().state.configReady = true;
+    var r = run();
+    ok(r.calls.showLanguageChoice === 0, 'E: no muestra el selector si ya hay idioma guardado');
+    ok(r.calls.showGreetingNow === 1, 'E: saluda directamente');
+    ok(r.state.cfg.language === 'en', 'E: usa el idioma guardado (en), no vuelve a preguntar ni detecta otro');
+  }
 }
 
 console.log('');

@@ -172,6 +172,18 @@
   var busy    = false;
   var greeted = false;
 
+  // ── Sincronización apertura ↔ config (condición de carrera) ─────────────
+  // Antes, el clic decidía selector-vs-saludo con cfg.languages tal cual
+  // estuviera EN ESE INSTANTE: si el usuario abría antes de que resolviera
+  // GET /api/client-config, cfg.languages todavía no existía,
+  // hasLanguageChoice() daba false, se mostraba el saludo en español y
+  // greeted quedaba en true para siempre — cuando la config bilingüe
+  // llegaba después, ya era tarde y el selector nunca aparecía. [Objetivo 1]
+  var configReady = false;            // /api/client-config ya resolvió (con datos o sin ellos)
+  var configFailed = false;           // resolvió sin datos, o la petición falló
+  var openRequested = false;          // el usuario ya pidió abrir el chat
+  var initialExperienceShown = false; // selector o saludo YA se mostró (una sola vez)
+
   // ── Booking flow state ───────────────────────────────────────────────────
   var bookingStep = 0;   // 0 = idle, >0 = en modo reserva (DeepSeek conduce)
   var bookingPending = null;   // campo que DeepSeek está pidiendo ahora
@@ -493,7 +505,8 @@
   fetch(API + '/api/client-config?id=' + encodeURIComponent(clientId))
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (d) {
-      if (!d) return;
+      configReady = true;
+      if (!d) { configFailed = true; maybeShowInitialExperience(); return; }
       Object.assign(cfg, d);
       // Si ya eligió idioma (botón del selector, en esta sesión), se respeta
       // sin volver a detectar nada del texto del cliente. [Objetivo 1, regla 7]
@@ -506,8 +519,19 @@
       if (!position && d.widgetPosition) {
         applyPosition(d.widgetPosition === 'bottom-left' ? 'left' : 'right');
       }
+      // Recién ahora se sabe si corresponde selector de idioma o saludo
+      // directo: si el usuario ya había pedido abrir mientras esto cargaba,
+      // se decide aquí (nunca antes). [Objetivo 1 — condición de carrera]
+      maybeShowInitialExperience();
     })
-    .catch(function (err) { captureWidgetError(err, 'chatbot_loader'); });
+    .catch(function (err) {
+      captureWidgetError(err, 'chatbot_loader');
+      // Config caída: fallback seguro (cfg por defecto, español) — nunca deja
+      // el widget bloqueado esperando algo que no va a llegar.
+      configReady = true;
+      configFailed = true;
+      maybeShowInitialExperience();
+    });
 
   // ── Render helpers ───────────────────────────────────────────────────────
   function addMsg(role, text) {
@@ -1493,14 +1517,31 @@ function extractBooking(text, menu) {
           var showGallery = /\[MOSTRAR_GALERIA\]/.test(d.text);
           var showServicePhotos = /\[MOSTRAR_SERVICIOS_CON_FOTOS\]/.test(d.text);
           var cleanText  = CORE.limpiarMarcadores(d.text);
-          if (cleanText) addMsg('bot', cleanText);
+          var shownTexts = [];
+          if (showMenu && !showServicePhotos) {
+            // Determinista: nunca se confía en que el modelo haya sido
+            // breve. Se muestra SIEMPRE esta frase, construida por código,
+            // antes de las tarjetas — y se descarta la parte del texto del
+            // modelo que solo repite el catálogo (2+ servicios nombrados);
+            // si trae algo más útil, se conserva. [Objetivo 2]
+            var intro = CORE.catalogIntro(cfg, lang);
+            addMsg('bot', intro);
+            shownTexts.push(intro);
+            if (cleanText && !CORE.looksLikeCatalogRestatement(cleanText, cfg.menu)) {
+              addMsg('bot', cleanText);
+              shownTexts.push(cleanText);
+            }
+          } else if (cleanText) {
+            addMsg('bot', cleanText);
+            shownTexts.push(cleanText);
+          }
           // Pedir fotos ya no fuerza el catálogo completo: cada marcador
           // controla solo su propio bloque. [BUG-FOTOS-GALERIA]
           if (showServicePhotos) renderServicesWithPhotos();
           else { if (showMenu) renderMenu(); if (showGallery) renderGallery(); }
           // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
-          // historial va solo el texto limpio, nunca el marcador crudo.
-          msgs.push({ role: 'assistant', content: cleanText });
+          // historial va solo lo que realmente se mostró, nunca el marcador crudo.
+          msgs.push({ role: 'assistant', content: shownTexts.join('\n\n') });
           save();
         } else {
           addMsg('bot', cfg.language === 'en'
@@ -1573,19 +1614,35 @@ function extractBooking(text, menu) {
     CORE.irAlFondo(msgsEl, true);
   }
 
+  // Única puerta de entrada a "qué se muestra primero": se llama tanto al
+  // abrir el widget como al terminar de cargar la config, y decide UNA sola
+  // vez, en cuanto AMBAS condiciones se cumplen (el usuario pidió abrir Y ya
+  // se sabe si hay selector de idioma o no). Mientras la config sigue
+  // cargando, muestra el mismo indicador de "escribiendo" que ya existe
+  // (nunca deja el widget congelado ni marca greeted antes de decidir), y si
+  // hay historial restaurado (msgs.length) no repite saludo ni selector.
+  // [Objetivo 1 — condición de carrera]
+  function maybeShowInitialExperience() {
+    if (greeted || initialExperienceShown) { hideTyping(); return; }
+    if (!openRequested) return;
+    if (!configReady) { showTyping(); return; }
+    hideTyping();
+    initialExperienceShown = true;
+    greeted = true;
+    if (hasLanguageChoice() && !storedLanguage()) showLanguageChoice();
+    else {
+      var saved = storedLanguage();
+      if (saved) cfg.language = saved;
+      showGreetingNow();
+    }
+  }
+
   fab.addEventListener('click', function () {
     setOpen(!open);
 
     if (open) {
-      if (!greeted) {
-        greeted = true;
-        if (hasLanguageChoice() && !storedLanguage()) showLanguageChoice();
-        else {
-          var saved = storedLanguage();
-          if (saved) cfg.language = saved;
-          showGreetingNow();
-        }
-      }
+      openRequested = true;
+      maybeShowInitialExperience();
       snd.disabled = false;
       setTimeout(function () { inp.focus(); }, 200);
     }

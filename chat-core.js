@@ -224,8 +224,13 @@ window.JBChatCore = (function () {
   // nombre es". Camina palabra a palabra: acepta nombres y partículas, y se
   // detiene en la primera palabra que no forma parte de un nombre. Devuelve ''
   // si no queda nada válido.
+  // Separa por espacios Y comas: un mensaje pegado tipo "me llamo mike,mi
+  // correo es x@y.com" (típico al pegar varios datos seguidos, sin espacio
+  // después de la coma) dejaba "mike,x@y.com" como un solo token, que no
+  // pasaba NOMBRE_PALABRA (comas/@ no permitidos) y el nombre completo se
+  // perdía. [Objetivo 5 — auditoría, prueba exacta del nombre]
   function limpiarNombre(cadena) {
-    var toks = String(cadena || '').trim().split(/\s+/);
+    var toks = String(cadena || '').trim().split(/[\s,]+/);
     var out = [];
     for (var i = 0; i < toks.length && out.length < 7; i++) {
       var w = toks[i].replace(/[.,;:!?]+$/, '');
@@ -1051,8 +1056,31 @@ window.JBChatCore = (function () {
     return Array.isArray(cfg && cfg.menu) ? cfg.menu : [];
   }
 
-  function catalogIntro(lang) {
-    return lang === 'en' ? 'Here are our services 😊' : 'Aquí tienes nuestros servicios 😊';
+  // Introducción del catálogo: SIEMPRE construida por código, nunca se
+  // confía en que el modelo haya obedecido la instrucción de ser breve.
+  // widget.js/asistente.html la muestran de forma determinista apenas llega
+  // [MOSTRAR_MENU], antes de renderMenu(). [Objetivo 2]
+  function catalogIntro(cfg, lang) {
+    var en = lang === 'en';
+    if (templateId(cfg) === 'restaurant') return en ? "Here's our menu 😊" : 'Aquí tienes nuestro menú 😊';
+    return en ? 'Here are our services 😊' : 'Aquí tienes nuestros servicios 😊';
+  }
+
+  // ¿El texto libre del modelo repite el catálogo en prosa (2+ servicios
+  // reales nombrados)? Heurística determinista y testeable: si es así, se
+  // descarta esa parte del texto porque las tarjetas ya lo muestran; si no,
+  // se conserva (puede traer una respuesta útil además del catálogo).
+  // [Objetivo 2]
+  function looksLikeCatalogRestatement(text, menu) {
+    if (!text || !Array.isArray(menu) || menu.length < 2) return false;
+    var low = String(text).toLowerCase();
+    var hits = 0;
+    for (var i = 0; i < menu.length; i++) {
+      var nombre = menu[i] && menu[i].nombre;
+      if (nombre && low.indexOf(String(nombre).toLowerCase()) !== -1) hits++;
+      if (hits >= 2) return true;
+    }
+    return false;
   }
 
   function generalPhotosIntro(lang) {
@@ -1081,6 +1109,7 @@ window.JBChatCore = (function () {
     citaLabel: citaLabel,
     catalogItems: catalogItems,
     catalogIntro: catalogIntro,
+    looksLikeCatalogRestatement: looksLikeCatalogRestatement,
     generalPhotosIntro: generalPhotosIntro,
     limpiarNombre: limpiarNombre,
     esSinPeticionEspecial: esSinPeticionEspecial,
