@@ -1083,6 +1083,28 @@ window.JBChatCore = (function () {
     return false;
   }
 
+  // Normaliza para comparar "es la misma frase" sin que rompan diferencias
+  // triviales de mayúsculas, espacios o el emoji final (minúsculas, se
+  // quitan signos/emoji, se colapsan espacios). [auditoría — intro duplicada]
+  function normalizeIntroText(text) {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\s]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // ¿El texto libre del modelo es (esencialmente) la misma frase que ya
+  // vamos a mostrar como introducción determinista? Si el modelo repite
+  // "Aquí tienes nuestros servicios 😊" (o su variante en inglés/restaurante)
+  // con distinta puntuación o mayúsculas, sigue siendo un eco de la intro y
+  // no debe mostrarse una segunda vez. [auditoría — intro duplicada]
+  function isCatalogIntroEcho(text, cfg, lang) {
+    var norm = normalizeIntroText(text);
+    if (!norm) return false;
+    return norm === normalizeIntroText(catalogIntro(cfg, lang));
+  }
+
   function generalPhotosIntro(lang) {
     return lang === 'en' ? 'Here are some photos 😊' : 'Aquí tienes algunas fotos 😊';
   }
@@ -1110,6 +1132,7 @@ window.JBChatCore = (function () {
     catalogItems: catalogItems,
     catalogIntro: catalogIntro,
     looksLikeCatalogRestatement: looksLikeCatalogRestatement,
+    isCatalogIntroEcho: isCatalogIntroEcho,
     generalPhotosIntro: generalPhotosIntro,
     limpiarNombre: limpiarNombre,
     esSinPeticionEspecial: esSinPeticionEspecial,

@@ -1527,7 +1527,10 @@ function extractBooking(text, menu) {
             var intro = CORE.catalogIntro(cfg, lang);
             addMsg('bot', intro);
             shownTexts.push(intro);
-            if (cleanText && !CORE.looksLikeCatalogRestatement(cleanText, cfg.menu)) {
+            // Si el modelo devolvió la misma intro (aunque con distinta
+            // puntuación/mayúsculas) no se repite una segunda vez.
+            // [auditoría — intro duplicada]
+            if (cleanText && !CORE.isCatalogIntroEcho(cleanText, cfg, lang) && !CORE.looksLikeCatalogRestatement(cleanText, cfg.menu)) {
               addMsg('bot', cleanText);
               shownTexts.push(cleanText);
             }

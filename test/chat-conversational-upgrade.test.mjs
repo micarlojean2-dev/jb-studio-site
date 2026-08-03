@@ -193,11 +193,80 @@ console.log('\n9. Catálogo: introducción determinista, no depende del modelo (
   for (const [name, source] of [['widget.js', widget], ['asistente.html', asistente]]) {
     ok(source.includes('CORE.catalogIntro(cfg, lang)'), `${name}: usa la intro determinista de chat-core.js`);
     ok(source.includes('CORE.looksLikeCatalogRestatement(cleanText, cfg.menu)'), `${name}: filtra el texto del modelo si repite el catálogo`);
+    ok(source.includes('CORE.isCatalogIntroEcho(cleanText, cfg, lang)'), `${name}: filtra el texto del modelo si es un eco de la propia intro`);
     ok(/if \(showMenu && !showServicePhotos\) \{/.test(source), `${name}: la intro se muestra SIEMPRE que llegue [MOSTRAR_MENU] (no depende de que el modelo haya escrito algo)`);
-    // No debe borrar texto útil: si el modelo NO repite el catálogo, su
-    // texto se sigue mostrando junto a la intro.
-    ok(/if \(cleanText && !CORE\.looksLikeCatalogRestatement\(cleanText, cfg\.menu\)\) \{\s*addMsg\('bot', cleanText\);/.test(source),
-      `${name}: el texto útil del modelo (que no repite el catálogo) NO se borra`);
+    // No debe borrar texto útil: si el modelo NO repite el catálogo ni hace
+    // eco de la intro, su texto se sigue mostrando junto a la intro.
+    ok(/if \(cleanText && !CORE\.isCatalogIntroEcho\(cleanText, cfg, lang\) && !CORE\.looksLikeCatalogRestatement\(cleanText, cfg\.menu\)\) \{\s*addMsg\('bot', cleanText\);/.test(source),
+      `${name}: el texto útil del modelo (que no repite el catálogo ni hace eco de la intro) NO se borra`);
+  }
+}
+
+console.log('\n13. Catálogo: la intro determinista no se duplica cuando el modelo la repite (auditoría producción)');
+{
+  ok(CORE.isCatalogIntroEcho('Aquí tienes nuestros servicios 😊', { templateId: 'spa' }, 'es') === true,
+    'eco exacto en español: detectado');
+  ok(CORE.isCatalogIntroEcho('¡Aquí tienes nuestros servicios!  😊', { templateId: 'spa' }, 'es') === true,
+    'eco con puntuación/espacios distintos: sigue siendo detectado (equivalencia, no solo igualdad byte a byte)');
+  ok(CORE.isCatalogIntroEcho('Here are our services 😊', { templateId: 'spa' }, 'en') === true,
+    'eco exacto en inglés: detectado');
+  ok(CORE.isCatalogIntroEcho('Aquí tienes nuestro menú 😊', { templateId: 'restaurant' }, 'es') === true,
+    'restaurante: eco de su propia intro de menú (es) detectado');
+  ok(CORE.isCatalogIntroEcho("Here's our menu 😊", { templateId: 'restaurant' }, 'en') === true,
+    'restaurante: eco de su propia intro de menú (en) detectado');
+  ok(CORE.isCatalogIntroEcho('Claro, aquí lo tienes de nuevo 😊', { templateId: 'spa' }, 'es') === false,
+    'texto distinto a la intro: NO se marca como eco (se conserva)');
+  ok(CORE.isCatalogIntroEcho('', { templateId: 'spa' }, 'es') === false, 'texto vacío: no es un eco');
+  // Restaurante no debe confundirse con la intro de spa/barbería ni viceversa.
+  ok(CORE.isCatalogIntroEcho('Aquí tienes nuestros servicios 😊', { templateId: 'restaurant' }, 'es') === false,
+    'restaurante: la frase genérica de spa/barbería NO se confunde con SU intro (comportamiento de restaurante intacto)');
+
+  // Ejecución real del bloque exacto de widget.js/asistente.html que decide
+  // qué se muestra, con CORE real y addMsg simulado — prueba end-to-end de
+  // los 6 escenarios exigidos, no solo la función auxiliar aislada.
+  function extractCatalogBlock(source) {
+    const m = source.match(/var showMenu[\s\S]*?(?=\/\/ Pedir fotos ya no fuerza el catálogo completo:)/);
+    if (!m) throw new Error('no se encontró el bloque de decisión del catálogo');
+    return m[0];
+  }
+
+  function runCatalogScenario(source, cfg, lang, modelText, hasMenuMarker) {
+    const blockSrc = extractCatalogBlock(source);
+    const shown = [];
+    const fn = new Function('d', 'cfg', 'lang', 'CORE', 'addMsg', `
+      ${blockSrc}
+      return shownTexts;
+    `);
+    const dText = (hasMenuMarker ? '[MOSTRAR_MENU]' : '') + modelText;
+    return fn({ text: dText }, cfg, lang, CORE, (role, text) => shown.push(text));
+  }
+
+  const cfgSpa = { templateId: 'spa', menu: [{ nombre: 'Masaje relajante' }, { nombre: 'Facial hidratante' }] };
+  const cfgRestaurant = { templateId: 'restaurant', menu: [{ nombre: 'Tacos al pastor' }, { nombre: 'Guacamole' }] };
+
+  for (const [name, source] of [['widget.js', widget], ['asistente.html', asistente]]) {
+    let shown;
+
+    shown = runCatalogScenario(source, cfgSpa, 'es', 'Aquí tienes nuestros servicios 😊', true);
+    ok(shown.length === 1, `${name}: modelo repite exactamente la intro (es) -> se muestra UNA sola vez (fue: ${JSON.stringify(shown)})`);
+
+    shown = runCatalogScenario(source, cfgSpa, 'en', 'Here are our services 😊', true);
+    ok(shown.length === 1, `${name}: modelo repite la variante inglesa -> se muestra UNA sola vez (fue: ${JSON.stringify(shown)})`);
+
+    shown = runCatalogScenario(source, cfgRestaurant, 'es', 'Aquí tienes nuestro menú 😊', true);
+    ok(shown.length === 1 && shown[0] === 'Aquí tienes nuestro menú 😊',
+      `${name}: restaurante repite su propia intro de menú -> se muestra UNA sola vez (fue: ${JSON.stringify(shown)})`);
+
+    shown = runCatalogScenario(source, cfgSpa, 'es', 'Claro, aquí lo tienes de nuevo 😊', true);
+    ok(shown.length === 2 && shown[1] === 'Claro, aquí lo tienes de nuevo 😊',
+      `${name}: "Claro, aquí lo tienes de nuevo" no es un eco -> se conserva junto a la intro (fue: ${JSON.stringify(shown)})`);
+
+    shown = runCatalogScenario(source, cfgSpa, 'es', 'Recuerda que cerramos los domingos.', true);
+    ok(shown.length === 2 && shown[1] === 'Recuerda que cerramos los domingos.',
+      `${name}: información útil adicional del modelo -> se conserva (fue: ${JSON.stringify(shown)})`);
+
+    shown = runCatalogScenario(source, cfgSpa, 'es', 'Tenemos Masaje relajante y Facial hidratante disponibles hoy', true);
+    ok(shown.length === 1, `${name}: modelo enumera 2+ servicios reales -> se descarta la repetición del catálogo (fue: ${JSON.stringify(shown)})`);
   }
 }
 
