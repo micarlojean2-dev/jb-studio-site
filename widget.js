@@ -143,21 +143,22 @@
   var cfg     = { businessName: 'Chat', color: '#1a4a2e', language: 'es', active: true };
   var LANGUAGE_SESS = SESS + '_language';
 
-  function isSpaBilingual() {
-    return cfg.templateId === 'spa' && Array.isArray(cfg.languages) && cfg.languages.indexOf('es') !== -1 && cfg.languages.indexOf('en') !== -1;
+  // Selector explícito de idioma (Objetivo 1): la única condición real es que
+  // el negocio declare ambos idiomas — nunca depende de templateId==='spa'
+  // (antes sí, y por eso barbería/restaurante bilingües nunca lo ofrecían).
+  // Una vez elegido, NUNCA se vuelve a detectar automáticamente: no hay
+  // ninguna otra ruta en este archivo que reescriba cfg.language a partir de
+  // texto libre. [Objetivo 1, reglas 2 y 7]
+  function hasLanguageChoice() { return CORE.hasLanguageChoice(cfg); }
+  function storedLanguage() {
+    try { var v = sessionStorage.getItem(LANGUAGE_SESS); return (v === 'en' || v === 'es') ? v : ''; } catch (e) { return ''; }
   }
-  function lockLanguage(text) {
-    if (!isSpaBilingual() || !/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(String(text || ''))) return;
-    var locked = '';
-    try { locked = sessionStorage.getItem(LANGUAGE_SESS) || ''; } catch (e) {}
-    if (locked !== 'en' && locked !== 'es') {
-      locked = CORE.detectarIdioma(text);
-      try { sessionStorage.setItem(LANGUAGE_SESS, locked); } catch (e) {}
-    }
-    cfg.language = locked;
+  function setLanguage(lang) {
+    cfg.language = lang === 'en' ? 'en' : 'es';
+    try { sessionStorage.setItem(LANGUAGE_SESS, cfg.language); } catch (e) {}
   }
   function isCancellationRequest(text) {
-    return CANCEL_TRIGGERS.test(text) || (isSpaBilingual() && /\bi want to cancel my appointment\b/i.test(text));
+    return CANCEL_TRIGGERS.test(text) || (hasLanguageChoice() && /\bi want to cancel my appointment\b/i.test(text));
   }
 
   // Feature gating — legacy clients (no cfg.features at all) keep every
@@ -178,6 +179,11 @@
   var resumenBotones = null;   // botones del resumen activo, para no dejar un par duplicado
   var submitting = false;      // evita envíos duplicados de la reserva
   var bookingData = {};
+  // Servicio recordado aunque el cliente aún no esté en modo reserva: se fija
+  // al mencionarlo en chat libre, al pulsar una tarjeta o al elegirlo del
+  // catálogo. Al iniciar una reserva sirve de respaldo si el mensaje que la
+  // dispara no vuelve a nombrar el servicio. [Objetivo 4]
+  var selectedService = '';
 
   // ── Cancel flow state ────────────────────────────────────────────────────
   var cancelStep = 0;    // 0 = idle, 1 = asking contacto, 2 = asking fecha
@@ -211,6 +217,7 @@
       bookingPending = restoredBooking.bookingPending || null;
       bookingReview = !!(restoredBooking.awaitingConfirmation || restoredBooking.bookingReview);
       horaPendiente = restoredBooking.horaPendiente || null;
+      selectedService = restoredBooking.selectedService || '';
     }
   } catch (e) {}
   if (msgs.length) greeted = true;
@@ -218,7 +225,7 @@
   function save() {
     try {
       sessionStorage.setItem(SESS, JSON.stringify(msgs.slice(-60)));
-      if (bookingStep) sessionStorage.setItem(BOOKING_SESS, JSON.stringify({ bookingStep: bookingStep, bookingData: bookingData, bookingPending: bookingPending, bookingReview: bookingReview, awaitingConfirmation: bookingReview, horaPendiente: horaPendiente, language: cfg.language }));
+      if (bookingStep || selectedService) sessionStorage.setItem(BOOKING_SESS, JSON.stringify({ bookingStep: bookingStep, bookingData: bookingData, bookingPending: bookingPending, bookingReview: bookingReview, awaitingConfirmation: bookingReview, horaPendiente: horaPendiente, language: cfg.language, selectedService: selectedService }));
       else sessionStorage.removeItem(BOOKING_SESS);
     } catch (e) {}
   }
@@ -488,10 +495,11 @@
     .then(function (d) {
       if (!d) return;
       Object.assign(cfg, d);
-      if (isSpaBilingual()) {
-        var firstCustomer = msgs.find(function (message) { return message.role === 'user' && /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(String(message.content || '')); });
-        if (firstCustomer) lockLanguage(firstCustomer.content);
-        else { try { var savedLanguage = sessionStorage.getItem(LANGUAGE_SESS); if (savedLanguage === 'en' || savedLanguage === 'es') cfg.language = savedLanguage; } catch (e) {} }
+      // Si ya eligió idioma (botón del selector, en esta sesión), se respeta
+      // sin volver a detectar nada del texto del cliente. [Objetivo 1, regla 7]
+      if (hasLanguageChoice()) {
+        var saved = storedLanguage();
+        if (saved) cfg.language = saved;
       }
       paint();
       // Snippet antiguo sin data-position: respetamos lo guardado del cliente.
@@ -646,39 +654,12 @@
     CORE.irAlFondo(msgsEl, true);
   }
 
+  // "Fotos de servicios" ya NO filtra por imagen: mostraba solo una parte del
+  // catálogo (los que sí tenían foto) y ocultaba el resto, justo lo que el
+  // Objetivo 2 prohíbe. Ahora es el mismo catálogo completo de renderMenu()
+  // — una sola fuente, sin dos listas que puedan divergir. [Objetivo 2]
   function renderServicesWithPhotos() {
-    var items = (Array.isArray(cfg.menu) ? cfg.menu : []).filter(function (item) { return item && item.imagen; });
-    if (!items.length) return;
-    var wrap = document.createElement('div');
-    wrap.className = 'jbw-cards-wrap';
-    var row = document.createElement('div');
-    row.className = 'jbw-cards';
-    items.forEach(function (item, idx) {
-      var card = document.createElement('button');
-      card.className = 'jbw-card';
-      card.type = 'button';
-      card.style.animationDelay = (idx * 55) + 'ms';
-      var image = document.createElement('img');
-      image.className = 'jbw-card-img';
-      image.src = item.imagen;
-      image.alt = item.nombre || 'Servicio';
-      image.loading = 'lazy';
-      card.appendChild(image);
-      var name = document.createElement('div');
-      name.className = 'jbw-card-name';
-      name.textContent = item.nombre || 'Servicio';
-      card.appendChild(name);
-      var meta = [item.precio, item.duracion].filter(Boolean).join(' · ');
-      if (meta) { var price = document.createElement('div'); price.className = 'jbw-card-price'; price.style.color = cfg.color; price.textContent = meta; card.appendChild(price); }
-      if (item.descripcion) { var desc = document.createElement('div'); desc.className = 'jbw-card-desc'; desc.textContent = item.descripcion; card.appendChild(desc); }
-      var cta = document.createElement('div');
-      cta.className = 'jbw-card-cta'; cta.style.color = cfg.color; cta.textContent = CORE.bookServiceLabel(cfg.language); card.appendChild(cta);
-      card.addEventListener('click', function () { if (inp.disabled) return; if (wrap.parentNode) wrap.remove(); send(CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant')); });
-      row.appendChild(card);
-    });
-    wrap.appendChild(row);
-    msgsEl.appendChild(wrap);
-    CORE.irAlFondo(msgsEl, true);
+    renderMenu();
   }
 
   function renderGallery() {
@@ -1000,9 +981,16 @@ function extractBooking(text, menu) {
       addMsg('bot', CORE.specialRequestsQuestion(cfg.templateId, lang));
       return;
     }
+    // Nombre de una sola palabra ya capturado: se pregunta de forma natural
+    // en vez de dejar que el modelo vuelva a pedir "tu nombre" desde cero.
+    // [Objetivo 5]
+    if (bookingPending === 'nombre' && bookingData.nombre && CORE.esNombreUnaPalabra(bookingData.nombre)) {
+      addMsg('bot', CORE.nombreConfirmacionMensaje(bookingData.nombre, lang));
+      return;
+    }
     busy = true; inp.disabled = true; snd.disabled = true;
     showTyping();
-    var body = { clientId: clientId, messages: msgs, booking: { captured: bookingCaptured(), faltan: faltan } };
+    var body = { clientId: clientId, messages: msgs, language: cfg.language, booking: { captured: bookingCaptured(), faltan: faltan } };
     if (previewToken) body.previewToken = previewToken;
     fetch(API + '/api/client-chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -1148,9 +1136,11 @@ function extractBooking(text, menu) {
             estado: d.status || 'confirmada', confirmedAt: Date.now(), language: lang,
           };
           saveReserva();
-          addMsg('bot', d.duplicate ? CORE.reservaTextos(lang).duplicateActive : mensajeReservaGuardada(d, lang));
+          addMsg('bot', d.duplicate ? CORE.reservaTextos(lang).duplicateActive : CORE.mensajeReservaGuardada(cfg, d, lang));
           if (d.duplicate) offerReservationActions(lang);
-          bookingStep = 0; bookingData = {}; bookingPending = null; dupAttempts = 0;
+          // Reserva terminada con éxito: se olvida el servicio recordado, la
+          // próxima reserva empieza limpia. [Objetivo 4]
+          bookingStep = 0; bookingData = {}; bookingPending = null; dupAttempts = 0; selectedService = '';
           save();   // limpia BOOKING_SESS: sin esto una recarga reanudaría una reserva fantasma
           return;
         }
@@ -1172,12 +1162,6 @@ function extractBooking(text, menu) {
       });
   }
 
-  // Mensaje final según lo que confirmó el backend. La cita SIEMPRE nace
-  // pendiente: nunca "confirmada". Cubre los casos A/B/C del requisito.
-  function mensajeReservaGuardada(d, lang) {
-    var en = lang === 'en';
-    return en ? 'Your request has been registered successfully.' : 'Tu solicitud quedó registrada correctamente.';
-  }
 
   // ── Reserva activa: acciones (idénticas a asistente.html vía chat-core) ──
   function offerReservationActions(lang) {
@@ -1277,7 +1261,8 @@ function extractBooking(text, menu) {
     if (busy || !text.trim()) return;
 
     var t    = text.trim();
-    lockLanguage(t);
+    // El idioma ya quedó fijado por el selector inicial (o por client.language
+    // como fallback): nunca se vuelve a detectar del texto libre aquí. [Objetivo 1, regla 7]
     var lang = cfg.language === 'en' ? 'en' : 'es';
 
     // ── Active cancel flow: collect next field ───────────────────────────
@@ -1348,6 +1333,7 @@ function extractBooking(text, menu) {
         bookingStep = 0;
         bookingData = {};
         bookingReview = false;
+        selectedService = '';   // cancelar el flujo olvida el servicio recordado [Objetivo 4]
         if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
         resumenBotones = null;
         addMsg('user', t);
@@ -1370,12 +1356,36 @@ function extractBooking(text, menu) {
       bookingReview = false;
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
+
+      // Nombre de una sola palabra en espera de confirmación: "sí" lo
+      // conserva tal cual; texto de nombre adicional se suma como apellido
+      // (nunca obligatorio). Otros campos que vengan en la misma respuesta
+      // ("no tengo apellido, mi teléfono es...") no se pierden. [Objetivo 5]
+      if (bookingPending === 'nombre' && bookingData.nombre && !bookingData.__nombreConfirmado) {
+        var extraCampos = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
+        delete extraCampos.__horaAmbigua;
+        delete extraCampos.nombre;
+        Object.keys(extraCampos).forEach(function (k) { if (!bookingData[k]) bookingData[k] = extraCampos[k]; });
+        if (CORE.esConfirmacion(t, lang)) {
+          bookingData.__nombreConfirmado = true;
+        } else {
+          var apellido = CORE.limpiarNombre(t);
+          if (apellido) { bookingData.nombre = bookingData.nombre + ' ' + apellido; bookingData.__nombreConfirmado = true; }
+        }
+        save();
+        askBookingTurn(lang);
+        return;
+      }
+
       if (resolverHoraPendiente(t, lang)) return;
 
       var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
        var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
        var traidos = Object.keys(yaVisto);
        traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
+       // Cambio explícito de servicio dentro del flujo: se recuerda para la
+       // próxima reserva también. [Objetivo 4]
+       if (yaVisto.servicio) selectedService = yaVisto.servicio;
        var campoCorreccion = CORE.campoCorreccion(t);
 
       // Preferencias que el cliente dice en su propio mensaje ("prefiero una
@@ -1426,6 +1436,10 @@ function extractBooking(text, menu) {
 
     // ── Booking intent detected: start flow ──────────────────────────────
     var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg) : {};
+    // Se recuerda el servicio aunque este mensaje NO dispare el modo reserva
+    // (chat libre, tarjeta, catálogo): así "quiero reservar" más adelante no
+    // vuelve a preguntar un servicio ya mencionado. [Objetivo 4]
+    if (preExtraido.servicio) selectedService = preExtraido.servicio;
     if (featureOn('reservations') && CORE.pareceReserva(t, preExtraido)) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
@@ -1436,6 +1450,9 @@ function extractBooking(text, menu) {
       var ambigua = preExtraido.__horaAmbigua;
       delete preExtraido.__horaAmbigua;
       Object.keys(preExtraido).forEach(function (k) { bookingData[k] = preExtraido[k]; });
+      // bookingData.servicio || selectedService: si este mensaje no vuelve a
+      // nombrar el servicio, se usa el que ya se había elegido antes. [Objetivo 4]
+      bookingData.servicio = CORE.resolveServicio(bookingData, selectedService);
 
         var notasIni = CORE.extractNotasUsuario(t, cfg);
        if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
@@ -1461,8 +1478,8 @@ function extractBooking(text, menu) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(previewToken
-        ? { clientId: clientId, messages: msgs, previewToken: previewToken }
-        : { clientId: clientId, messages: msgs }),
+        ? { clientId: clientId, messages: msgs, language: cfg.language, previewToken: previewToken }
+        : { clientId: clientId, messages: msgs, language: cfg.language }),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -1517,17 +1534,57 @@ function extractBooking(text, menu) {
 
   document.getElementById('jbw-close').addEventListener('click', function () { setOpen(false); });
 
+  // Muestra el saludo normal (ya con cfg.language resuelto). Separado de la
+  // apertura del panel para poder mostrar antes el selector de idioma
+  // cuando corresponda. [Objetivo 1]
+  function showGreetingNow() {
+    var g = greeting();
+    addMsg('bot', g);
+    msgs.push({ role: 'assistant', content: g });
+    save();
+    renderQuickActions();
+  }
+
+  // Selector inicial de idioma: antes del saludo, cuando el negocio declara
+  // ambos idiomas y todavía no hay uno elegido en esta sesión. Elegido uno,
+  // se guarda (namespace por clientId vía LANGUAGE_SESS) y nunca se vuelve a
+  // preguntar ni a detectar automáticamente. [Objetivo 1]
+  function showLanguageChoice() {
+    var copy = CORE.languageChoiceCopy();
+    addMsg('bot', copy.prompt);
+    var wrap = document.createElement('div');
+    wrap.className = 'jbw-quick';
+    copy.options.forEach(function (o, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'jbw-quick-btn';
+      b.textContent = o.label;
+      b.style.animationDelay = (i * 60) + 'ms';
+      b.addEventListener('click', function () {
+        wrap.remove();
+        addMsg('user', o.label);
+        setLanguage(o.lang);
+        paint();
+        showGreetingNow();
+      });
+      wrap.appendChild(b);
+    });
+    msgsEl.appendChild(wrap);
+    CORE.irAlFondo(msgsEl, true);
+  }
+
   fab.addEventListener('click', function () {
     setOpen(!open);
 
     if (open) {
       if (!greeted) {
         greeted = true;
-        var g = greeting();
-        addMsg('bot', g);
-        msgs.push({ role: 'assistant', content: g });
-        save();
-        renderQuickActions();
+        if (hasLanguageChoice() && !storedLanguage()) showLanguageChoice();
+        else {
+          var saved = storedLanguage();
+          if (saved) cfg.language = saved;
+          showGreetingNow();
+        }
       }
       snd.disabled = false;
       setTimeout(function () { inp.focus(); }, 200);

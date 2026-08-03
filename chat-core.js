@@ -476,6 +476,13 @@ window.JBChatCore = (function () {
     return required.filter(function (field) {
       if (field === 'contacto') return !(data.telefono || data.email || data.contacto);
       if (field === 'specialRequests') return data.specialRequests === undefined;
+      // Nombre de una sola palabra: se pide confirmación natural antes de
+      // darlo por completo, sin perderlo (sigue en data.nombre) ni volver a
+      // preguntarlo desde cero. [Objetivo 5]
+      if (field === 'nombre') {
+        if (!data.nombre) return true;
+        return esNombreUnaPalabra(data.nombre) && data.__nombreConfirmado !== true;
+      }
       return !data[field];
     });
   }
@@ -964,6 +971,94 @@ window.JBChatCore = (function () {
     return CONFIRMACIONES.test(s) || (lang === 'en' && CONFIRMACIONES_EN.test(s));
   }
 
+  // ── Selector inicial de idioma (compartido: nunca depende de templateId) ──
+  // Antes solo se ofrecía cuando templateId==='spa'; cualquier otro negocio
+  // (barbería, restaurante) con cfg.languages: ['es','en'] configurado nunca
+  // mostraba el selector. La única condición real es que el negocio haya
+  // declarado ambos idiomas — el resto (frontend, botones, booking, errores,
+  // /api/client-chat) ya sigue a cfg.language una vez que este queda fijado.
+  function hasLanguageChoice(cfg) {
+    return !!(cfg && Array.isArray(cfg.languages) &&
+      cfg.languages.indexOf('es') !== -1 && cfg.languages.indexOf('en') !== -1);
+  }
+
+  function languageChoiceCopy() {
+    return {
+      prompt: 'Selecciona tu idioma / Choose your language',
+      options: [
+        { lang: 'es', label: '🇪🇸 Español' },
+        { lang: 'en', label: '🇺🇸 English' },
+      ],
+    };
+  }
+
+  // ── Memoria del servicio elegido ─────────────────────────────────────────
+  // Un servicio mencionado en chat libre, elegido en una tarjeta o tomado del
+  // catálogo se recuerda aunque el cliente no esté todavía en modo reserva:
+  // al iniciar una, se usa como respaldo si el mensaje que la dispara no
+  // vuelve a nombrar el servicio. No se lee del historial del modelo — es el
+  // frontend quien decide y persiste este estado.
+  function resolveServicio(bookingData, selectedService) {
+    return (bookingData && bookingData.servicio) || selectedService || '';
+  }
+
+  // ── Nombre de una sola palabra: confirmación natural ────────────────────
+  // "Mike" no se descarta ni se vuelve a preguntar desde cero: se conserva y
+  // se pregunta, en un tono natural, si es el nombre completo.
+  function esNombreUnaPalabra(nombre) {
+    var s = String(nombre || '').trim();
+    return !!s && s.indexOf(' ') === -1;
+  }
+
+  function nombreConfirmacionMensaje(nombre, lang) {
+    var en = lang === 'en';
+    return en
+      ? 'I noted you as ' + nombre + ' 😊 Is that your full name, or would you like to add your last name?'
+      : 'Te anoté como ' + nombre + ' 😊 ¿Ese es tu nombre completo o quieres agregar tu apellido?';
+  }
+
+  // ── Mensaje final de reserva confirmada (única fuente: nunca se redacta
+  // por separado en widget.js/asistente.html) ─────────────────────────────
+  // NUNCA afirma que el correo llegó al cliente salvo que el backend lo
+  // confirme con d.email.customer.sent === true — d.emailWarning no decide
+  // esto por sí solo (puede referirse al aviso del dueño, no al del cliente).
+  function citaLabel(cfg, lang) {
+    var en = lang === 'en';
+    if (templateId(cfg) === 'restaurant') return en ? 'reservation' : 'reserva';
+    return en ? 'appointment' : 'cita';
+  }
+
+  function mensajeReservaGuardada(cfg, d, lang) {
+    var en = lang === 'en';
+    var name = (cfg && cfg.businessName) || (en ? 'this business' : 'este negocio');
+    var label = citaLabel(cfg, lang);
+    var emailSent = !!(d && d.email && d.email.customer && d.email.customer.sent === true);
+    if (emailSent) {
+      return en
+        ? '✅ Your ' + label + ' is confirmed.\n\nWe sent the details to your email.\nPlease also check spam, just in case.\n\nThanks for booking with ' + name + ' 😊'
+        : '✅ Tu ' + label + ' quedó confirmada.\n\nTe enviamos los detalles a tu correo.\nRevisa también spam por si acaso.\n\nGracias por reservar en ' + name + ' 😊';
+    }
+    return en
+      ? "✅ Your " + label + " is confirmed.\n\nWe couldn't send the email.\nPlease save these details or contact the business.\n\nThanks for booking with " + name + '.'
+      : '✅ Tu ' + label + ' quedó confirmada.\n\nNo pudimos enviar el correo.\nGuarda estos datos o contacta al negocio.\n\nGracias por reservar en ' + name + '.';
+  }
+
+  // ── Catálogo: única fuente de qué se renderiza. Nunca filtrar por imagen:
+  // un servicio sin foto se muestra igual, con placeholder — el pintado real
+  // (con o sin <img>) sigue en cada superficie, esto solo fija la lista y el
+  // orden (el mismo de cfg.menu, sin reordenar). ──────────────────────────
+  function catalogItems(cfg) {
+    return Array.isArray(cfg && cfg.menu) ? cfg.menu : [];
+  }
+
+  function catalogIntro(lang) {
+    return lang === 'en' ? 'Here are our services 😊' : 'Aquí tienes nuestros servicios 😊';
+  }
+
+  function generalPhotosIntro(lang) {
+    return lang === 'en' ? 'Here are some photos 😊' : 'Aquí tienes algunas fotos 😊';
+  }
+
   // Deterministic, deliberately conservative detector for the official Spa's
   // first customer message. Ambiguous text retains the Spanish default.
   function detectarIdioma(texto) {
@@ -977,6 +1072,17 @@ window.JBChatCore = (function () {
   return {
     esConfirmacion: esConfirmacion,
     detectarIdioma: detectarIdioma,
+    hasLanguageChoice: hasLanguageChoice,
+    languageChoiceCopy: languageChoiceCopy,
+    resolveServicio: resolveServicio,
+    esNombreUnaPalabra: esNombreUnaPalabra,
+    nombreConfirmacionMensaje: nombreConfirmacionMensaje,
+    mensajeReservaGuardada: mensajeReservaGuardada,
+    citaLabel: citaLabel,
+    catalogItems: catalogItems,
+    catalogIntro: catalogIntro,
+    generalPhotosIntro: generalPhotosIntro,
+    limpiarNombre: limpiarNombre,
     esSinPeticionEspecial: esSinPeticionEspecial,
     BOOKING_STEPS: BOOKING_STEPS,
     CANCEL_STEPS: CANCEL_STEPS,

@@ -102,8 +102,13 @@ function restaurantNormalPreference(client, messages) {
 
 // Idioma fijado por el negocio, no por el modelo ni por quien escribe: se usa
 // tanto en el prompt base como al reforzarlo durante una reserva activa.
-function isSpaBilingual(client) {
-  return client.templateId === 'spa' && Array.isArray(client.languages) && client.languages.includes('es') && client.languages.includes('en');
+//
+// Antes exigía templateId==='spa', así que una barbería o restaurante con
+// ambos idiomas configurados (client.languages) nunca activaba el selector
+// ni la detección — el requisito real es solo que el negocio declare ambos
+// idiomas, sin importar la plantilla. [Objetivo 1, regla 2]
+function hasLanguageChoice(client) {
+  return Array.isArray(client.languages) && client.languages.includes('es') && client.languages.includes('en');
 }
 
 function detectLanguage(text) {
@@ -119,8 +124,14 @@ function isMeaningfulMessage(text) {
   return /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(String(text || ''));
 }
 
-function languageForMessages(client, messages) {
-  if (!isSpaBilingual(client)) return client.language === 'en' ? 'en' : 'es';
+// `requestedLanguage` es lo que el propio cliente eligió en el selector
+// inicial (frontend): si viene, manda siempre — nunca se vuelve a detectar
+// del texto una vez que la persona ya eligió. [Objetivo 1, reglas 4 y 7]
+// Sin ese valor (sesiones viejas de un widget/asistente sin actualizar), cae
+// a la detección previa como respaldo, y client.language como último recurso.
+function languageForMessages(client, messages, requestedLanguage) {
+  if (requestedLanguage === 'en' || requestedLanguage === 'es') return requestedLanguage;
+  if (!hasLanguageChoice(client)) return client.language === 'en' ? 'en' : 'es';
   const firstUser = messages.find(message => message.role === 'user' && isMeaningfulMessage(message.content));
   return detectLanguage(firstUser?.content);
 }
@@ -148,7 +159,7 @@ const SPA_DAY_LABELS = {
 const SPA_DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
 // Etiquetas del bloque dinámico en los dos idiomas del Spa. El chat ya podía
-// responder en inglés (isSpaBilingual/langDirectiveFor), pero este bloque
+// responder en inglés (hasLanguageChoice/langDirectiveFor), pero este bloque
 // seguía imprimiendo "INFORMACIÓN VALIDADA DEL NEGOCIO", "Horarios", los
 // días de la semana, etc. siempre en español — quedaba mezclado con una
 // respuesta en inglés. Ahora sigue a activeLanguage, igual que el resto.
@@ -382,10 +393,15 @@ ${spaEnglish ? spaHeaderEn(day, date, time, tz) : spaHeaderEs(day, date, time, t
   const restaurantRules = client.templateId === 'restaurant'
     ? '\nRESTAURANTE: usa únicamente menú, platos, pedidos, mesa, número de personas y reserva de mesa. Nunca uses cita, servicio, tratamiento, especialista ni agendar una cita. Las preferencias normales de ingredientes o preparación se anotan para la reserva: responde con naturalidad que las registrarás, sin decir que no puedes confirmarlas ni derivar al equipo. Solo ante alergia, intolerancia, celiaquía, reacción o contaminación cruzada indica que no puedes garantizar ausencia de alérgenos o contaminación cruzada y que el restaurante debe confirmarlo directamente.\n'
     : '';
+  // Objetivo 3: nunca una frase larga tipo "te muestro las fotos aquí en el
+  // chat para que veas el espacio y cómo se vive la experiencia...". Fotos
+  // generales del negocio -> una frase breve tipo "Aquí tienes algunas
+  // fotos 😊"; un servicio concreto -> usar SIEMPRE su precio/duración real
+  // (nunca inventados) en una frase breve, no una lista.
   const mediaRules = media && (media.gallery || media.menuItems.length)
     ? (spaEnglish
-      ? `\nCONFIRMED IMAGES: there are general photos (${media.gallery}) and photos of ${media.menuItems.join(', ')}. If they ask about images, photos, or the place, say they are shown in the chat and use [MOSTRAR_GALERIA]. If they also ask about the menu or catalog, also use [MOSTRAR_MENU]. Never say you have no images.\n`
-      : `\nIMÁGENES CONFIRMADAS: hay fotos generales (${media.gallery}) y fotos de ${media.menuItems.join(', ')}. Si preguntan por imágenes, fotos o el lugar, di que se muestran en el chat y usa [MOSTRAR_GALERIA]. Si además preguntan por el menú o catálogo, usa también [MOSTRAR_MENU]. Nunca digas que no tienes imágenes.\n`)
+      ? `\nCONFIRMED IMAGES: there are general photos (${media.gallery}) and photos of ${media.menuItems.join(', ')}. If they ask about images, photos, or the place in general, reply with ONE short sentence like "Here are some photos 😊" and use [MOSTRAR_GALERIA] — never a long explanation about the space or the experience. If they ask about a specific service's photo, answer with its real price/duration from the data above in one short sentence (e.g. "This treatment takes 60 minutes and costs $70. Want to book it?") and use [MOSTRAR_GALERIA]; never invent a price or duration. If they also ask about the menu or catalog, also use [MOSTRAR_MENU]. Never say you have no images.\n`
+      : `\nIMÁGENES CONFIRMADAS: hay fotos generales (${media.gallery}) y fotos de ${media.menuItems.join(', ')}. Si preguntan por imágenes, fotos o el lugar en general, responde con UNA frase breve como "Aquí tienes algunas fotos 😊" y usa [MOSTRAR_GALERIA] — nunca una explicación larga sobre el espacio o la experiencia. Si preguntan por la foto de un servicio concreto, responde con su precio/duración real de los datos de arriba en una frase breve (ej: "Ese tratamiento dura 60 minutos y cuesta $70. ¿Te gustaría reservarlo?") y usa [MOSTRAR_GALERIA]; nunca inventes precio ni duración. Si además preguntan por el menú o catálogo, usa también [MOSTRAR_MENU]. Nunca digas que no tienes imágenes.\n`)
     : '';
   // Datos reales del Spa: van ANTES de basePrompt (no después) a propósito —
   // así la sección "SEGURIDAD Y PRIVACIDAD" de basePrompt queda como lo
@@ -404,7 +420,31 @@ ${spaEnglish ? spaHeaderEn(day, date, time, tz) : spaHeaderEs(day, date, time, t
   // SPA_BASE_PROMPT_EN en su lugar; en español no cambia nada (sigue siendo
   // basePrompt tal cual, por si el negocio lo editó).
   const effectiveBasePrompt = spaEnglish ? SPA_BASE_PROMPT_EN : (basePrompt || '');
-  return header + (spaBusinessInfo ? `${spaBusinessInfo}\n` : '') + effectiveBasePrompt + restaurantRules + mediaRules + (isSpaBilingual(client) ? `\n${langDirective}\n` : '');
+  // Objetivo 2: cuando pidan ver los servicios/menú, la interfaz ya va a
+  // mostrar una tarjeta por cada elemento (con o sin foto). El texto del
+  // modelo debe ser SOLO una frase breve — nunca una lista con nombres,
+  // precios o descripciones repetida antes de las tarjetas.
+  const catalogRules = spaEnglish
+    ? '\nCATALOG: when they ask to see the services, menu, or catalog, reply with ONLY one short sentence like "Here are our services 😊" and use [MOSTRAR_MENU]. Never list the services, prices, or descriptions in your text — the interface already shows a card for every one of them.\n'
+    : '\nCATÁLOGO: cuando pidan ver los servicios, el menú o el catálogo, responde con SOLO una frase breve como "Aquí tienes nuestros servicios 😊" y usa [MOSTRAR_MENU]. Nunca listes los servicios, precios o descripciones en tu texto — la interfaz ya muestra una tarjeta por cada uno.\n';
+
+  // Objetivo 6: capa de tono compartida (breve, reconoce lo ya dicho, sin
+  // preguntas repetidas, humor ligero, pocos emojis, nunca inventa) + un
+  // matiz propio por plantilla. El modelo NUNCA decide con esto qué campo
+  // falta, qué servicio quedó elegido, si el email se envió, si la reserva
+  // se guardó o el precio de algo — todo eso lo sigue controlando el
+  // frontend/backend, esta capa solo afecta el estilo de la redacción.
+  const toneLang = activeLanguage === 'en';
+  const toneShared = toneLang
+    ? 'TONE: keep replies short and natural. Acknowledge what the customer already told you instead of asking it again. A little light humor is welcome; go easy on emojis (one or two per message, not more). Never invent data. Do not sound like a form.'
+    : 'TONO: respuestas breves y naturales. Reconoce lo que el cliente ya dijo, sin volver a preguntarlo. Un poco de humor ligero está bien; usa pocos emojis (uno o dos por mensaje, no más). Nunca inventes datos. No suenes como un formulario.';
+  const toneFlavor = client.templateId === 'restaurant'
+    ? (toneLang ? 'Restaurant flavor: cordial, appetizing, and upbeat.' : 'Matiz de restaurante: cordial, apetitoso y dinámico.')
+    : client.templateId === 'barber'
+      ? (toneLang ? 'Barbershop flavor: friendly, confident, and casual.' : 'Matiz de barbería: cercano, seguro y casual.')
+      : (toneLang ? 'Spa flavor: calm, warm, and relaxing.' : 'Matiz de spa: calmado, cálido y relajante.');
+  const toneRules = `\n${toneShared} ${toneFlavor}\n`;
+  return header + (spaBusinessInfo ? `${spaBusinessInfo}\n` : '') + effectiveBasePrompt + restaurantRules + toneRules + catalogRules + mediaRules + (hasLanguageChoice(client) ? `\n${langDirective}\n` : '');
 }
 
 // ── DeepSeek call (OpenAI-compatible) ──────────────────────────────────────
@@ -501,7 +541,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
 
-  const { clientId, messages, previewToken, booking } = req.body || {};
+  const { clientId, messages, previewToken, booking, language } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -509,6 +549,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'messages must be a non-empty array' });
   if (messages.length > 60)
     return res.status(400).json({ error: 'Too many messages in history' });
+  if (language !== undefined && language !== 'es' && language !== 'en')
+    return res.status(400).json({ error: 'Invalid language' });
 
   for (const m of messages) {
     if (!m || typeof m.content !== 'string' || !['user', 'assistant'].includes(m.role))
@@ -520,7 +562,10 @@ export default async function handler(req, res) {
   try {
     const client = await redis.get(`client:${clientId}`);
     if (!client) return res.status(404).json({ error: 'Client not found' });
-    const activeLanguage = languageForMessages(client, messages);
+    // El idioma que el cliente eligió en el selector inicial manda siempre;
+    // sin él, cae a la detección previa y luego a client.language, igual que
+    // antes de este cambio. [Objetivo 1]
+    const activeLanguage = languageForMessages(client, messages, language);
     const spaEnglish = client.templateId === 'spa' && activeLanguage === 'en';
 
     // Paid clients answer normally. An unpaid one only answers when the

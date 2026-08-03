@@ -74,7 +74,12 @@ for (const [name, source] of [['asistente', assistant], ['widget', widget]]) {
   ok(source.includes('awaitingConfirmation: bookingReview'), `${name} persiste awaitingConfirmation`);
   ok(source.includes('bookingReview = true;   // solo el botón') && source.includes('bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva\n    save();'), `${name} guarda el resumen mostrado`);
   ok(source.includes('if (CORE.esConfirmacion(t, lang)) submitBooking();'), `${name} confirma por texto sin llegar al modelo`);
-  ok(source.includes('function lockLanguage(text)') && source.includes("CORE.detectarIdioma(text)"), `${name} bloquea el idioma Spa por código`);
+  // Objetivo 1: el idioma ya no se "bloquea" detectándolo del primer texto
+  // (lockLanguage/detectarIdioma) — se elige explícitamente con el selector
+  // (botones 🇪🇸/🇺🇸) y nunca se vuelve a detectar después. Verificamos que
+  // el mecanismo NUEVO esté presente y que el viejo ya no exista.
+  ok(source.includes('CORE.hasLanguageChoice(cfg)') && source.includes('showLanguageChoice'), `${name} usa el selector explícito de idioma`);
+  ok(!source.includes('function lockLanguage(') && !source.includes('function isSpaBilingual('), `${name} ya no detecta el idioma automáticamente por código`);
 }
 
 console.log(fallos === 0 ? '\n✅ QA confirmación: todas pasan' : `\n❌ QA confirmación: ${fallos} fallo(s)`);
