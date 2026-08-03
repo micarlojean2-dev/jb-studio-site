@@ -218,7 +218,11 @@ window.JBChatCore = (function () {
 
   // Palabras que cortan el nombre: verbos y conectores que abren otra idea. Sin
   // esto, "me llamo Ana y prefiero silencio" capturaría "Ana y prefiero".
-  var NOMBRE_STOP = /^(?:prefiero|prefieres|necesito|necesita|soy|somos|tengo|tienes|quiero|quieres|quisiera|deseo|pero|porque|para|con|sin|mi|my|me|te|se|es|son|is|gracias|hola|buenas|el|un|una|que|y|además|tambi[eé]n|luego|despu[eé]s|ahora|tel|cel|whatsapp|email|correo|tel[eé]fono|phone)$/i;
+  // Incluye negaciones ("no"/"not"/"don't"...) como categoría de conector,
+  // igual que "pero/sin/porque" ya existentes — no es una lista de marcas ni
+  // de casos puntuales, es la misma familia de palabras-función que el resto
+  // de esta lista. [auditoría — nombre corrupto]
+  var NOMBRE_STOP = /^(?:prefiero|prefieres|necesito|necesita|soy|somos|tengo|tienes|quiero|quieres|quisiera|deseo|pero|porque|para|con|sin|mi|my|me|te|se|es|son|is|gracias|hola|buenas|el|un|una|que|y|además|tambi[eé]n|luego|despu[eé]s|ahora|tel|cel|whatsapp|email|correo|tel[eé]fono|phone|no|not|don't|dont|nope|nah|ninguno|ninguna)$/i;
 
   // Reconstruye el nombre a partir del texto que sigue a "me llamo/soy/mi
   // nombre es". Camina palabra a palabra: acepta nombres y partículas, y se
@@ -401,6 +405,94 @@ window.JBChatCore = (function () {
       duplicateActive: en ? 'You already had this reservation — it is still active. ✅' : 'Ya tenías esta reserva registrada, sigue activa. ✅',
       netFail: en ? "Sorry, that didn't go through 😅" : 'Uy, no se envió 😅',
     };
+  }
+
+  // ── Mensajes de disponibilidad, centralizados por idioma y templateId ──────
+  // El backend (validarReserva) sigue siendo la única autoridad sobre el
+  // resultado: decide `motivo` y, si corresponde, `alternativa`. Esta función
+  // SOLO elige la redacción — nunca cambia qué se acepta o se rechaza, y
+  // nunca inventa una alternativa que el backend no calculó. Reemplaza el
+  // `d.mensaje` crudo (siempre en español) que antes se filtraba en sesiones
+  // en inglés en los 3 puntos donde se consumía (reservar, modificar,
+  // reagendar desde el correo). [auditoría — tono frío / mensajes centralizados]
+  function motivoDisponibilidadMensaje(motivo, cfg, lang, alternativa) {
+    var en = lang === 'en';
+    var tpl = templateId(cfg);
+    var alt = alternativa ? String(alternativa) : '';
+
+    if (motivo === 'sin_disponibilidad') {
+      if (tpl === 'barber') {
+        return en
+          ? (alt ? 'That time is already taken. I have ' + alt + ' available ✂️ Want to move your appointment there?' : 'That time is already taken ✂️ Tell me another time and I will check.')
+          : (alt ? 'Ese horario ya está tomado. Tengo disponible las ' + alt + ' ✂️ ¿Quieres mover tu cita a esa hora?' : 'Ese horario ya está tomado ✂️ Dime otra hora y reviso.');
+      }
+      if (tpl === 'restaurant') {
+        return en
+          ? (alt ? 'That time is already full. The closest option is ' + alt + ' 🍽️' : 'That time is already full 🍽️ Tell me another time and I will check.')
+          : (alt ? 'Ese horario ya está completo. La opción más cercana es a las ' + alt + ' 🍽️' : 'Ese horario ya está completo 🍽️ Dime otro horario y reviso.');
+      }
+      return en
+        ? (alt ? 'That time is already booked, but I have ' + alt + ' available. Does that work? 😊' : 'That time is already booked 😊 Tell me another time and I will check.')
+        : (alt ? 'Ese horario ya está reservado, pero tengo disponibilidad a las ' + alt + '. ¿Te funciona? 😊' : 'Ese horario ya está reservado 😊 Dime otra hora y reviso.');
+    }
+    if (motivo === 'fuera_de_horario') {
+      return en
+        ? (alt ? 'We are closed at that time. The earliest we open is ' + alt + '.' : 'We are closed at that time. Tell me another time and I will check.')
+        : (alt ? 'En ese horario ya estamos cerrados. Abrimos desde las ' + alt + '.' : 'En ese horario ya estamos cerrados. Dime otra hora y reviso.');
+    }
+    if (motivo === 'no_cabe_antes_del_cierre') {
+      return en
+        ? (alt ? 'This takes longer than we have left today. The latest we can start is ' + alt + '.' : 'This takes longer than we have left today. Tell me another time and I will check.')
+        : (alt ? 'Este servicio necesita más tiempo del que queda disponible hoy. Como máximo puedo empezar a las ' + alt + '.' : 'Este servicio necesita más tiempo del que queda disponible hoy. Dime otra hora y reviso.');
+    }
+    if (motivo === 'poca_anticipacion') {
+      return en
+        ? (alt ? 'We need a bit more notice. The earliest we can do is ' + alt + '.' : 'We need a bit more notice to get everything ready. Please choose a later time.')
+        : (alt ? 'Necesitamos un poco más de anticipación. Lo más pronto que podemos es a las ' + alt + '.' : 'Necesitamos un poco más de anticipación para dejar todo listo. Elige una hora más adelante.');
+    }
+    if (motivo === 'dia_cerrado' || motivo === 'feriado') {
+      return en ? 'We are closed that day. Tell me another date and I will check.'
+                : 'Ese día no abrimos. Dime otra fecha y reviso.';
+    }
+    if (motivo === 'barbero_no_disponible') {
+      return en ? 'That barber is not available then. Want to try another time, or whoever is free?'
+                : 'Ese barbero no está disponible en ese horario. ¿Probamos otra hora, o con quien esté libre?';
+    }
+    if (motivo === 'intervalo_invalido') {
+      return en ? "That time doesn't match our booking slots. Tell me another time and I will check."
+                : 'Ese horario no coincide con nuestros intervalos de reserva. Dime otra hora y reviso.';
+    }
+    return en ? "Sorry, that didn't work. Tell me another time and I will check 😊"
+              : 'Uy, eso no funcionó. Dime otra hora y reviso 😊';
+  }
+
+  // ── Contexto reconstruido al entrar desde un enlace de correo autenticado ──
+  // (reagendar/cancelar por actionToken). Reemplaza el saludo genérico de
+  // negocio + pregunta suelta por UN mensaje que nombra lo que ya se sabe de
+  // la reserva real (nombre, servicio, fecha, hora) — nunca se guarda el
+  // historial conversacional completo para lograr esto, solo se reconstruye
+  // en el momento a partir de los datos ya públicos de la reserva.
+  // [auditoría — reagendado sin saludo genérico]
+  function emailActionContextoMensaje(action, cfg, lang, reservation) {
+    var en = lang === 'en';
+    var nombre = (reservation && reservation.nombre) || '';
+    var saludo = (en ? 'Hi' : 'Hola') + (nombre ? ' ' + nombre : '') + ' 😊';
+    var label = citaLabel(cfg, lang);
+    var servicio = reservation && reservation.servicio;
+    var itemFrase = servicio
+      ? (en ? 'your ' + servicio + ' ' + label : 'tu ' + label + ' de ' + servicio)
+      : (en ? 'your ' + label : 'tu ' + label);
+    var cuando = '';
+    if (reservation && (reservation.fecha || reservation.hora)) {
+      var partes = [reservation.fecha, reservation.hora].filter(Boolean).join(en ? ' at ' : ' a las ');
+      cuando = ' ' + (en ? 'It is currently booked for ' + partes + '.' : 'Actualmente está reservada para ' + partes + '.');
+    }
+    if (action === 'cancel') {
+      return saludo + ' ' + (en ? 'I found ' + itemFrase + '.' : 'Encontré ' + itemFrase + '.') + cuando +
+        ' ' + (en ? 'Do you want me to cancel it?' : '¿Confirmas que quieres cancelarla?');
+    }
+    return saludo + ' ' + (en ? "Let's reschedule " + itemFrase + '.' : 'Vamos a reagendar ' + itemFrase + '.') + cuando +
+      ' ' + (en ? 'What new date and time would you prefer?' : '¿Qué nueva fecha y hora prefieres?');
   }
 
   var BOOKING_STEPS = [
@@ -1022,6 +1114,44 @@ window.JBChatCore = (function () {
       : 'Te anoté como ' + nombre + ' 😊 ¿Ese es tu nombre completo o quieres agregar tu apellido?';
   }
 
+  // Decide qué hacer con la respuesta a "¿es tu nombre completo o agregas
+  // apellido?", de forma estructural y compartida por widget.js/asistente.html
+  // (antes duplicada byte a byte en ambos, con el mismo bug en los dos). Nunca
+  // anexa como apellido nada que en realidad sea otro dato: si extractBooking
+  // ya reconoció en ESTE mensaje un correo, teléfono, fecha, hora, servicio,
+  // personas, mesa o barbero, eso significa que el mensaje respondía OTRA
+  // cosa, no un apellido — se conserva el nombre tal cual y se confirma. Una
+  // negación ("no"/"not"/"don't"...) tampoco cuenta, vía NOMBRE_STOP. Una
+  // corrección explícita ("en realidad me llamo Miguel") SÍ reemplaza el
+  // nombre: se detecta reutilizando el propio marcador de nombre de
+  // extractBooking, no una lista de frases nuevas. Nunca deja al cliente sin
+  // respuesta: responder cualquier cosa avanza la conversación una sola vez.
+  // [auditoría — nombre corrupto: "gmail its", "no" pegados como apellido]
+  function confirmarNombreUnaPalabra(bookingData, t, extraCampos, lang) {
+    var next = Object.assign({}, bookingData);
+    var campos = Object.assign({}, extraCampos);
+    var nombreNuevo = campos.nombre;
+    delete campos.__horaAmbigua;
+    delete campos.nombre;
+    Object.keys(campos).forEach(function (k) { if (!next[k]) next[k] = campos[k]; });
+
+    if (nombreNuevo && nombreNuevo.toLowerCase() !== String(next.nombre || '').toLowerCase()) {
+      next.nombre = nombreNuevo;
+      next.__nombreConfirmado = true;
+      return next;
+    }
+
+    if (Object.keys(campos).length > 0 || esConfirmacion(t, lang)) {
+      next.__nombreConfirmado = true;
+      return next;
+    }
+
+    var apellido = limpiarNombre(t);
+    next.__nombreConfirmado = true;
+    if (apellido) next.nombre = next.nombre + ' ' + apellido;
+    return next;
+  }
+
   // ── Mensaje final de reserva confirmada (única fuente: nunca se redacta
   // por separado en widget.js/asistente.html) ─────────────────────────────
   // NUNCA afirma que el correo llegó al cliente salvo que el backend lo
@@ -1127,6 +1257,7 @@ window.JBChatCore = (function () {
     resolveServicio: resolveServicio,
     esNombreUnaPalabra: esNombreUnaPalabra,
     nombreConfirmacionMensaje: nombreConfirmacionMensaje,
+    confirmarNombreUnaPalabra: confirmarNombreUnaPalabra,
     mensajeReservaGuardada: mensajeReservaGuardada,
     citaLabel: citaLabel,
     catalogItems: catalogItems,
@@ -1146,6 +1277,8 @@ window.JBChatCore = (function () {
     duplicateAttemptState: duplicateAttemptState,
     buildModifyUpdate: buildModifyUpdate,
     reservaTextos: reservaTextos,
+    motivoDisponibilidadMensaje: motivoDisponibilidadMensaje,
+    emailActionContextoMensaje: emailActionContextoMensaje,
     CORRECCION_RE: CORRECCION_RE,
     MODIFY_TRIGGERS: MODIFY_TRIGGERS,
     CAMPO_MENCIONADO: CAMPO_MENCIONADO,

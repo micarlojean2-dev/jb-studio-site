@@ -1122,21 +1122,16 @@ function extractBooking(text, menu) {
     fetch(API + '/api/reservations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.assign({ clientId: clientId }, bookingData)),
+      body: JSON.stringify(Object.assign({ clientId: clientId }, bookingData, { language: lang })),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         // El servidor rechazó la cita (cerrado, poca anticipación, sin hueco…).
+        // Redacción centralizada por idioma y plantilla — el backend sigue
+        // siendo la única autoridad sobre motivo/alternativa, esto solo
+        // decide cómo se dice. [auditoría — tono frío / mensajes centralizados]
         if (d && d.ok === false && d.motivo) {
-          var msg = d.motivo === 'fuera_de_horario'
-            ? (lang === 'en' ? 'That time is not available. Please tell me another time and I will check it 😊' : 'Esa hora no está disponible. Dime otra hora y revisaré la disponibilidad 😊')
-            : (lang === 'en' ? 'Sorry 😊 ' : 'Uy 😊 ') + (d.mensaje || '');
-          if (d.alternativa) {
-            msg += (lang === 'en' ? ' The first slot I can offer is ' : ' El horario más cercano que te puedo ofrecer es ') + d.alternativa + '.';
-            msg += (lang === 'en' ? ' Want me to book that one?' : ' ¿Te lo agendo?');
-          } else {
-            msg += (lang === 'en' ? ' Tell me another day or time and I\'ll check 😊' : ' Dime otro día u hora y lo miro 😊');
-          }
+          var msg = CORE.motivoDisponibilidadMensaje(d.motivo, cfg, lang, d.alternativa);
           addMsg('bot', msg);
           msgs = msgs.filter(function (m) { return m.role !== 'assistant' || !/pendiente|confirmad[ao]|equipo.*revis/i.test(m.content); });
           save();
@@ -1269,7 +1264,9 @@ function extractBooking(text, menu) {
           saveReserva();
           addMsg('bot', T.modifyDone + CORE.reservaResumen(activeReservation, lang));
         } else if (d.ok === false && d.motivo) {
-          addMsg('bot', T.modifyUnavail + (d.mensaje || '') + (d.alternativa ? (T.closest + d.alternativa) : ''));
+          // Redacción centralizada por idioma y plantilla, igual que en la
+          // reserva nueva. [auditoría — tono frío / mensajes centralizados]
+          addMsg('bot', CORE.motivoDisponibilidadMensaje(d.motivo, cfg, lang, d.alternativa));
         } else addMsg('bot', T.modifyFail);
       }).catch(function () { hideTyping(); addMsg('bot', T.netFail); })
       .finally(function () { modifyMode = false; busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
@@ -1326,7 +1323,13 @@ function extractBooking(text, menu) {
             ? (lang === 'en' ? '✅ Your reservation has been cancelled.' : '✅ Tu reserva fue cancelada correctamente.')
             : (lang === 'en' ? '✅ Your reservation has been rescheduled.' : '✅ Tu reserva fue reprogramada correctamente.'));
           emailAction = null;
-        } else addMsg('bot', d.mensaje || (lang === 'en' ? 'That time is not available. Please choose another time.' : 'Ese horario no está disponible. Elige otro horario.'));
+        } else addMsg('bot', d.motivo
+          // Redacción centralizada por idioma y plantilla — antes se filtraba
+          // d.mensaje crudo (siempre en español) en este mismo punto, el que
+          // usa exactamente el reagendado desde el enlace del correo.
+          // [auditoría — tono frío / mensajes centralizados]
+          ? CORE.motivoDisponibilidadMensaje(d.motivo, cfg, lang, d.alternativa)
+          : (lang === 'en' ? 'That time is not available. Please choose another time.' : 'Ese horario no está disponible. Elige otro horario.'));
       })
       .catch(function () { addMsg('bot', lang === 'en' ? 'Sorry, please try again.' : 'No pudimos completar la acción. Inténtalo de nuevo.'); })
       .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
@@ -1439,21 +1442,14 @@ function extractBooking(text, menu) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
 
-      // Nombre de una sola palabra en espera de confirmación: "sí" lo
-      // conserva tal cual; texto de nombre adicional se suma como apellido
-      // (nunca obligatorio). Otros campos de la misma respuesta no se
-      // pierden. [Objetivo 5]
+      // Nombre de una sola palabra en espera de confirmación: decidido por
+      // CORE.confirmarNombreUnaPalabra() (compartida con widget.js) para que
+      // nunca se anexe como apellido un correo/teléfono/fecha/hora/servicio/
+      // negación ya reconocido en este mismo mensaje. [auditoría — nombre
+      // corrupto]
       if (bookingPending === 'nombre' && bookingData.nombre && !bookingData.__nombreConfirmado) {
         var extraCampos = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
-        delete extraCampos.__horaAmbigua;
-        delete extraCampos.nombre;
-        Object.keys(extraCampos).forEach(function (k) { if (!bookingData[k]) bookingData[k] = extraCampos[k]; });
-        if (CORE.esConfirmacion(t, lang)) {
-          bookingData.__nombreConfirmado = true;
-        } else {
-          var apellido = CORE.limpiarNombre(t);
-          if (apellido) { bookingData.nombre = bookingData.nombre + ' ' + apellido; bookingData.__nombreConfirmado = true; }
-        }
+        bookingData = CORE.confirmarNombreUnaPalabra(bookingData, t, extraCampos, lang);
         save();
         askBookingTurn(lang);
         return;
@@ -1664,15 +1660,41 @@ function extractBooking(text, menu) {
       if (!msgs.length) {
         // El selector de idioma no interrumpe un enlace de email (cancelar/
         // reprogramar): esa acción sigue con el idioma guardado o el de
-        // client.language, tal como antes. [Objetivo 1]
+        // client.language, tal como antes. [Objetivo 1]. Con emailAction
+        // tampoco se muestra el saludo genérico de negocio — se reemplaza
+        // por el contexto real de la reserva, reconstruido más abajo.
+        // [auditoría — reagendado sin saludo genérico]
         if (!emailAction && hasLanguageChoice() && !storedLanguage()) showLanguageChoice();
-        else showGreetingNow();
+        else if (!emailAction) showGreetingNow();
       }
       // Links from email must work even if this browser has an unrelated
-      // previous chat session saved for the same business.
-      if (emailAction) addMsg('bot', emailAction.action === 'cancel'
-        ? (cfg.language === 'en' ? 'Do you confirm that you want to cancel this reservation?' : '¿Confirmas que quieres cancelar esta reserva?')
-        : (cfg.language === 'en' ? 'Tell me the new date and time you prefer.' : 'Indica la nueva fecha y hora que prefieres.'));
+      // previous chat session saved for the same business. El contexto (y el
+      // idioma real de la reserva) se recupera con un lookup de solo lectura
+      // por actionToken — nunca de un ?lang= manipulable ni de un saludo
+      // genérico. [auditoría — idioma del reagendado / reagendado sin saludo]
+      if (emailAction) {
+        fetch(API + '/api/reservations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId: clientId, action: 'lookup', actionToken: emailAction.token }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var reservation = d && d.found ? d.reservation : null;
+            if (reservation && reservation.language) { cfg.language = reservation.language; paint(); }
+            var lang = cfg.language === 'en' ? 'en' : 'es';
+            addMsg('bot', reservation
+              ? CORE.emailActionContextoMensaje(emailAction.action, cfg, lang, reservation)
+              : CORE.reservaTextos(lang).notFound);
+          })
+          .catch(function () {
+            // Fallback seguro: si el lookup falla, no deja el enlace bloqueado.
+            var lang = cfg.language === 'en' ? 'en' : 'es';
+            addMsg('bot', emailAction.action === 'cancel'
+              ? (lang === 'en' ? 'Do you confirm that you want to cancel this reservation?' : '¿Confirmas que quieres cancelar esta reserva?')
+              : (lang === 'en' ? 'Tell me the new date and time you prefer.' : 'Indica la nueva fecha y hora que prefieres.'));
+          });
+      }
       setTimeout(function () { inp.focus(); }, 200);
     })
     .catch(function () {

@@ -1129,20 +1129,15 @@ function extractBooking(text, menu) {
     fetch(API + '/api/reservations', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(Object.assign({ clientId: clientId }, bookingData)),
+      body:    JSON.stringify(Object.assign({ clientId: clientId }, bookingData, { language: lang })),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.ok === false && d.motivo) {
-          var msg = d.motivo === 'fuera_de_horario'
-            ? (lang === 'en' ? 'That time is not available. Please tell me another time and I will check it 😊' : 'Esa hora no está disponible. Dime otra hora y revisaré la disponibilidad 😊')
-            : (lang === 'en' ? 'Sorry 😊 ' : 'Uy 😊 ') + (d.mensaje || '');
-          if (d.alternativa) {
-            msg += (lang === 'en' ? ' The first slot I can offer is ' : ' El horario más cercano que te puedo ofrecer es ') + d.alternativa + '.';
-            msg += (lang === 'en' ? ' Want me to book that one?' : ' ¿Te lo agendo?');
-          } else {
-            msg += (lang === 'en' ? ' Tell me another day or time and I\'ll check 😊' : ' Dime otro día u hora y lo miro 😊');
-          }
+          // Redacción centralizada por idioma y plantilla — el backend sigue
+          // siendo la única autoridad sobre motivo/alternativa, esto solo
+          // decide cómo se dice. [auditoría — tono frío / mensajes centralizados]
+          var msg = CORE.motivoDisponibilidadMensaje(d.motivo, cfg, lang, d.alternativa);
           addMsg('bot', msg);
           msgs = msgs.filter(function (m) { return m.role !== 'assistant' || !/pendiente|confirmad[ao]|equipo.*revis/i.test(m.content); });
           save();
@@ -1266,7 +1261,9 @@ function extractBooking(text, menu) {
           saveReserva();
           addMsg('bot', T.modifyDone + CORE.reservaResumen(activeReservation, lang));
         } else if (d.ok === false && d.motivo) {
-          addMsg('bot', T.modifyUnavail + (d.mensaje || '') + (d.alternativa ? (T.closest + d.alternativa) : ''));
+          // Redacción centralizada por idioma y plantilla, igual que en la
+          // reserva nueva. [auditoría — tono frío / mensajes centralizados]
+          addMsg('bot', CORE.motivoDisponibilidadMensaje(d.motivo, cfg, lang, d.alternativa));
         } else addMsg('bot', T.modifyFail);
       }).catch(function (err) { captureWidgetError(err, 'reservation_update'); hideTyping(); addMsg('bot', T.netFail); })
       .finally(function () { modifyMode = false; busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
@@ -1381,21 +1378,14 @@ function extractBooking(text, menu) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
 
-      // Nombre de una sola palabra en espera de confirmación: "sí" lo
-      // conserva tal cual; texto de nombre adicional se suma como apellido
-      // (nunca obligatorio). Otros campos que vengan en la misma respuesta
-      // ("no tengo apellido, mi teléfono es...") no se pierden. [Objetivo 5]
+      // Nombre de una sola palabra en espera de confirmación: decidido por
+      // CORE.confirmarNombreUnaPalabra() (compartida con asistente.html) para
+      // que nunca se anexe como apellido un correo/teléfono/fecha/hora/
+      // servicio/negación ya reconocido en este mismo mensaje. [auditoría —
+      // nombre corrupto]
       if (bookingPending === 'nombre' && bookingData.nombre && !bookingData.__nombreConfirmado) {
         var extraCampos = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
-        delete extraCampos.__horaAmbigua;
-        delete extraCampos.nombre;
-        Object.keys(extraCampos).forEach(function (k) { if (!bookingData[k]) bookingData[k] = extraCampos[k]; });
-        if (CORE.esConfirmacion(t, lang)) {
-          bookingData.__nombreConfirmado = true;
-        } else {
-          var apellido = CORE.limpiarNombre(t);
-          if (apellido) { bookingData.nombre = bookingData.nombre + ' ' + apellido; bookingData.__nombreConfirmado = true; }
-        }
+        bookingData = CORE.confirmarNombreUnaPalabra(bookingData, t, extraCampos, lang);
         save();
         askBookingTurn(lang);
         return;

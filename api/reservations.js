@@ -170,6 +170,32 @@ function normalizePersonas(v) {
   return '';
 }
 
+// Idioma real en el que el cliente hizo la reserva, saneado ('es'/'en'
+// únicamente). Sin un valor válido explícito, cae al idioma del negocio —
+// nunca se deja `language` en un valor arbitrario ni se asume inglés por
+// defecto. Misma función para guardar una reserva nueva y para leer/enviar
+// correos de una reserva vieja sin `language` (fallback uniforme).
+function reservationLanguage(client, language) {
+  if (language === 'es' || language === 'en') return language;
+  return (client && client.language === 'en') ? 'en' : 'es';
+}
+
+// Lo único que el lookup por actionToken puede devolver: nunca contacto
+// (email/telefono) ni ningún otro campo interno. `estado` permite al
+// frontend distinguir una reserva cancelada de una activa sin adivinar.
+// [auditoría — reagendado sin saludo genérico]
+function publicReservationView(client, reservation) {
+  return {
+    nombre: reservation.nombre || '',
+    servicio: reservation.servicio || '',
+    fecha: reservation.fecha || '',
+    hora: reservation.hora || '',
+    personas: reservation.personas || reservation.partySize || '',
+    estado: reservation.estado || '',
+    language: reservationLanguage(client, reservation.language),
+  };
+}
+
 function reservationTemplate(client) {
   const id = client && (client.templateId || (client.config && client.config.templateId));
   return id === 'restaurant' || id === 'barber' ? id : '';
@@ -736,17 +762,34 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, idempotencyKey } = req.body || {};
+  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, idempotencyKey, language } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
-  if (action !== 'reschedule' && (!nombre || !fecha || !hora))
+  if (action !== 'reschedule' && action !== 'lookup' && (!nombre || !fecha || !hora))
     return res.status(400).json({ error: 'nombre, fecha and hora are required' });
 
   try {
     const client = await redis.get(`client:${clientId}`);
     if (!client)        return res.status(404).json({ error: 'Client not found' });
     if (!client.active) return res.status(403).json({ error: 'Client inactive' });
+
+    // Read-only lookup by actionToken: reconstructs the context of a
+    // reservation (name, service, date, time, language) for the "you're
+    // continuing a reservation" screen when a customer opens a reschedule/
+    // cancel link, without mutating anything and without trusting a
+    // browser session. Lives in this same handler on purpose (the Hobby
+    // plan's 12-function limit is already maxed out — see the comment on
+    // the `reschedule` branch below). Never returns contact info (email/
+    // phone) or any other client's data. [auditoría — reagendado sin saludo genérico]
+    if (action === 'lookup') {
+      if (!actionToken) return res.status(400).json({ error: 'actionToken is required' });
+      const keys = await redis.keys(`reservations:${clientId}:*`);
+      const items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+      const match = items.find((item) => item && item.actionToken === actionToken);
+      if (!match) return res.status(200).json({ found: false });
+      return res.status(200).json({ found: true, reservation: publicReservationView(client, match) });
+    }
 
     // Reprogramming is intentionally handled by this existing endpoint so the
     // Hobby function limit stays unchanged. The random token from the email is
@@ -765,6 +808,13 @@ export default async function handler(req, res) {
         fechaISO: parseFechaISO(fecha, nowEnZona(client.timezone)),
         hora: String(hora).slice(0, 30),
         horaISO: normalizeHora(hora),
+        // El idioma se hereda SIEMPRE de la reserva ya autenticada por
+        // actionToken, nunca de un parámetro del request — así un
+        // ?lang=en manipulable no puede cambiar en qué idioma llega el
+        // correo/contexto de otra persona. Reservas viejas sin `language`
+        // quedan saneadas aquí mismo (self-heal) con el idioma del negocio.
+        // [auditoría — idioma del reagendado]
+        language: reservationLanguage(client, existing.language),
       };
       // A modification may also change party size, table/dish and requests — all
       // authenticated by the same token. Fields not supplied keep their previous
@@ -838,6 +888,11 @@ export default async function handler(req, res) {
       telefono:       String(phone || '').slice(0, 30),
       email:          String(mail || '').slice(0, 120),
       fecha:          String(fecha).slice(0, 60),
+      // Idioma real en el que el cliente conversó al reservar. Reservas
+      // anteriores a este cambio no lo tienen: cada lectura (correo, lookup
+      // de reagendado) cae a reservationLanguage(client, reservation.language)
+      // — nunca se asume que el campo existe. [auditoría — idioma del reagendado]
+      language:       reservationLanguage(client, language),
       // Copia normalizada para poder consultar por día (recordatorios,
       // resumen, filtros). '' cuando el texto no permite deducirla sin riesgo.
       fechaISO:       parseFechaISO(fecha, nowEnZona(client.timezone)),
@@ -1027,4 +1082,4 @@ export default async function handler(req, res) {
 export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
   configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml,
-  sendReservationEmails, resendMessageId, releaseInactiveIdempotencyLock };
+  sendReservationEmails, resendMessageId, releaseInactiveIdempotencyLock, reservationLanguage, publicReservationView };

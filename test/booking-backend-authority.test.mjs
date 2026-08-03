@@ -29,8 +29,11 @@ for (const [name, source] of [['widget', widget], ['asistente', assistant]]) {
     `${name}: no debe consultar ni mostrar texto del modelo al completar datos`);
   assert.match(source, /Revisando disponibilidad…/,
     `${name}: debe mostrar un estado neutral mientras espera el POST`);
-  assert.match(source, /Esa hora no está disponible\. Dime otra hora y revisaré la disponibilidad/,
-    `${name}: debe pedir otra hora tras fuera_de_horario`);
+  // Auditoría FASE 3: el texto de rechazo ya no está hardcodeado en
+  // widget.js/asistente.html — CORE.motivoDisponibilidadMensaje() decide la
+  // redacción por idioma/plantilla; el backend solo entrega `motivo`.
+  assert.match(source, /CORE\.motivoDisponibilidadMensaje\(d\.motivo, cfg, lang, d\.alternativa\)/,
+    `${name}: usa el mensaje de disponibilidad centralizado (no un texto fijo por motivo)`);
   assert.ok(source.includes('msgs = msgs.filter(function (m)') && source.includes('pendiente|confirmad[ao]|equipo.*revis'),
     `${name}: debe limpiar afirmaciones viejas del historial después del rechazo`);
 }

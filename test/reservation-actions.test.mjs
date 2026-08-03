@@ -20,11 +20,14 @@ assert.match(html, /Cancelar/);
 assert.match(html, /Reagendar/);
 
 const source = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../api/reservations.js', import.meta.url), 'utf8'));
-assert.match(source, /action !== 'reschedule' && \(!nombre \|\| !fecha \|\| !hora\)/,
-  'secure rescheduling bypasses the creation-only name requirement');
+assert.match(source, /action !== 'reschedule' && action !== 'lookup' && \(!nombre \|\| !fecha \|\| !hora\)/,
+  'secure rescheduling and the read-only lookup bypass the creation-only name requirement');
 const assistant = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../asistente.html', import.meta.url), 'utf8'));
-assert.match(assistant, /if \(emailAction\) addMsg\('bot', emailAction\.action === 'cancel'/,
-  'email action prompt is shown independently of a saved chat history');
+// Auditoría FASE 3: el prompt genérico fue reemplazado por un lookup de solo
+// lectura + contexto real de la reserva (nombre/servicio/fecha/hora), que
+// también corre independientemente de si hay historial guardado.
+assert.match(assistant, /if \(emailAction\) \{\s*fetch\(API \+ '\/api\/reservations'/,
+  'email action context lookup runs independently of a saved chat history');
 const panel = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../reservas.html', import.meta.url), 'utf8'));
 assert.match(panel, /var API\s*=\s*window\.location\.origin/,
   'panel fetches APIs from its current Preview or production deployment');

@@ -138,10 +138,51 @@ console.log('\n6. Nombre parcial y confirmación natural');
 
   for (const [name, source] of [['widget.js', widget], ['asistente.html', asistente]]) {
     ok(source.includes("bookingPending === 'nombre' && bookingData.nombre && CORE.esNombreUnaPalabra(bookingData.nombre)"), `${name}: pregunta natural para nombre de una palabra`);
-    ok(source.includes('__nombreConfirmado = true'), `${name}: confirma sin exigir apellido`);
-    ok(source.includes("bookingData.nombre = bookingData.nombre + ' ' + apellido"), `${name}: agregar apellido actualiza el nombre (nunca lo borra)`);
-    ok(source.includes('if (!bookingData[k]) bookingData[k] = extraCampos[k];'), `${name}: otros campos capturados en la misma respuesta no se pierden`);
+    // Decisión centralizada en chat-core.js (antes duplicada byte a byte en
+    // ambos archivos, con el mismo bug en los dos). [auditoría — nombre corrupto]
+    ok(source.includes('bookingData = CORE.confirmarNombreUnaPalabra(bookingData, t, extraCampos, lang);'), `${name}: usa la decisión compartida de chat-core.js`);
+    ok(!/gmail its|CORE\.limpiarNombre\(t\)/.test(source.slice(source.indexOf("bookingPending === 'nombre' && bookingData.nombre && !bookingData.__nombreConfirmado"), source.indexOf("bookingPending === 'nombre' && bookingData.nombre && !bookingData.__nombreConfirmado") + 800)), `${name}: ya no reimplementa el apellido en el propio archivo`);
   }
+}
+
+console.log('\n6b. CORE.confirmarNombreUnaPalabra() — auditoría producción (mismo motor para widget.js y asistente.html)');
+{
+  const menu = [{ nombre: 'Masaje relajante' }];
+  function run(nombre, t, lang) {
+    var extra = CORE.extractBooking(t, menu, null, lang || 'es', {});
+    return CORE.confirmarNombreUnaPalabra({ nombre: nombre }, t, extra, lang || 'es');
+  }
+  // Caso exacto reportado en producción: "Nombre: mike gmail its"
+  let r = run('mike', 'gmail its mike@gmail.com', 'es');
+  ok(r.nombre === 'mike', `nunca anexa "gmail its" como apellido (fue: ${JSON.stringify(r.nombre)})`);
+  ok(r.email === 'mike@gmail.com', 'captura el correo del mismo mensaje');
+  ok(r.__nombreConfirmado === true, 'queda confirmado (no vuelve a preguntar en bucle)');
+
+  r = run('Mike', 'no', 'es');
+  ok(r.nombre === 'Mike', `"no" nunca se anexa como apellido (fue: ${JSON.stringify(r.nombre)})`);
+  r = run('Mike', 'not really', 'en');
+  ok(r.nombre === 'Mike', 'negación en inglés tampoco se anexa');
+
+  r = run('Mike', 'my phone is 3105550142', 'en');
+  ok(r.nombre === 'Mike' && r.telefono, 'teléfono en el mismo mensaje: se captura, el nombre no se toca');
+
+  r = run('Mike', 'test@example.com', 'es');
+  ok(r.nombre === 'Mike' && r.email === 'test@example.com', 'correo suelto: conserva Mike y captura el correo');
+
+  r = run('Mike', 'miércoles a las 5pm', 'es');
+  ok(r.nombre === 'Mike' && r.fecha === 'miércoles' && r.hora, 'fecha/hora en el mismo mensaje: se capturan, el nombre no se toca');
+
+  r = run('Mike', 'Masaje relajante', 'es');
+  ok(r.nombre === 'Mike' && r.servicio === 'Masaje relajante', 'servicio nombrado: se captura, el nombre no se toca');
+
+  r = run('Mike', 'Johnson', 'es');
+  ok(r.nombre === 'Mike Johnson', 'un apellido real (sin marcador) sí se anexa');
+
+  r = run('Mike', 'en realidad me llamo Miguel', 'es');
+  ok(r.nombre === 'Miguel', `corrección explícita reemplaza el nombre (fue: ${JSON.stringify(r.nombre)})`);
+
+  r = run('Mike', 'sí', 'es');
+  ok(r.nombre === 'Mike' && r.__nombreConfirmado === true, 'confirmación explícita conserva el nombre tal cual');
 }
 
 console.log('\n7. Confirmación final según resultado real del email');

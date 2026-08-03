@@ -143,15 +143,17 @@ function langDirectiveFor(client, language) {
     : 'IDIOMA: Responde SIEMPRE en español, en todos los mensajes, sin importar en qué idioma te escriban. Nunca cambies de idioma.';
 }
 
-// ── Datos reales del Spa dentro del prompt ──────────────────────────────────
+// ── Datos reales del negocio dentro del prompt ──────────────────────────────
 // Antes, client.services/businessHours/address se guardaban en Redis para el
-// motor de reservas pero nunca llegaban al texto que lee el modelo — el spa
-// respondía siempre con el mismo texto de plantilla, sin nombre, dirección,
-// precios ni horarios reales. Este bloque cierra esa brecha.
+// motor de reservas pero nunca llegaban al texto que lee el modelo — el
+// chatbot respondía siempre con el mismo texto de plantilla, sin nombre,
+// dirección, precios ni horarios reales. Este bloque cierra esa brecha.
 //
-// Alcance deliberadamente limitado a templateId === 'spa': restaurante,
-// barbería y cualquier cliente legado siguen exactamente igual que antes,
-// dependiendo solo de basePrompt (client.prompt) como fuente de datos.
+// Compartido por cualquier plantilla (antes limitado a templateId==='spa';
+// ver businessInfoBlock más abajo). Los nombres con prefijo "SPA_"/"spa" que
+// quedan aquí son históricos — el contenido siempre fue genérico, no hace
+// falta renombrarlos para que funcionen igual en Barbería y Restaurante.
+// [auditoría — generalización Barbería/Restaurante]
 const SPA_DAY_LABELS = {
   es: { monday: 'Lunes', tuesday: 'Martes', wednesday: 'Miércoles', thursday: 'Jueves', friday: 'Viernes', saturday: 'Sábado', sunday: 'Domingo' },
   en: { monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday', thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday' },
@@ -209,8 +211,8 @@ function spaBusinessHoursText(businessHours, lang) {
   }).join('\n');
 }
 
-function spaBusinessInfoBlock(client, activeLanguage) {
-  if (!client || client.templateId !== 'spa') return '';
+function businessInfoBlock(client, activeLanguage) {
+  if (!client) return '';
   const lang = activeLanguage === 'en' ? 'en' : 'es';
   const L = SPA_INFO_LABELS[lang];
 
@@ -384,11 +386,20 @@ function buildSystemPrompt(basePrompt, client, media, activeLanguage) {
   // idioma del negocio, y una respuesta del modelo en otro idioma rompería la
   // experiencia.
   const langDirective = langDirectiveFor(client, activeLanguage);
+  // `spaEnglish` (spa + inglés) sigue existiendo SOLO para effectiveBasePrompt
+  // más abajo: ahí sí es correcto que se limite al Spa, porque la traducción
+  // fija del prompt base (SPA_BASE_PROMPT_EN) es específica de esa
+  // plantilla. Todo lo demás de aquí abajo (header, imágenes, catálogo) es
+  // contenido genérico que solo depende del IDIOMA activo, nunca de la
+  // plantilla — antes dependía por error de `spaEnglish`, así que Barbería y
+  // Restaurante en inglés recibían estas instrucciones en español mezcladas
+  // con una conversación en inglés. [auditoría — spaHeaderEn / generalización]
   const spaEnglish = client.templateId === 'spa' && activeLanguage === 'en';
+  const isEnglish = activeLanguage === 'en';
 
   const header = `${langDirective}
 
-${spaEnglish ? spaHeaderEn(day, date, time, tz) : spaHeaderEs(day, date, time, tz)}`;
+${isEnglish ? spaHeaderEn(day, date, time, tz) : spaHeaderEs(day, date, time, tz)}`;
 
   const restaurantRules = client.templateId === 'restaurant'
     ? '\nRESTAURANTE: usa únicamente menú, platos, pedidos, mesa, número de personas y reserva de mesa. Nunca uses cita, servicio, tratamiento, especialista ni agendar una cita. Las preferencias normales de ingredientes o preparación se anotan para la reserva: responde con naturalidad que las registrarás, sin decir que no puedes confirmarlas ni derivar al equipo. Solo ante alergia, intolerancia, celiaquía, reacción o contaminación cruzada indica que no puedes garantizar ausencia de alérgenos o contaminación cruzada y que el restaurante debe confirmarlo directamente.\n'
@@ -399,17 +410,22 @@ ${spaEnglish ? spaHeaderEn(day, date, time, tz) : spaHeaderEs(day, date, time, t
   // fotos 😊"; un servicio concreto -> usar SIEMPRE su precio/duración real
   // (nunca inventados) en una frase breve, no una lista.
   const mediaRules = media && (media.gallery || media.menuItems.length)
-    ? (spaEnglish
+    ? (isEnglish
       ? `\nCONFIRMED IMAGES: there are general photos (${media.gallery}) and photos of ${media.menuItems.join(', ')}. If they ask about images, photos, or the place in general, reply with ONE short sentence like "Here are some photos 😊" and use [MOSTRAR_GALERIA] — never a long explanation about the space or the experience. If they ask about a specific service's photo, answer with its real price/duration from the data above in one short sentence (e.g. "This treatment takes 60 minutes and costs $70. Want to book it?") and use [MOSTRAR_GALERIA]; never invent a price or duration. If they also ask about the menu or catalog, also use [MOSTRAR_MENU]. Never say you have no images.\n`
       : `\nIMÁGENES CONFIRMADAS: hay fotos generales (${media.gallery}) y fotos de ${media.menuItems.join(', ')}. Si preguntan por imágenes, fotos o el lugar en general, responde con UNA frase breve como "Aquí tienes algunas fotos 😊" y usa [MOSTRAR_GALERIA] — nunca una explicación larga sobre el espacio o la experiencia. Si preguntan por la foto de un servicio concreto, responde con su precio/duración real de los datos de arriba en una frase breve (ej: "Ese tratamiento dura 60 minutos y cuesta $70. ¿Te gustaría reservarlo?") y usa [MOSTRAR_GALERIA]; nunca inventes precio ni duración. Si además preguntan por el menú o catálogo, usa también [MOSTRAR_MENU]. Nunca digas que no tienes imágenes.\n`)
     : '';
-  // Datos reales del Spa: van ANTES de basePrompt (no después) a propósito —
-  // así la sección "SEGURIDAD Y PRIVACIDAD" de basePrompt queda como lo
-  // último que el modelo lee justo después de los datos, reforzando de
-  // inmediato que son información y no instrucciones. Solo aplica cuando
-  // templateId === 'spa'; para cualquier otro cliente spaBusinessInfoBlock
-  // devuelve '' y el prompt queda idéntico a como estaba antes.
-  const spaBusinessInfo = spaBusinessInfoBlock(client, activeLanguage);
+  // Datos reales del negocio: van ANTES de basePrompt (no después) a
+  // propósito — así la sección "SEGURIDAD Y PRIVACIDAD" de basePrompt queda
+  // como lo último que el modelo lee justo después de los datos, reforzando
+  // de inmediato que son información y no instrucciones. Antes solo aplicaba
+  // a templateId === 'spa'; Barbería y Restaurante (y cualquier plantilla
+  // futura) dependían solo de basePrompt/client.prompt como fuente de datos,
+  // con más riesgo de alucinar horarios/precios/dirección. Los mismos campos
+  // (address, businessHours, services/menu) ya se guardan para cualquier
+  // plantilla desde el creador (lib/creator-schema.js), así que generalizar
+  // esto no inventa ningún campo nuevo. [auditoría — generalización Barbería/
+  // Restaurante]
+  const businessInfo = businessInfoBlock(client, activeLanguage);
 
   // Client prompts provide the business facts, but template safety rules must
   // come last so they cannot be softened by generic sales copy in that prompt.
@@ -424,7 +440,7 @@ ${spaEnglish ? spaHeaderEn(day, date, time, tz) : spaHeaderEs(day, date, time, t
   // mostrar una tarjeta por cada elemento (con o sin foto). El texto del
   // modelo debe ser SOLO una frase breve — nunca una lista con nombres,
   // precios o descripciones repetida antes de las tarjetas.
-  const catalogRules = spaEnglish
+  const catalogRules = isEnglish
     ? '\nCATALOG: when they ask to see the services, menu, or catalog, reply with ONLY one short sentence like "Here are our services 😊" and use [MOSTRAR_MENU]. Never list the services, prices, or descriptions in your text — the interface already shows a card for every one of them.\n'
     : '\nCATÁLOGO: cuando pidan ver los servicios, el menú o el catálogo, responde con SOLO una frase breve como "Aquí tienes nuestros servicios 😊" y usa [MOSTRAR_MENU]. Nunca listes los servicios, precios o descripciones en tu texto — la interfaz ya muestra una tarjeta por cada uno.\n';
 
@@ -444,7 +460,7 @@ ${spaEnglish ? spaHeaderEn(day, date, time, tz) : spaHeaderEs(day, date, time, t
       ? (toneLang ? 'Barbershop flavor: friendly, confident, and casual.' : 'Matiz de barbería: cercano, seguro y casual.')
       : (toneLang ? 'Spa flavor: calm, warm, and relaxing.' : 'Matiz de spa: calmado, cálido y relajante.');
   const toneRules = `\n${toneShared} ${toneFlavor}\n`;
-  return header + (spaBusinessInfo ? `${spaBusinessInfo}\n` : '') + effectiveBasePrompt + restaurantRules + toneRules + catalogRules + mediaRules + (hasLanguageChoice(client) ? `\n${langDirective}\n` : '');
+  return header + (businessInfo ? `${businessInfo}\n` : '') + effectiveBasePrompt + restaurantRules + toneRules + catalogRules + mediaRules + (hasLanguageChoice(client) ? `\n${langDirective}\n` : '');
 }
 
 // ── DeepSeek call (OpenAI-compatible) ──────────────────────────────────────
@@ -566,7 +582,11 @@ export default async function handler(req, res) {
     // sin él, cae a la detección previa y luego a client.language, igual que
     // antes de este cambio. [Objetivo 1]
     const activeLanguage = languageForMessages(client, messages, language);
-    const spaEnglish = client.templateId === 'spa' && activeLanguage === 'en';
+    // Instrucciones genéricas de captura de reserva (no específicas de
+    // ninguna plantilla): dependen solo del idioma activo, nunca de
+    // templateId — ver el mismo criterio en buildSystemPrompt().
+    // [auditoría — spaHeaderEn / generalización]
+    const isEnglish = activeLanguage === 'en';
 
     // Paid clients answer normally. An unpaid one only answers when the
     // caller presents a valid preview token minted for this exact client
@@ -609,7 +629,7 @@ export default async function handler(req, res) {
       const capTxt = Object.keys(cap).length
         ? Object.entries(cap).map(([k, v]) => `- ${k}: ${v}`).join('\n')
         : '(todavía nada)';
-      systemPrompt += spaEnglish ? `
+      systemPrompt += isEnglish ? `
 
 ${langDirectiveFor(client, activeLanguage)}
 
@@ -789,4 +809,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, spaBusinessInfoBlock, buildSystemPrompt, confirmedMedia };
+export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, businessInfoBlock, buildSystemPrompt, confirmedMedia };
