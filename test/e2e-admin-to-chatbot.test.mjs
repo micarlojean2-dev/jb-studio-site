@@ -74,7 +74,10 @@ function $(dom, id) { return dom.window.document.getElementById(id); }
 async function createViaAdmin(type, phoneNumber, svcName) {
   const dom = await buildDom();
   const window = dom.window;
+  // El click ahora es async: espera a loadTemplates() antes de abrir el
+  // modal (fix del bug de producción de cargar plantillas antes del login).
   $(dom, 'open-spa-creator-btn').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 20));
   $(dom, 'spa-type').value = type;
   $(dom, 'spa-type').dispatchEvent(new window.Event('change', { bubbles: true }));
   $(dom, 'spa-name').value = `Negocio E2E ${type}`;

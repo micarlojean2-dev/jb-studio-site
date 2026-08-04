@@ -88,7 +88,11 @@ console.log('Creación real vía admin.html: Spa, Restaurante, Barbería (DOM si
       posted = body;
       return { ok: true, status: 201, json: async () => ({ id: body.id, panelToken: 'p'.repeat(36), assistantUrl: 'https://x', ...body }) };
     });
+    // El click ahora es async: espera a loadTemplates() antes de abrir el
+    // modal (fix del bug de producción: cargar al abrir, no al iniciar la
+    // página sin sesión). Se espera un tick antes de tocar el formulario.
     $(dom, 'open-spa-creator-btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+    await new Promise(r => setTimeout(r, 20));
     await fillAndSubmit(dom, type, { duration: type === 'restaurant' ? '' : '30' });
 
     assert.equal(posted?.templateId, type, `${type}: templateId enviado es el elegido, no otro`);
@@ -112,6 +116,7 @@ console.log('XSS: importar un nombre de servicio con HTML no ejecuta ni queda co
 {
   const dom = await buildDom(() => ({ ok: true, status: 201, json: async () => ({}) }));
   $(dom, 'open-spa-creator-btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 20));
   $(dom, 'spa-import-toggle').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   $(dom, 'spa-import').value = '"><img src=x onerror=alert(1)> | 100 | 30';
   $(dom, 'spa-import-run').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
@@ -124,6 +129,7 @@ console.log('Errores del backend: fields se muestra al usuario, no solo el mensa
 {
   const dom = await buildDom(() => ({ ok: false, status: 400, json: async () => ({ error: 'Missing required template fields', fields: ['capacityPerSlot'] }) }));
   $(dom, 'open-spa-creator-btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 20));
   await fillAndSubmit(dom, 'spa');
   const summary = $(dom, 'spa-creator-summary').textContent;
   assert.ok(summary.includes('capacityPerSlot'), `el resumen de error debe mencionar el campo específico, fue: "${summary}"`);

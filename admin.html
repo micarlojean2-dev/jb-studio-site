@@ -7342,7 +7342,15 @@ LÍMITES ESTRICTOS:
     return !create.disabled;
   }
   function reset() { form.reset(); $('spa-services').innerHTML = ''; $('spa-success').style.display = 'none'; $('spa-import-panel').hidden = true; renderHours(); addService(); onTypeChange(); }
-  $('open-spa-creator-btn').addEventListener('click', () => { reset(); overlay.hidden = false; $('spa-name').focus(); }); $('spa-creator-close').addEventListener('click', () => overlay.hidden = true); overlay.addEventListener('click', event => { if (event.target === overlay) overlay.hidden = true; });
+  // Carga las plantillas aqui (no al cargar la pagina): #open-spa-creator-btn
+  // vive dentro de #admin-panel, oculto hasta que tryLogin() tiene exito, asi
+  // que para cuando este click puede ocurrir el token ya existe. Si TEMPLATES
+  // ya tiene datos (abrir el creador mas de una vez) no se repite la llamada.
+  $('open-spa-creator-btn').addEventListener('click', async () => {
+    if (!TEMPLATES.length) await loadTemplates();
+    reset(); overlay.hidden = false; $('spa-name').focus();
+  });
+  $('spa-creator-close').addEventListener('click', () => overlay.hidden = true); overlay.addEventListener('click', event => { if (event.target === overlay) overlay.hidden = true; });
   $('spa-hours').addEventListener('change', event => { if (event.target.matches('.spa-day-open')) { const row = event.target.closest('.spa-hours-row'); if (event.target.checked && !row.querySelector('.spa-hours-ranges').children.length) addRange(row); syncRangeButton(row); } validate(); }); $('spa-hours').addEventListener('click', event => { if (event.target.matches('.spa-add-range')) addRange(event.target.closest('.spa-hours-row')); if (event.target.matches('.hour-range-remove')) { const row = event.target.closest('.spa-hours-row'); event.target.parentElement.remove(); syncRangeButton(row); } validate(); });
   $('spa-add-service').addEventListener('click', () => { if (!addService()) $('spa-services-error').textContent = `Máximo ${MAX_SERVICES} servicios.`; validate(); }); $('spa-services').addEventListener('click', event => { if (event.target.matches('.hour-range-remove')) { event.target.closest('.spa-service-row').remove(); validate(); } }); $('spa-import-toggle').addEventListener('click', () => $('spa-import-panel').hidden = !$('spa-import-panel').hidden);
   // Antes de importar se quitan las filas vacias existentes (ej. la fila en
@@ -7418,12 +7426,16 @@ LÍMITES ESTRICTOS:
       if (submitError) $('spa-creator-summary').textContent = submitError;
     }
   });
-  // Se llama al final, una vez que renderHours/hours/validate ya existen:
-  // loadTemplates() dispara onTypeChange() -> validate() -> hours() en
-  // cuanto responde el fetch, y hours() necesita que la grilla de dias ya
-  // este en el DOM (si no, document.querySelector(`[data-day]`) da null).
+  // Se llama al final, una vez que hours/validate ya existen: hours()
+  // necesita que la grilla de dias ya este en el DOM (si no,
+  // document.querySelector(`[data-day]`) da null). loadTemplates() YA NO se
+  // llama aqui: este script corre al cargar admin.html, antes de cualquier
+  // login, con window.__jbAdmin.getToken() todavia en '' -> 401 en
+  // /api/clients?action=templates -> el selector quedaba varado en "No se
+  // pudieron cargar las plantillas" para siempre (nada volvia a intentarlo
+  // despues de loguearse). Ahora se carga al abrir el creador (listener de
+  // #open-spa-creator-btn, mas arriba en este mismo IIFE).
   renderHours();
-  loadTemplates();
 })();
 </script>
 </body>
