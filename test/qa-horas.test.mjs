@@ -45,7 +45,8 @@ console.log('E2. Formatos explícitos');
 {
   ok(hora('5 pm').hora === '5:00 PM', '"5 pm" → 5:00 PM');
   ok(hora('a las 17:00').hora === '17:00', '"17:00" → 17:00 (24h sin duda)');
-  ok(hora('a las 9 am').hora === '9:00 AM', '"9 am" → 9:00 AM (aunque esté cerrado: lo dijo la persona)');
+  const r9 = CORE.extractBooking('a las 9 am', MENU, BH, 'es');
+  ok(!r9.hora && r9.__horaFueraDeHorario, '"9 am" fuera de horario se marca para pedir otra hora');
   ok(hora('a las 3:30 pm').hora === '3:30 PM', '"3:30 pm" → conserva minutos');
 }
 

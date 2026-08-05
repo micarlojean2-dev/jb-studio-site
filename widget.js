@@ -913,8 +913,13 @@ function extractBooking(text, menu) {
       addMsg('bot', lang === 'en' ? 'Sorry, morning or afternoon? 😊' : 'Perdona, ¿de la mañana o de la tarde? 😊');
       return true;
     }
-    bookingData.hora = horaPendiente.n + horaPendiente.mm + (esPM ? ' PM' : ' AM');
+    var hora = horaPendiente.n + horaPendiente.mm + (esPM ? ' PM' : ' AM');
     var amb = horaPendiente; horaPendiente = null;
+    if (CORE.horaDentroDeHorario(hora, cfg.businessHours) === false) {
+      rechazarHoraFueraDeHorario(lang);
+      return true;
+    }
+    bookingData.hora = hora;
     addMsg('bot', (lang === 'en' ? 'Got it 😊 ' : 'Perfecto 😊 ') + '⏰ ' + bookingData.hora);
     seguirDesdeLoQueFalta(lang);
     return true;
@@ -967,6 +972,14 @@ function extractBooking(text, menu) {
       if (bookingData[k]) out[k] = bookingData[k];
     });
     return out;
+  }
+
+  function rechazarHoraFueraDeHorario(lang) {
+    delete bookingData.hora;
+    bookingPending = 'hora';
+    bookingReview = false;
+    addMsg('bot', CORE.motivoDisponibilidadMensaje('fuera_de_horario', cfg, lang));
+    save();
   }
 
   function recordFoodRequest(text, lang) {
@@ -1386,6 +1399,7 @@ function extractBooking(text, menu) {
 
       var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
        var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
+       var fueraDeHorario = yaVisto.__horaFueraDeHorario; if (fueraDeHorario) delete yaVisto.__horaFueraDeHorario;
        var traidos = Object.keys(yaVisto);
        traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
        // Cambio explícito de servicio dentro del flujo: se recuerda para la
@@ -1422,6 +1436,7 @@ function extractBooking(text, menu) {
          bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
       }
 
+       if (fueraDeHorario) { rechazarHoraFueraDeHorario(lang); return; }
        if (amb) { preguntarHoraAmbigua(amb, lang); return; }
        save();
        askBookingTurn(lang);
@@ -1451,8 +1466,10 @@ function extractBooking(text, menu) {
       bookingStep = 1;          // en modo reserva; DeepSeek conduce
       bookingData = {};
 
-      var ambigua = preExtraido.__horaAmbigua;
-      delete preExtraido.__horaAmbigua;
+       var ambigua = preExtraido.__horaAmbigua;
+       var fueraDeHorarioInicial = preExtraido.__horaFueraDeHorario;
+       delete preExtraido.__horaAmbigua;
+       delete preExtraido.__horaFueraDeHorario;
       Object.keys(preExtraido).forEach(function (k) { bookingData[k] = preExtraido[k]; });
       // bookingData.servicio || selectedService: si este mensaje no vuelve a
       // nombrar el servicio, se usa el que ya se había elegido antes. [Objetivo 4]
@@ -1462,7 +1479,8 @@ function extractBooking(text, menu) {
        if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
        recordFoodRequest(t, lang);
 
-       if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
+        if (fueraDeHorarioInicial) { rechazarHoraFueraDeHorario(lang); return; }
+        if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
        save();
        askBookingTurn(lang);
       return;

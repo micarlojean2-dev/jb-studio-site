@@ -546,6 +546,36 @@ window.JBChatCore = (function () {
     return { ambigua: n, mm: mm };
   }
 
+  // Filtro temprano de UX: rechaza solo horas que quedan fuera de TODOS los
+  // rangos configurados. Fecha, duración, intervalos y capacidad siguen siendo
+  // responsabilidad exclusiva de validarReserva() en el servidor.
+  function horaDentroDeHorario(hora, businessHours) {
+    if (!businessHours || typeof businessHours !== 'object') return null;
+    var match = String(hora || '').trim().match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+    if (!match) return null;
+    var h = Number(match[1]), m = Number(match[2]), meridiem = String(match[3] || '').toUpperCase();
+    if (m > 59 || h > 23 || (meridiem && (h < 1 || h > 12))) return null;
+    if (meridiem) h = (h % 12) + (meridiem === 'PM' ? 12 : 0);
+    var minutos = h * 60 + m;
+    var verificable = false;
+    for (var dia in businessHours) {
+      var schedule = businessHours[dia];
+      if (!schedule || schedule.enabled === false || schedule.unknown) continue;
+      (schedule.ranges || []).forEach(function (range) {
+        var start = String(range.start || '').match(/^(\d{1,2}):(\d{2})$/);
+        var end = String(range.end || '').match(/^(\d{1,2}):(\d{2})$/);
+        if (!start || !end) return;
+        var from = Number(start[1]) * 60 + Number(start[2]);
+        var to = Number(end[1]) * 60 + Number(end[2]);
+        if (Number(start[1]) > 23 || Number(end[1]) > 23 || Number(start[2]) > 59 || Number(end[2]) > 59 || to <= from) return;
+        verificable = true;
+        if (minutos >= from && minutos <= to) verificable = 'available';
+      });
+      if (verificable === 'available') return true;
+    }
+    return verificable ? false : null;
+  }
+
   function templateId(cfg) {
     var id = cfg && (cfg.templateId || (cfg.config && cfg.config.templateId));
     return id === 'restaurant' || id === 'barber' ? id : '';
@@ -628,7 +658,10 @@ window.JBChatCore = (function () {
         var hh = parseInt(h[1] || h[4], 10);
         if (hh >= 0 && hh <= 23) {
           var r = resolverHora(hh, h[2] || h[5], h[3] || h[6], businessHours);
-          if (r && r.hora) out.hora = r.hora;
+          if (r && r.hora) {
+            if (horaDentroDeHorario(r.hora, businessHours) === false) out.__horaFueraDeHorario = true;
+            else out.hora = r.hora;
+          }
           else if (r && r.ambigua) out.__horaAmbigua = { n: r.ambigua, mm: r.mm };
         }
       }
@@ -1286,6 +1319,7 @@ window.JBChatCore = (function () {
     extractBooking: extractBooking,
     resolverHora: resolverHora,
     horasAbiertas: horasAbiertas,
+    horaDentroDeHorario: horaDentroDeHorario,
     limpiarMarcadores: limpiarMarcadores,
     limpiarMarkdown: limpiarMarkdown,
     extractNotas: extractNotas,
