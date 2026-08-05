@@ -12,6 +12,7 @@ const cancelUrl = __test.reservationActionUrl(reservation, 'cancel');
 const rescheduleUrl = __test.reservationActionUrl(reservation, 'reschedule');
 assert.match(cancelUrl, /action=cancel/);
 assert.match(cancelUrl, /reservation=c0b3021e/);
+assert.match(cancelUrl, /#reservation=/);
 assert.match(rescheduleUrl, /action=reschedule/);
 const html = __test.reservationEmailHtml(client, reservation);
 assert.match(html, /Peticiones especiales/);
@@ -23,6 +24,8 @@ const source = await import('node:fs').then(({ readFileSync }) => readFileSync(n
 assert.match(source, /action !== 'reschedule' && action !== 'lookup' && \(!nombre \|\| !fecha \|\| !hora\)/,
   'secure rescheduling and the read-only lookup bypass the creation-only name requirement');
 const assistant = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../asistente.html', import.meta.url), 'utf8'));
+assert.match(assistant, /window\.location\.hash\.slice\(1\) \|\| window\.location\.search/,
+  'email action tokens are read from URL fragments before query strings');
 // Auditoría FASE 3: el prompt genérico fue reemplazado por un lookup de solo
 // lectura + contexto real de la reserva (nombre/servicio/fecha/hora), que
 // también corre independientemente de si hay historial guardado.

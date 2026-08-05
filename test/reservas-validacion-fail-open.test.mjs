@@ -86,12 +86,12 @@ console.log('5) Formatos incorrectos / texto no reconocible — deben rechazarse
   ok(r.ok === false && r.motivo === 'fecha_invalida', 'de punta a punta: texto de fecha no reconocible termina rechazando la reserva, no creándola');
 }
 
-console.log('6) Configuración incompleta del NEGOCIO sigue sin romper reservas (a propósito, sin cambios)');
+console.log('6) Configuración no verificable del NEGOCIO se rechaza (fail-closed)');
 {
   // Sin businessHours en absoluto.
   const clienteSinHorario = { templateId: 'spa', menu: [{ nombre: 'Masaje', duracion: '60' }] };
   const r1 = validarReserva(clienteSinHorario, '2026-07-21', '10:00', 'Masaje', HOY, []);
-  ok(r1.ok === true, `negocio sin businessHours configurado -> sigue ok:true (fue ok:${r1.ok}, motivo:${r1.motivo})`);
+  ok(r1.ok === false && r1.motivo === 'horario_no_verificable', `negocio sin businessHours configurado -> se rechaza (fue ok:${r1.ok}, motivo:${r1.motivo})`);
 
   // Día marcado unknown (el dueño nunca confirmó ese horario).
   const clienteDiaUnknown = {
@@ -99,7 +99,7 @@ console.log('6) Configuración incompleta del NEGOCIO sigue sin romper reservas 
     businessHours: { monday: { enabled: false, unknown: true, ranges: [] } },
   };
   const r2 = validarReserva(clienteDiaUnknown, '2026-07-20', '10:00', 'Masaje', HOY, []); // 2026-07-20 es lunes
-  ok(r2.ok === true, `día unknown (nunca confirmado) -> sigue ok:true (fue ok:${r2.ok}, motivo:${r2.motivo})`);
+  ok(r2.ok === false && r2.motivo === 'horario_no_verificable', `día unknown (nunca confirmado) -> se rechaza (fue ok:${r2.ok}, motivo:${r2.motivo})`);
 
   // Contraste explícito: la fecha/hora sigue siendo del CLIENTE y sigue
   // rechazándose aunque el negocio tenga configuración incompleta -- las dos
@@ -108,5 +108,5 @@ console.log('6) Configuración incompleta del NEGOCIO sigue sin romper reservas 
   ok(r3.ok === false && r3.motivo === 'fecha_invalida', 'incluso con negocio sin horario, una fecha ilegible del cliente SÍ se rechaza (son cosas distintas)');
 }
 
-console.log(failures ? `\n${failures} fallo(s)` : '\nTodas las pruebas de validación fail-open (FASE 2) pasan');
+console.log(failures ? `\n${failures} fallo(s)` : '\nTodas las pruebas de validación fail-closed pasan');
 if (failures) process.exit(1);

@@ -430,7 +430,7 @@
 
   var emailAction = (function () {
     try {
-      var q = new URLSearchParams(window.location.search);
+      var q = new URLSearchParams(window.location.hash.slice(1) || window.location.search);
       var action = q.get('action'), token = q.get('reservation');
       return token && (action === 'cancel' || action === 'reschedule') ? { action: action, token: token } : null;
     } catch (e) { return null; }
