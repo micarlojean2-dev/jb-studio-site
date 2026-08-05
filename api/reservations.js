@@ -2,12 +2,12 @@ import { Redis }  from '@upstash/redis';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { registrarCambio } from '../lib/changes.js';
 import { Resend } from 'resend';
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import { initSentry, captureApiException, captureApiMessage } from '../lib/sentry.js';
 
 initSentry();
 
-const redis  = new Redis({
+let redis  = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
@@ -110,7 +110,11 @@ function parseFechaISO(raw, now) {
 
   // "2026-07-18" / "18/07" / "18-07-2026"
   const iso = txt.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
-  if (iso) return iso[0];
+  if (iso) {
+    const [y, mon, day] = iso[0].split('-').map(Number);
+    const d = new Date(Date.UTC(y, mon - 1, day));
+    return d.getUTCFullYear() === y && d.getUTCMonth() === mon - 1 && d.getUTCDate() === day ? iso[0] : '';
+  }
   const dmy = txt.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
   if (dmy) {
     const a = +dmy[1], b = +dmy[2];
@@ -141,15 +145,64 @@ function normalizeHora(v) {
   // El sufijo admite el formato tipográfico "a. m." / "p. m." (con espacio y
   // puntos), no solo "am"/"pm"/"a.m.": sin \s* entre las dos letras, "7:00 p. m."
   // no casaba el sufijo y se guardaba como 07:00 en vez de 19:00.
-  const m = t.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?)?/i);
+  const m = t.match(/^(\d{1,2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?)?$/i);
   if (!m) return '';
   let h = parseInt(m[1], 10);
   const min = m[2] || '00';
   const suf = (m[3] || '').toLowerCase().replace(/[.\s]/g, '');
   if (suf === 'pm' && h < 12) h += 12;
   if (suf === 'am' && h === 12) h = 0;
-  if (h < 0 || h > 23) return '';
+  if (h < 0 || h > 23 || +min > 59) return '';
   return String(h).padStart(2, '0') + ':' + min;
+}
+
+function validTimezone(tz) {
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(); return true; }
+  catch (e) { return false; }
+}
+
+function actionTokenHash(token) {
+  return createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function tokenMatches(hash, token) {
+  if (!hash || !token) return false;
+  const expected = Buffer.from(String(hash));
+  const actual = Buffer.from(actionTokenHash(token));
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+function actionTokenExpiry(fechaISO) {
+  const candidate = new Date(`${fechaISO}T23:59:59.999Z`).getTime();
+  const endOfDay = Number.isFinite(candidate) ? candidate : Date.now() + 86400000;
+  return new Date(Math.max(Date.now() + 86400000, endOfDay)).toISOString();
+}
+
+async function releaseOwnedLock(key, owner) {
+  const script = redis.createScript('if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) end return 0');
+  await script.eval([key], [owner]);
+}
+
+async function acquireAvailabilityLocks(clientId, fechas) {
+  const owner = randomUUID();
+  const keys = [`reservation-lock:${clientId}:global`, ...[...new Set(fechas)].sort().map((fecha) => `reservation-lock:${clientId}:${fecha}`)];
+  const acquired = [];
+  try {
+    for (const key of keys) {
+      const got = await redis.set(key, owner, { nx: true, px: 60000 });
+      if (got !== 'OK' && got !== true) throw new Error('availability lock busy');
+      acquired.push(key);
+    }
+    return { owner, keys: acquired };
+  } catch (error) {
+    await Promise.all(acquired.map((key) => releaseOwnedLock(key, owner).catch(() => {})));
+    throw error;
+  }
+}
+
+async function releaseAvailabilityLocks(lock) {
+  if (!lock) return;
+  await Promise.all(lock.keys.map((key) => releaseOwnedLock(key, lock.owner).catch(() => {})));
 }
 
 function normalizePersonas(v) {
@@ -277,6 +330,12 @@ function durationFor(client, servicio) {
     ((client.config || {}).reservationDuration));
 }
 
+function knownService(client, servicio) {
+  const wanted = String(servicio || '').trim().toLowerCase();
+  if (!wanted) return false;
+  return (client.menu || []).some((item) => String(item && item.nombre || '').trim().toLowerCase() === wanted);
+}
+
 function rangosDelDia(businessHours, fechaISO) {
   if (!businessHours || !fechaISO) return null;          // sin datos: no se valida
   const dow = new Date(fechaISO + 'T12:00:00Z').getUTCDay();
@@ -307,22 +366,22 @@ function destinatariosAviso(client) {
   return out.slice(0, 10);
 }
 
-function reservationActionUrl(reservation, action) {
+function reservationActionUrl(reservation, action, actionToken) {
   const params = new URLSearchParams({
-    reservation: reservation.actionToken,
+    reservation: actionToken,
     action,
   });
-  return `${APP_URL}/asistente/${encodeURIComponent(reservation.clientId)}?${params}`;
+  return `${APP_URL}/asistente/${encodeURIComponent(reservation.clientId)}#${params}`;
 }
 
-function reservationEmailHtml(client, reservation, type) {
+function reservationEmailHtml(client, reservation, type, actionToken) {
   const special = reservation.specialRequests || 'Sin peticiones especiales';
   const service = reservation.servicio || (reservation.partySize ? `${reservation.partySize} personas` : 'Reserva');
   const title = type === 'rescheduled' ? 'Reserva reprogramada' : 'Reserva confirmada';
   const intro = type === 'rescheduled' ? 'fue reprogramada.' : 'está confirmada.';
   return shell(`<p style="font-size:15px;line-height:1.55">Tu reserva en <strong>${esc(client.businessName)}</strong> ${intro}</p>
     <p style="font-size:14px;line-height:1.7"><strong>${esc(service)}</strong><br>${esc(reservation.fecha)} · ${esc(reservation.hora)}${reservation.partySize ? `<br>${esc(reservation.partySize)} personas` : ''}<br><strong>Peticiones especiales:</strong> ${esc(special)}</p>
-    <p style="margin:20px 0 0"><a href="${esc(reservationActionUrl(reservation, 'cancel'))}" style="display:inline-block;background:#b23b3b;color:#fff;text-decoration:none;padding:11px 16px;border-radius:8px;font-weight:600">Cancelar</a> <a href="${esc(reservationActionUrl(reservation, 'reschedule'))}" style="display:inline-block;background:${esc(client.color || '#1a4a2e')};color:#fff;text-decoration:none;padding:11px 16px;border-radius:8px;font-weight:600">Reagendar</a></p>`,
+    <p style="margin:20px 0 0"><a href="${esc(reservationActionUrl(reservation, 'cancel', actionToken))}" style="display:inline-block;background:#b23b3b;color:#fff;text-decoration:none;padding:11px 16px;border-radius:8px;font-weight:600">Cancelar</a> <a href="${esc(reservationActionUrl(reservation, 'reschedule', actionToken))}" style="display:inline-block;background:${esc(client.color || '#1a4a2e')};color:#fff;text-decoration:none;padding:11px 16px;border-radius:8px;font-weight:600">Reagendar</a></p>`,
     title, client.color || '#1a4a2e', client.businessName || 'Reserva');
 }
 
@@ -356,7 +415,7 @@ async function sendReservationEmails(client, reservation, type, deps) {
   const subject = type === 'cancelled' ? `${client.businessName} - reserva cancelada`
     : type === 'rescheduled' ? `${client.businessName} - reserva reprogramada`
     : `${client.businessName} - reserva confirmada`;
-  const details = reservationEmailHtml(client, reservation, type);
+  const details = reservationEmailHtml(client, reservation, type, reservation.actionToken);
   const ownerHtml = shell(`<p style="font-size:15px;line-height:1.55"><strong>${esc(reservation.nombre)}</strong>: ${esc(reservation.servicio || `${reservation.partySize || ''} personas`)}</p><p>${esc(reservation.fecha)} · ${esc(reservation.hora)}</p><p><strong>Peticiones especiales:</strong> ${esc(reservation.specialRequests || 'Sin peticiones especiales')}</p>`, subject, client.color || '#1a4a2e', client.businessName || 'Reserva');
 
   if (reservation.email) {
@@ -421,6 +480,22 @@ function contarSolapes(reservas, fechaISO, iniMin, durMin, client) {
 }
 
 function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fechaISO || ''))) {
+    return { ok: false, motivo: 'fecha_invalida', mensaje: 'La fecha indicada no es válida.' };
+  }
+  const [year, month, day] = fechaISO.split('-').map(Number);
+  const parsedDate = new Date(Date.UTC(year, month - 1, day));
+  if (parsedDate.getUTCFullYear() !== year || parsedDate.getUTCMonth() !== month - 1 || parsedDate.getUTCDate() !== day) {
+    return { ok: false, motivo: 'fecha_invalida', mensaje: 'La fecha indicada no es válida.' };
+  }
+  if (!validTimezone(client.timezone)) {
+    return { ok: false, motivo: 'zona_horaria_invalida', mensaje: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' };
+  }
+  const pedido = minutosDe(horaISO);
+  if (pedido === null) {
+    return { ok: false, motivo: 'hora_invalida', mensaje: 'La hora indicada no es válida.' };
+  }
+
   // Feriados: fechas sueltas en las que el negocio no abre aunque sea un día
   // laborable de su horario semanal.
   const feriados = Array.isArray(client.holidays) ? client.holidays : [];
@@ -447,17 +522,19 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
   const bh = client.businessHours;
   let rangos = rangosDelDia(bh, fechaISO);
   if (rangos === null && staffRanges !== null) rangos = staffRanges;
-  if (rangos === null) return { ok: true };              // sin horario fiable: no bloqueamos
+  if (rangos === null) {
+    return { ok: false, motivo: 'horario_no_verificable', mensaje: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' };
+  }
 
   if (!rangos.length) {
     return { ok: false, motivo: 'dia_cerrado', mensaje: 'Ese día el negocio está cerrado.' };
   }
 
-  const pedido = minutosDe(horaISO);
-  if (pedido === null) return { ok: true };              // hora no normalizable: no bloqueamos
-
   // Duración: si el servicio no cabe antes del cierre, no vale.
   const dur = durationFor(client, servicio);
+  if (!Number.isFinite(dur) || dur <= 0) {
+    return { ok: false, motivo: 'duracion_no_verificable', mensaje: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' };
+  }
 
   let dentro = null;
   for (const [a, b] of rangos) {
@@ -524,7 +601,10 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
   // mesas). Sin este control, dos clientes reservan el mismo hueco y ambos
   // aparecen en la puerta.
   const cap = Number.isFinite(client.capacityPerSlot) ? client.capacityPerSlot : null;
-  if (cap !== null && cap >= 1 && Array.isArray(reservas)) {
+  if (cap === null || cap < 1 || !Array.isArray(reservas)) {
+    return { ok: false, motivo: 'capacidad_no_verificable', mensaje: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' };
+  }
+  if (cap >= 1) {
     const ocupadas = contarSolapes(reservas, fechaISO, pedido, dur, client);
     if (ocupadas >= cap) {
       return {
@@ -819,9 +899,24 @@ export default async function handler(req, res) {
     // the authority; no browser session or contact information is trusted.
     if (action === 'reschedule') {
       if (!actionToken || !fecha || !hora) return res.status(400).json({ error: 'actionToken, fecha and hora are required' });
-      const keys = await redis.keys(`reservations:${clientId}:*`);
-      const items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
-      const index = items.findIndex((item) => item && item.actionToken === actionToken);
+      let rescheduleLock;
+      try {
+        rescheduleLock = await acquireAvailabilityLocks(clientId, []);
+      } catch (err) {
+        captureApiException(err, { clientId, feature: 'redis', route: '/api/reservations' });
+        return res.status(503).json({ error: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' });
+      }
+      try {
+      let keys, items;
+      try {
+        keys = await redis.keys(`reservations:${clientId}:*`);
+        items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+      } catch (err) {
+        captureApiException(err, { clientId, feature: 'redis', route: '/api/reservations' });
+        return res.status(503).json({ error: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' });
+      }
+      const index = items.findIndex((item) => item && !item.actionTokenUsedAt && item.actionTokenExpiresAt &&
+        Date.parse(item.actionTokenExpiresAt) > Date.now() && tokenMatches(item.actionTokenHash, actionToken));
       if (index < 0) return res.status(404).json({ error: 'Reservation not found' });
       const existing = items[index];
       if (!activa(existing)) return res.status(409).json({ error: 'Reservation is not active' });
@@ -841,7 +936,10 @@ export default async function handler(req, res) {
         candidate.personas = modPartySize;
         if (modTemplate === 'restaurant') candidate.partySize = modPartySize;
       }
-      if (servicio) { candidate.servicio = String(servicio).slice(0, 200); candidate.duracion = durationFor(client, servicio); }
+      if (servicio) {
+        if (!knownService(client, servicio)) return res.status(400).json({ error: 'Unknown service' });
+        candidate.servicio = String(servicio).slice(0, 200); candidate.duracion = durationFor(client, servicio);
+      }
       if (tablePreference !== undefined && modTemplate === 'restaurant') candidate.tablePreference = String(tablePreference || '').slice(0, 200);
       if (specialRequests !== undefined && !/^(no|ninguna|ninguno|nope)$/i.test(String(specialRequests || '').trim())) {
         candidate.specialRequests = String(specialRequests || '').slice(0, 800);
@@ -864,7 +962,18 @@ export default async function handler(req, res) {
       candidate.fechaAnterior = existing.fecha;
       candidate.horaAnterior = existing.hora;
       candidate.fechaReprogramacion = new Date().toISOString();
-      await redis.set(keys[index], candidate);
+      const nextActionToken = randomUUID();
+      candidate.actionToken = nextActionToken;
+      candidate.actionTokenHash = actionTokenHash(nextActionToken);
+      candidate.actionTokenExpiresAt = actionTokenExpiry(candidate.fechaISO);
+      candidate.actionTokenUsedAt = null;
+      const { actionToken: rawActionToken, ...storedCandidate } = candidate;
+      try {
+        await redis.set(keys[index], storedCandidate);
+      } catch (err) {
+        captureApiException(err, { clientId, feature: 'redis', route: '/api/reservations' });
+        return res.status(503).json({ error: 'No pudimos guardar la reserva. Intenta nuevamente.' });
+      }
       const aviso = await registrarCambio(clientId, {
         type: 'rescheduled', reservationId: keys[index], nombre: candidate.nombre,
         servicio: candidate.servicio, fecha: candidate.fecha, hora: candidate.hora,
@@ -872,6 +981,9 @@ export default async function handler(req, res) {
       });
       const emailResult = await sendReservationEmails(client, candidate, 'rescheduled');
       return res.status(200).json({ ok: true, reservation: candidate, aviso: { encolado: aviso.ok }, email: emailResult, emailWarning: emailResult.warning || null });
+      } finally {
+        await releaseAvailabilityLocks(rescheduleLock);
+      }
     }
 
     const template = reservationTemplate(client);
@@ -888,10 +1000,14 @@ export default async function handler(req, res) {
     if (template === 'barber' && !servicio) {
       return res.status(400).json({ error: 'servicio is required for barber reservations' });
     }
+    if (servicio && !knownService(client, servicio)) {
+      return res.status(400).json({ error: 'Unknown service' });
+    }
 
     const ts  = Date.now();
     const key = `reservations:${clientId}:${ts}`;
 
+    const rawActionToken = randomUUID();
     const reservation = {
       clientId,
       nombre:         String(nombre).slice(0, 120),
@@ -924,7 +1040,12 @@ export default async function handler(req, res) {
         spice: String(foodPreferences.spice || '').slice(0, 40),
         notes: Array.isArray(foodPreferences.notes) ? foodPreferences.notes.slice(0, 20).map(x => String(x).slice(0, 80)) : [],
       } : undefined,
-      actionToken:    randomUUID(),
+      // The raw capability is returned only to the requester/email. Redis stores
+      // a hash, expiry and one-use state so a leaked record cannot authorize actions.
+      actionToken:    rawActionToken,
+      actionTokenHash: actionTokenHash(rawActionToken),
+      actionTokenExpiresAt: actionTokenExpiry(parseFechaISO(fecha, nowEnZona(client.timezone))),
+      actionTokenUsedAt: null,
       estado:         'confirmada',
       fechaConfirmacion: new Date(ts).toISOString(),
       fechaSolicitud: new Date(ts).toISOString(),
@@ -958,7 +1079,7 @@ export default async function handler(req, res) {
     } catch (e) {
       console.error('[api/reservations] idempotency lock error:', e.message);
       captureApiException(e, { clientId, feature: 'redis', route: '/api/reservations' });
-      lockAcquired = true;   // Redis lock unavailable: fall through, do not block a real booking
+      return res.status(503).json({ error: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' });
     }
     if (!lockAcquired) {
       const existingKey = await waitForReservationKey(lockKey);
@@ -977,11 +1098,20 @@ export default async function handler(req, res) {
         mensaje: 'Esta reserva ya se está procesando.' });
     }
 
+    let availabilityLock;
+    try {
+      availabilityLock = await acquireAvailabilityLocks(clientId, [reservation.fechaISO]);
+    } catch (e) {
+      await redis.del(lockKey).catch(() => {});
+      captureApiException(e, { clientId, feature: 'redis', route: '/api/reservations' });
+      return res.status(503).json({ error: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' });
+    }
+
+    try {
     // Validación autoritativa: el navegador ya avisa, pero esta es la que
     // decide. Una cita fuera de horario no se acepta ni por curl.
-    // Las reservas vivas hacen falta para capacidad, duplicados y la agenda de
-    // un barbero elegido. Si Redis falla, conservamos el comportamiento previo:
-    // no rechazamos una reserva real por una consulta auxiliar caída.
+      // Las reservas vivas hacen falta para capacidad, duplicados y la agenda de
+      // un barbero elegido. Sin esa lectura no se puede confirmar una reserva.
     let existentes = null;
     let existentesConKey = null;
     try {
@@ -992,7 +1122,8 @@ export default async function handler(req, res) {
     } catch (e) {
       console.error('[api/reservations] disponibilidad, no se pudo leer:', e.message);
       captureApiException(e, { clientId, feature: 'redis', route: '/api/reservations' });
-      existentes = null;
+      await redis.del(lockKey).catch(() => {});
+      return res.status(503).json({ error: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' });
     }
 
     // Prior active reservation with the same day+time+contact: a real duplicate
@@ -1013,13 +1144,7 @@ export default async function handler(req, res) {
     const clientForValidation = { ...client, __reservationBarberPreference: reservation.barberPreference };
     const v = validarReserva(clientForValidation, reservation.fechaISO, reservation.horaISO, reservation.servicio, undefined, existentes);
     if (!v.ok) {
-      // Se guarda igualmente como rechazada, con el motivo: al dueño le
-      // interesa ver la demanda que se le escapa, no perderla en silencio.
-      reservation.estado = 'rechazada';
-      reservation.motivoRechazo = v.motivo;
-      await redis.set(key, reservation);
       await redis.del(lockKey).catch(() => {});   // let a corrected retry proceed
-      console.log(`[api/reservations] Rechazada ${key}: ${v.motivo}`);
       return res.status(200).json({
         ok: false, reservationCreated: false, motivo: v.motivo, mensaje: v.mensaje, alternativa: v.alternativa || null,
       });
@@ -1027,7 +1152,14 @@ export default async function handler(req, res) {
 
     // ── Guardar en Redis (operación primaria: la reserva no se pierde
     //    aunque falle un correo) ──────────────────────────────────────────
-    await redis.set(key, reservation);
+    const { actionToken, ...storedReservation } = reservation;
+    try {
+      await redis.set(key, storedReservation);
+    } catch (e) {
+      await redis.del(lockKey).catch(() => {});
+      captureApiException(e, { clientId, feature: 'redis', route: '/api/reservations' });
+      return res.status(503).json({ error: 'No pudimos guardar la reserva. Intenta nuevamente.' });
+    }
     // Record the created key in the lock so a later retry with the same key (or
     // a concurrent loser) resolves to THIS reservation instead of a new one.
     await redis.set(lockKey, key, { ex: 24 * 60 * 60 }).catch(() => {});
@@ -1066,6 +1198,9 @@ export default async function handler(req, res) {
       email: emailResult,
       emailWarning: emailResult.warning || null,
     });
+    } finally {
+      await releaseAvailabilityLocks(availabilityLock);
+    }
 
   } catch (err) {
     console.error('[api/reservations]', err.message);
@@ -1081,4 +1216,5 @@ export default async function handler(req, res) {
 export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
   configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml,
-  sendReservationEmails, resendMessageId };
+  sendReservationEmails, resendMessageId, actionTokenHash, tokenMatches,
+  setRedisForTests(value) { redis = value; } };
