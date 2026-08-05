@@ -361,6 +361,11 @@
       gap: 6px;
     }
 
+    /* Override layout display rules when a form section is conditionally hidden. */
+    [hidden] {
+      display: none !important;
+    }
+
     .form-group label {
       font-size: 13px;
       font-weight: 600;
