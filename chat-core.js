@@ -541,12 +541,9 @@ window.JBChatCore = (function () {
     if (n === 0) return { hora: '12' + mm + ' AM' };
     if (n === 12) return { hora: '12' + mm + ' PM' };
 
-    var abiertas = horasAbiertas(businessHours);
-    if (!abiertas) return { ambigua: n, mm: mm };     // sin horario: preguntar
-    var am = !!abiertas[n], pm = !!abiertas[n + 12];
-    if (pm && !am) return { hora: n + mm + ' PM' };
-    if (am && !pm) return { hora: n + mm + ' AM' };
-    return { ambigua: n, mm: mm };                    // ambas o ninguna: preguntar
+    // The business schedule cannot determine the customer's intended meridiem.
+    // Ask explicitly instead of silently selecting the only currently open slot.
+    return { ambigua: n, mm: mm };
   }
 
   function templateId(cfg) {
