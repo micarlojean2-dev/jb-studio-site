@@ -70,10 +70,15 @@ async function fillAndSubmit(dom, type, { duration = '30' } = {}) {
   row.querySelector('.spa-service-price').value = '100';
   row.querySelector('.spa-service-duration').value = duration;
   // capacityPerSlot es obligatorio para las 3 plantillas (barberos/cabinas/
-  // mesas simultáneas); bufferMinutes solo tiene efecto en Spa.
+  // mesas simultáneas); bufferMinutes solo tiene efecto en Spa;
+  // reservationDuration solo es obligatorio en Restaurante (duración por
+  // plato queda opcional ahí, ver duration:'' arriba).
   $(dom, 'spa-capacity').value = '5';
   if (type === 'spa') {
     $(dom, 'spa-buffer').value = '10';
+  }
+  if (type === 'restaurant') {
+    $(dom, 'spa-reservation-duration').value = '90';
   }
   $(dom, 'spa-creator-form').dispatchEvent(new window.Event('input', { bubbles: true }));
   $(dom, 'spa-creator-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));

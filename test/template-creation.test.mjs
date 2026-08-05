@@ -165,12 +165,19 @@ ok(spaWithoutDuration.statusCode === 400 && spaWithoutDuration.responseBody?.fie
 
 const restaurant = await postClient({
   ...templateFields, id: 'restaurant-test', templateId: 'restaurant', templateVersion: '1.0',
-  services: [{ nombre: 'Taco', precio: '$10' }],
+  services: [{ nombre: 'Taco', precio: '$10' }], reservationDuration: '90',
   templateData: { menuMetadata: [{ itemName: 'Taco', category: 'Comida', dietaryTags: ['vegana'], allergens: [], admin: true }], active: true },
 });
 ok(restaurant.statusCode === 201 && restaurant.responseBody?.templateData?.menuMetadata?.[0]?.itemName === 'Taco' &&
-   !('active' in restaurant.responseBody.templateData) && !('admin' in restaurant.responseBody.templateData.menuMetadata[0]),
-  'crea restaurante sin duracion y elimina claves ajenas de templateData');
+   !('active' in restaurant.responseBody.templateData) && !('admin' in restaurant.responseBody.templateData.menuMetadata[0]) &&
+   restaurant.responseBody?.reservationDuration === '90',
+  'crea restaurante sin duracion por plato (usa reservationDuration del negocio) y elimina claves ajenas de templateData');
+const restaurantWithoutReservationDuration = await postClient({
+  ...templateFields, id: 'restaurant-no-reservation-duration', templateId: 'restaurant', templateVersion: '1.0',
+  services: [{ nombre: 'Taco', precio: '$10' }],
+});
+ok(restaurantWithoutReservationDuration.statusCode === 400 && restaurantWithoutReservationDuration.responseBody?.fields?.includes('reservationDuration'),
+  'rechaza restaurante sin reservationDuration (la contradicción que esta fase corrige)');
 const barber = await postClient({
   ...templateFields, id: 'barber-test', templateId: 'barber', templateVersion: '1.0',
   services: [{ nombre: 'Corte', precio: '$20', duracion: '45 min' }],

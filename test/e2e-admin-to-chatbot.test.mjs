@@ -98,6 +98,7 @@ async function createViaAdmin(type, phoneNumber, svcName) {
   // bufferMinutes solo tiene efecto real en Spa.
   $(dom, 'spa-capacity').value = type === 'restaurant' ? '10' : '3';
   if (type === 'spa') $(dom, 'spa-buffer').value = '15';
+  if (type === 'restaurant') $(dom, 'spa-reservation-duration').value = '90';
   $(dom, 'spa-creator-form').dispatchEvent(new window.Event('input', { bubbles: true }));
   $(dom, 'spa-creator-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
   await new Promise(r => setTimeout(r, 30));
@@ -129,7 +130,7 @@ for (const [type, phoneNumber, svcName] of [
   if (type === 'spa') assert.equal(client.bufferMinutes, 15, 'spa: bufferMinutes guardado');
   console.log(`  ✓ cliente guardado correctamente: templateId/businessType/prompt/capacidad`);
 
-  const promptEs = buildSystemPrompt(client.prompt, client, { gallery: 0, menuItems: [] }, 'es');
+  const promptEs = await buildSystemPrompt(client.prompt, client, { gallery: 0, menuItems: [] }, 'es');
   assert.ok(promptEs.includes(client.whatsapp), `${type}: el chatbot recibe el teléfono real (${client.whatsapp})`);
   assert.ok(promptEs.includes(svcName) && promptEs.includes('25000'), `${type}: el chatbot recibe el servicio/menú real con su precio`);
   console.log('  ✓ chatbot funcional: teléfono y servicios/menú presentes en el system prompt');

@@ -371,11 +371,14 @@ window.JBChatCore = (function () {
   function buildModifyUpdate(text, cfg, activeReservation) {
     var lang = cfg && cfg.language === 'en' ? 'en' : 'es';
     var upd = extractBooking(text, cfg.menu, cfg.businessHours, cfg.language, cfg);
-    delete upd.__horaAmbigua;
     var food = applyFoodPreferences(activeReservation && activeReservation.foodPreferences, text, cfg);
     var update = {};
     if (upd.fecha) update.fecha = upd.fecha;
     if (upd.hora) update.hora = upd.hora;
+    // Ya NO se descarta: una hora ambigua ("cambiar a las 4") debe preguntar
+    // AM/PM, no perderse en silencio y dejar la reserva con la hora vieja.
+    // [auditoría FASE 1 — reagendar]
+    if (upd.__horaAmbigua) update.__horaAmbigua = upd.__horaAmbigua;
     if (upd.personas || upd.partySize) update.partySize = upd.personas || upd.partySize;
     if (upd.servicio) update.servicio = upd.servicio;
     if (food) { update.foodPreferences = food; update.specialRequests = foodPreferencesToSpecialRequests(food, lang); }

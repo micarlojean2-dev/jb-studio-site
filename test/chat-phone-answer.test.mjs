@@ -46,6 +46,7 @@ for (const [templateId, phoneNumber] of [['spa', '912345001'], ['restaurant', '9
     phoneCountry: 'CL', phoneCountryCode: '+56', phoneNumber,
     businessHours: HOURS,
     services: [{ nombre: 'Servicio', precio: '100', duracion: templateId === 'restaurant' ? '' : '30' }],
+    ...(templateId === 'restaurant' ? { reservationDuration: '60' } : {}),
     capacityPerSlot: 2, bufferMinutes: 10,
   });
   assert.equal(created.statusCode, 201, `${templateId}: se crea correctamente (fue ${created.statusCode}: ${JSON.stringify(created.responseBody)})`);
@@ -55,7 +56,7 @@ for (const [templateId, phoneNumber] of [['spa', '912345001'], ['restaurant', '9
   for (const lang of ['es', 'en']) {
     const block = businessInfoBlock(client, lang);
     assert.ok(block.includes(`+56${phoneNumber}`), `${templateId} (${lang}): el bloque de datos reales incluye el teléfono exacto configurado`);
-    const prompt = buildSystemPrompt(client.prompt, client, { gallery: 0, menuItems: [] }, lang);
+    const prompt = await buildSystemPrompt(client.prompt, client, { gallery: 0, menuItems: [] }, lang);
     assert.ok(prompt.includes(`+56${phoneNumber}`), `${templateId} (${lang}): el system prompt final incluye el teléfono real`);
     assert.ok(!prompt.includes('owner-secreto@example.com'), `${templateId} (${lang}): el prompt nunca expone el correo privado del dueño`);
     // El bloque presenta el teléfono como dato operativo del negocio, sin

@@ -967,6 +967,43 @@ function extractBooking(text, menu) {
     return true;
   }
 
+  // Ambigüedad de hora, pero para MODIFICAR una reserva activa (submitModify),
+  // nunca para bookingData. Separado a propósito de horaPendiente/
+  // resolverHoraPendiente: mezclarlos haría que responder "de la tarde"
+  // durante un cambio de reserva pudiera escribir por error en una reserva
+  // nueva sin terminar (o viceversa). [auditoría FASE 1 — reagendar]
+  var modifyHoraPendiente = null;
+  var modifyPendingUpdate = null;
+
+  function preguntarModifyHoraAmbigua(amb, update, lang) {
+    // modifyMode=true asegura que la respuesta ("de la tarde"/"de la
+    // mañana") entre por el bloque que revisa modifyHoraPendiente primero
+    // -- si esto se dispara desde el mensaje directo (MODIFY_TRIGGERS, sin
+    // haber pasado por handleReservationAction), modifyMode todavía estaba
+    // en false y la respuesta se perdía sin ser interpretada como AM/PM.
+    modifyMode = true;
+    modifyHoraPendiente = amb;
+    modifyPendingUpdate = update || {};
+    addMsg('bot', lang === 'en'
+      ? 'Quick one 😊 do you mean ' + amb.n + ' in the afternoon or ' + amb.n + ' in the morning?'
+      : 'Una cosita 😊 ¿te refieres a las ' + amb.n + ' de la tarde o a las ' + amb.n + ' de la mañana?');
+  }
+
+  function resolverModifyHoraPendiente(t, lang) {
+    if (!modifyHoraPendiente) return false;
+    var esPM = /tarde|noche|pm|p\.m|afternoon|evening/i.test(t);
+    var esAM = /ma(ñ|n)ana|madrugada|am|a\.m|morning/i.test(t);
+    if (!esPM && !esAM) {
+      addMsg('bot', lang === 'en' ? 'Sorry, morning or afternoon? 😊' : 'Perdona, ¿de la mañana o de la tarde? 😊');
+      return true;
+    }
+    var update = modifyPendingUpdate || {};
+    update.hora = modifyHoraPendiente.n + modifyHoraPendiente.mm + (esPM ? ' PM' : ' AM');
+    modifyHoraPendiente = null; modifyPendingUpdate = null;
+    submitModify(update, lang);
+    return true;
+  }
+
    var BARE_OK = { nombre: 1, telefono: 1, email: 1, contacto: 1, specialRequests: 1 };
   function bookingFaltan() {
     return CORE.bookingRequirements(cfg, bookingData);
@@ -1311,8 +1348,16 @@ function extractBooking(text, menu) {
     // Modo modificar: el siguiente mensaje trae el cambio para la reserva activa.
     if (modifyMode) {
       addMsg('user', t);
-      if (/^(cancelar|cancel|salir|exit)$/i.test(t)) { modifyMode = false; addMsg('bot', CORE.reservaTextos(lang).noChange); return; }
+      // Se responde primero por si el mensaje es la respuesta AM/PM a una
+      // ambigüedad pendiente de un cambio anterior (no una nueva instrucción).
+      if (resolverModifyHoraPendiente(t, lang)) return;
+      if (/^(cancelar|cancel|salir|exit)$/i.test(t)) { modifyMode = false; modifyHoraPendiente = null; modifyPendingUpdate = null; addMsg('bot', CORE.reservaTextos(lang).noChange); return; }
       var updW = CORE.buildModifyUpdate(t, cfg, activeReservation);
+      if (updW.__horaAmbigua) {
+        var ambUW = updW.__horaAmbigua; delete updW.__horaAmbigua;
+        preguntarModifyHoraAmbigua(ambUW, updW, lang);
+        return;
+      }
       if (!Object.keys(updW).length) { addMsg('bot', CORE.reservaTextos(lang).needChange); return; }
       submitModify(updW, lang);
       return;
@@ -1329,7 +1374,21 @@ function extractBooking(text, menu) {
         accionesBotones = null;
         addMsg('user', t); submitActiveCancel(lang); return;
       }
-      if (MODIFY_TRIGGERS.test(t)) { addMsg('user', t); handleReservationAction('modify', lang); return; }
+      if (MODIFY_TRIGGERS.test(t)) {
+        addMsg('user', t);
+        // El mismo mensaje que dispara "modificar" ya puede traer la fecha/
+        // hora nueva: no se descarta ni se vuelve a preguntar lo que ya se
+        // dijo. [auditoría FASE 1]
+        var directUpdateW = CORE.buildModifyUpdate(t, cfg, activeReservation);
+        if (directUpdateW.__horaAmbigua) {
+          var ambDirectW = directUpdateW.__horaAmbigua; delete directUpdateW.__horaAmbigua;
+          preguntarModifyHoraAmbigua(ambDirectW, directUpdateW, lang);
+          return;
+        }
+        if (Object.keys(directUpdateW).length) { submitModify(directUpdateW, lang); return; }
+        handleReservationAction('modify', lang);
+        return;
+      }
       if (looksNewW) { addMsg('user', t); handleDuplicateAttempt(lang); return; }
     }
 

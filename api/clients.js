@@ -2,6 +2,7 @@ import { Redis } from '@upstash/redis';
 import { randomUUID } from 'node:crypto';
 import { sanitizeServiceList } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
+import { isValidDurationMinutes } from '../lib/duration.js';
 
 initSentry();
 // Cargado con import() dinámico a propósito: Vercel transpila este archivo a
@@ -71,29 +72,6 @@ function normalizeBufferMinutes(v) {
   return Number.isInteger(n) && n >= 0 && n <= 240 ? n : 0;
 }
 
-// Misma gramática que duracionMin() en api/reservations.js (replicada aquí:
-// no hay módulo compartido en este proyecto sin build step) — el guardado y
-// la reserva deben interpretar exactamente los mismos formatos, o un valor
-// que pasa aquí podría leerse distinto (o como 0) al reservar.
-// Formatos completos aceptados: "60", "60 min"/"mins"/"minuto"/"minutos",
-// "1h"/"1 h"/"1 hora"/"1 horas", "1h 30"/"1 hora 30" (con minutos sueltos).
-// Cada patrón está anclado con ^...$: "60 min basura" o "texto 60 min" no
-// matchean ninguno (antes, sin anclar, un patrón como /(\d+)\s*m/ podía
-// encontrar "60 m" dentro de basura arbitraria y aceptarla igual).
-function spaDurationMinutes(txt) {
-  const t = String(txt || '').trim().toLowerCase();
-  if (!t) return 0;
-  let m = t.match(/^(\d+)$/);
-  if (m) return +m[1];
-  m = t.match(/^(\d+)\s*(?:min|mins|minuto|minutos)$/);
-  if (m) return +m[1];
-  m = t.match(/^(\d+)\s*(?:h|hora|horas)$/);
-  if (m) return (+m[1]) * 60;
-  m = t.match(/^(\d+)\s*(?:h|hora|horas)\s+(\d+)$/);
-  if (m) return (+m[1]) * 60 + (+m[2]);
-  return 0;
-}
-
 function normalizeReservationInterval(v) {
   const n = parseInt(v, 10);
   return Number.isFinite(n) && n >= 5 && n <= 240 && n % 5 === 0 ? n : 15;
@@ -125,6 +103,18 @@ function normalizeHolidays(v) {
 function normalizeMinNotice(h) {
   const n = parseInt(h, 10);
   return Number.isFinite(n) && n >= 0 && n <= 720 ? n : 0;
+}
+
+// Duración de reserva a nivel de negocio -- SOLO Restaurante la usa (auditoría
+// "contradicción duración Restaurante"): la duración por plato queda opcional
+// (un plato no "dura" lo que dura ocupar una mesa), pero el motor de
+// disponibilidad (durationFor() en api/reservations.js) necesita UNA fuente
+// determinista para calcular cierre y solapamientos. Se guarda como string
+// (misma gramática que servicio.duracion, "60"/"90 min"/"1 hora") porque
+// durationFor() la interpreta con el mismo parser -- nunca se pre-convierte a
+// número aquí para no inventar una segunda representación de la misma cosa.
+function normalizeReservationDuration(v) {
+  return String(v || '').trim().slice(0, 20);
 }
 
 // Admin preview tokens: short-lived so a leaked URL stops working quickly.
@@ -258,6 +248,32 @@ function missingTemplateFields(template, values) {
   if (!values.services.length || values.services.some(service => !service.precio || (requiresDuration && !service.duracion))) missing.push('services');
   if (!values.features.reservations) missing.push('bookingEnabled');
   if (!values.notificationEmails.length) missing.push('notificationEmails');
+  // Restaurante no exige duración por plato, pero SÍ exige una duración de
+  // reserva a nivel de negocio -- sin ella, un restaurante "válido" quedaría
+  // needsSetup:true de inmediato (lib/setup.js) apenas se creara (auditoría,
+  // contradicción confirmada). Spa/Barbería no usan este campo en absoluto:
+  // su duración obligatoria sigue siendo por servicio, sin cambios.
+  if (template?.id === 'restaurant') {
+    if (!isValidDurationMinutes(values.reservationDuration)) missing.push('reservationDuration');
+  }
+  // Duración de cada servicio: obligatoria y válida (1-1440 minutos) para
+  // cualquier plantilla que la exija (Spa y Barbería). Antes esta validación
+  // de FORMATO solo corría dentro de `if (template.id === 'spa')` -- Barbería
+  // solo comprobaba que service.duracion no viniera vacía, así que un POST
+  // directo con duracion:"60abc"/"pronto"/"0"/"-30"/"1500" pasaba la
+  // validación igual, y durationFor() en api/reservations.js lo leía
+  // silenciosamente como 0: rompía el corte "no cabe antes del cierre" y
+  // dejaba de detectar solapamientos entre citas de barbería (auditoría,
+  // riesgo confirmado). isValidDurationMinutes() es la misma función que usa
+  // durationFor() para interpretar la duración en tiempo real ("60", "60
+  // min", "1 hora" son formatos válidos ahí) -- validar con
+  // Number.isInteger() puro habría rechazado "60 min", que el creador oficial
+  // vía IA (api/generate-client-config.js, ver test/template-creation.test.mjs)
+  // ya envía legítimamente hoy.
+  if (requiresDuration) {
+    const invalidDuration = values.services.some((service) => !isValidDurationMinutes(service.duracion));
+    if (invalidDuration && !missing.includes('services')) missing.push('services');
+  }
   if (template.id === 'spa') {
     const capacity = parseInt(values.capacityPerSlot, 10);
     // Number(), no parseInt(): un decimal como 10.5 debe rechazarse, no
@@ -277,23 +293,6 @@ function missingTemplateFields(template, values) {
     if (values.phoneNumber && (values.phoneNumber.length < 6 || values.phoneNumber.length > 14)) {
       missing.push('phone');
     }
-
-    // Duración de cada servicio: obligatoria, 1-1440 minutos. Antes solo se
-    // exigía que service.duracion fuera una cadena no vacía — un POST
-    // directo con duracion:"pronto" pasaba la validación y luego
-    // durationFor() en api/reservations.js silenciosamente la leía como 0.
-    // Se valida con spaDurationMinutes(), el mismo parser que duracionMin()
-    // en api/reservations.js interpretará en tiempo real ("60", "60 min",
-    // "1 hora" son formatos válidos ahí) — validar con Number.isInteger()
-    // puro habría rechazado "60 min", que el creador oficial vía IA
-    // (api/generate-client-config.js, ver test/template-creation.test.mjs)
-    // ya envía legítimamente hoy. "pronto", "60abc", "10.5", "-1" y "" siguen
-    // rechazándose porque ninguno matchea ningún patrón reconocido.
-    const invalidDuration = values.services.some((service) => {
-      const n = spaDurationMinutes(service.duracion);
-      return n < 1 || n > 1440;
-    });
-    if (invalidDuration && !missing.includes('services')) missing.push('services');
   }
   return missing;
 }
@@ -427,6 +426,7 @@ export default async function handler(req, res) {
       billingDay, trialEnabled, trialDays,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
       displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, bufferMinutes, reservationIntervalMinutes, holidays, notificationEmails, templateData,
+      reservationDuration,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -493,10 +493,18 @@ export default async function handler(req, res) {
     // campos legados (language/whatsapp/hours) se siguen guardando igual
     // que antes más abajo.
     const requestedLanguages = sanitizeLanguages(languages);
-    // The official Spa experience is intentionally bilingual. This is server
-    // owned so neither the creator model nor a browser request can override it.
-    const languagesSafe = templateIdSafe === 'spa' ? ['es', 'en'] : requestedLanguages;
-    const primaryLanguageSafe = templateIdSafe === 'spa' ? 'es' : languagesSafe && languagesSafe.length
+    // Cualquier plantilla OFICIAL (spa/barber/restaurant) es bilingüe por
+    // diseño del producto — server-owned, ni el creador con IA ni un request
+    // del navegador pueden anularlo. Antes esto se limitaba a
+    // templateIdSafe==='spa': Barbería y Restaurante quedaban monolingües en
+    // español porque no existía un prompt oficial en inglés para ellos
+    // (api/client-chat.js) — ahora las 3 plantillas tienen su
+    // promptBaseEn oficial, así que la misma regla aplica a cualquiera.
+    // Clientes legado sin plantilla oficial (templateIdSafe==='') conservan
+    // el comportamiento anterior: solo bilingües si el propio request lo pide.
+    // [auditoría FASE 4 — bilingüe]
+    const languagesSafe = templateIdSafe ? ['es', 'en'] : requestedLanguages;
+    const primaryLanguageSafe = templateIdSafe ? 'es' : languagesSafe && languagesSafe.length
       ? (languagesSafe.includes(String(primaryLanguage || '').toLowerCase()) ? String(primaryLanguage).toLowerCase() : languagesSafe[0])
       : null;
     const businessHoursSafe = sanitizeBusinessHours(businessHours);
@@ -545,6 +553,7 @@ export default async function handler(req, res) {
       notificationEmails: notificationEmailsSafe,
       capacityPerSlot,
       bufferMinutes,
+      reservationDuration,
     });
     if (missingTemplate.length) {
       return res.status(400).json({ error: 'Missing required template fields', fields: missingTemplate });
@@ -578,7 +587,9 @@ export default async function handler(req, res) {
       // texto plano siga funcionando sin cambios. Si no vino estructura
       // nueva (formulario legado), se guarda lo que mandó el request como
       // siempre.
-      const languageDerived = templateIdSafe === 'spa' ? 'es' : primaryLanguageSafe || (language === 'en' ? 'en' : 'es');
+      // primaryLanguageSafe ya vale 'es' para cualquier plantilla oficial
+      // (ver arriba), así que ya no hace falta repetir el caso spa aquí.
+      const languageDerived = primaryLanguageSafe || (language === 'en' ? 'en' : 'es');
       const whatsappDerived = phoneCountryCodeSafe && phoneNumberSafe
         ? `${phoneCountryCodeSafe}${phoneNumberSafe}`
         : String(whatsapp || '').slice(0, 30);
@@ -662,6 +673,11 @@ export default async function handler(req, res) {
         holidays:        normalizeHolidays(holidays),
         notificationEmails: notificationEmailsSafe,
         bufferMinutes:      normalizeBufferMinutes(bufferMinutes),
+        // Solo Restaurante la exige (missingTemplateFields, arriba) y solo
+        // Restaurante la usa (durationFor() en api/reservations.js); para
+        // cualquier otra plantilla queda simplemente ausente, sin inventar
+        // un valor que nadie va a leer.
+        ...(templateIdSafe === 'restaurant' ? { reservationDuration: normalizeReservationDuration(reservationDuration) } : {}),
         widgetSnippet: `<script src="https://jbstudio.app/widget.js?id=${id}" data-position="${position}"></script>`,
         assistantUrl:  `https://jbstudio.app/asistente/${id}`,
       };
@@ -679,7 +695,8 @@ export default async function handler(req, res) {
   if (req.method === 'PUT') {
     const { id, active, prompt, businessName, ownerName, ownerEmail, plan,
             color, language, whatsapp, menu, services, features,
-            timezone, minNoticeHours, businessHours, capacityPerSlot, bufferMinutes, reservationIntervalMinutes, holidays, notificationEmails } = req.body || {};
+            timezone, minNoticeHours, businessHours, capacityPerSlot, bufferMinutes, reservationIntervalMinutes, holidays, notificationEmails,
+            reservationDuration } = req.body || {};
     if (!id) return res.status(400).json({ error: 'id is required' });
 
     try {
@@ -701,11 +718,32 @@ export default async function handler(req, res) {
       if (whatsapp  !== undefined) client.whatsapp    = String(whatsapp).slice(0, 30);
       // Datos que las reservas inteligentes necesitan. Sin ellos el negocio
       // queda en needsSetup y el asistente no toma citas.
-      if (timezone !== undefined) client.timezone = normalizeTimezone(timezone);
+      // Clientes con plantilla oficial: igual que en POST, una zona horaria
+      // inválida nunca cae en silencio a UTC -- se rechaza con 400 (auditoría
+      // FASE 5, requisito 8). Clientes antiguos/sin plantilla mantienen el
+      // comportamiento anterior (normalizeTimezone con fallback a UTC), para
+      // no romper actualizaciones existentes que no pasan timezone válido.
+      if (timezone !== undefined) {
+        if (client.templateId && client.templateVersion && !isValidTimezone(timezone)) {
+          return res.status(400).json({ error: 'Invalid timezone', fields: ['timezone'] });
+        }
+        client.timezone = normalizeTimezone(timezone);
+      }
       if (minNoticeHours !== undefined) client.minNoticeHours = normalizeMinNotice(minNoticeHours);
       if (capacityPerSlot !== undefined) client.capacityPerSlot = normalizeCapacity(capacityPerSlot);
       if (bufferMinutes !== undefined) client.bufferMinutes = normalizeBufferMinutes(bufferMinutes);
       if (reservationIntervalMinutes !== undefined) client.reservationIntervalMinutes = normalizeReservationInterval(reservationIntervalMinutes);
+      // Igual que timezone arriba: un Restaurante con plantilla oficial nunca
+      // puede quedarse sin duración de reserva válida vía PUT -- eso volvería
+      // a dejarlo needsSetup:true después de haber sido creado válidamente
+      // (la misma contradicción que esta fase corrige). Cualquier otra
+      // plantilla/cliente legado no usa este campo, así que no se valida.
+      if (reservationDuration !== undefined) {
+        if (client.templateId === 'restaurant' && client.templateVersion && !isValidDurationMinutes(reservationDuration)) {
+          return res.status(400).json({ error: 'Invalid reservationDuration', fields: ['reservationDuration'] });
+        }
+        client.reservationDuration = normalizeReservationDuration(reservationDuration);
+      }
       if (holidays !== undefined) client.holidays = normalizeHolidays(holidays);
       if (notificationEmails === null) delete client.notificationEmails;
       else if (notificationEmails !== undefined) client.notificationEmails = normalizeNotificationEmails(notificationEmails);
@@ -727,10 +765,24 @@ export default async function handler(req, res) {
         id: x.id, nombre: x.nombre, precio: x.precio, descripcion: x.descripcion,
         imagen: x.imagen, duracion: x.duracion,
       }));
+      // Igual que timezone/reservationDuration arriba: para un cliente con
+      // plantilla oficial que exige duración por servicio (Spa/Barbería, no
+      // Restaurante), un PUT directo con duracion:"60abc"/"pronto"/"0" nunca
+      // debe colar en silencio -- si no, una petición directa a PUT saltaba
+      // por completo la validación estricta que sí corre en POST (auditoría,
+      // riesgo confirmado en Barbería). Clientes legado/sin plantilla
+      // conservan el comportamiento anterior, sin este chequeo.
+      const requiresServiceDuration = !!(client.templateId && client.templateVersion && client.templateId !== 'restaurant');
       if (services !== undefined && Array.isArray(services)) {
+        if (requiresServiceDuration && services.some((s) => !isValidDurationMinutes(s && s.duracion))) {
+          return res.status(400).json({ error: 'Invalid service duration', fields: ['services'] });
+        }
         client.services = sanitizeServices(services);
         client.menu = deriveMenu(client.services);
       } else if (menu !== undefined && Array.isArray(menu)) {
+        if (requiresServiceDuration && menu.some((s) => !isValidDurationMinutes(s && s.duracion))) {
+          return res.status(400).json({ error: 'Invalid service duration', fields: ['services'] });
+        }
         client.services = sanitizeServices(menu);
         client.menu = deriveMenu(client.services);
       }

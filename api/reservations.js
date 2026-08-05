@@ -3,6 +3,7 @@ import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { registrarCambio } from '../lib/changes.js';
 import { registrarActividad } from '../lib/activity.js';
 import { destinatariosAviso, reservationActionUrl, reservationEmailHtml, resendMessageId, sendReservationEmails } from '../lib/reservation-emails.js';
+import { parseDurationMinutes } from '../lib/duration.js';
 import { Resend } from 'resend';
 import { randomUUID, createHash } from 'node:crypto';
 import { initSentry, captureApiException, captureApiMessage } from '../lib/sentry.js';
@@ -110,8 +111,28 @@ function parseFechaISO(raw, now) {
   }
 
   // "2026-07-18" / "18/07" / "18-07-2026"
+  // Se valida que el día exista de verdad (mismo criterio que ya usa la rama
+  // dmy más abajo, vía Date.UTC + comparación de vuelta) -- antes se
+  // aceptaba "2026-02-30" tal cual, y new Date(...) la reinterpretaba en
+  // silencio como el 2 de marzo más adelante, en rangosDelDia(). [auditoría
+  // FASE 2 — fail-open]
   const iso = txt.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
-  if (iso) return iso[0];
+  if (iso) {
+    const y = +iso[1], mon = +iso[2] - 1, day = +iso[3];
+    const d = new Date(Date.UTC(y, mon, day));
+    if (mon >= 0 && mon <= 11 && d.getUTCFullYear() === y && d.getUTCMonth() === mon && d.getUTCDate() === day) {
+      return iso[0];
+    }
+    // Fecha ISO imposible (ej. 2026-02-30, 2026-13-01): se rechaza aquí
+    // mismo, sin seguir probando otros patrones. Dejar que el resto de la
+    // función siguiera (la rama dmy de abajo) permitía que un trozo del
+    // MISMO token quedara mal reinterpretado -- "2026-13-01" (mes 13, no
+    // existe) terminaba leyéndose como "13-01" en formato DD-MM ("13 de
+    // enero"), devolviendo una fecha real pero completamente distinta a lo
+    // que el cliente escribió. Un token con forma AAAA-MM-DD es inequívoco:
+    // si no es una fecha real, es inválido, punto. [auditoría FASE 2]
+    return '';
+  }
   const dmy = txt.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
   if (dmy) {
     const a = +dmy[1], b = +dmy[2];
@@ -146,6 +167,13 @@ function normalizeHora(v) {
   if (!m) return '';
   let h = parseInt(m[1], 10);
   const min = m[2] || '00';
+  // Minutos fuera de rango (ej. "8:99 PM"): antes esto pasaba de largo -- la
+  // regex no limita los dos dígitos de minutos a 00-59, así que producía
+  // "20:99", una hora sintácticamente inválida que sí es distinta de ''.
+  // minutosDe() SÍ la detectaba más abajo, pero validarReserva() trataba ese
+  // null igual que "no puedo validar" y la dejaba pasar (ok:true). Se
+  // rechaza aquí mismo, en el origen. [auditoría FASE 2 — fail-open]
+  if (parseInt(min, 10) > 59) return '';
   const suf = (m[3] || '').toLowerCase().replace(/[.\s]/g, '');
   if (suf === 'pm' && h < 12) h += 12;
   if (suf === 'am' && h === 12) h = 0;
@@ -295,31 +323,10 @@ function fmt(min) {
   return h12 + ':' + String(m).padStart(2, '0') + ' ' + suf;
 }
 
-// "60", "60 minutos", "1 hora", "45 min", "1h 30". Si no se entiende -> 0
-// (no se aplica la regla en vez de inventar una duración). Misma gramática
-// que spaDurationMinutes() en api/clients.js — el guardado y la reserva
-// deben interpretar exactamente los mismos formatos. Cada patrón está
-// anclado con ^...$: antes, sin anclar, /(\d+)\s*m/ podía encontrar "60 m"
-// dentro de texto basura arbitrario ("60 min despues de la cita") y
-// aceptarlo igual; ahora la cadena completa debe ser uno de los formatos.
-function duracionMin(txt) {
-  const t = String(txt || '').trim().toLowerCase();
-  if (!t) return 0;
-  let m = t.match(/^(\d+)$/);
-  if (m) return +m[1];
-  m = t.match(/^(\d+)\s*(?:min|mins|minuto|minutos)$/);
-  if (m) return +m[1];
-  m = t.match(/^(\d+)\s*(?:h|hora|horas)$/);
-  if (m) return (+m[1]) * 60;
-  m = t.match(/^(\d+)\s*(?:h|hora|horas)\s+(\d+)$/);
-  if (m) return (+m[1]) * 60 + (+m[2]);
-  return 0;
-}
-
 function durationFor(client, servicio) {
   const item = (client.menu || []).find(m => m.nombre && servicio &&
     String(servicio).toLowerCase().indexOf(String(m.nombre).toLowerCase()) !== -1);
-  return duracionMin(item && item.duracion) || duracionMin(client.reservationDuration ||
+  return parseDurationMinutes(item && item.duracion) || parseDurationMinutes(client.reservationDuration ||
     ((client.config || {}).reservationDuration));
 }
 
@@ -380,6 +387,17 @@ function contarSolapes(reservas, fechaISO, iniMin, durMin, client) {
 }
 
 function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) {
+  // Fecha del cliente ilegible o imposible (parseFechaISO no pudo
+  // interpretarla, o era una fecha que no existe: "2026-02-30"): rechazo
+  // explícito, nunca "no pude validar, acepto igual". Esto es DISTINTO de
+  // "el negocio no configuró businessHours" (ver rangosDelDia más abajo):
+  // eso sigue siendo fail-open a propósito -- una configuración incompleta
+  // del negocio no es culpa del cliente y no debe romper reservas.
+  // [auditoría FASE 2 — fail-open]
+  if (!fechaISO) {
+    return { ok: false, motivo: 'fecha_invalida', mensaje: 'No entendí bien la fecha. ¿Puedes indicarla de nuevo? Por ejemplo "18 de julio" o "mañana".' };
+  }
+
   // Feriados: fechas sueltas en las que el negocio no abre aunque sea un día
   // laborable de su horario semanal.
   const feriados = Array.isArray(client.holidays) ? client.holidays : [];
@@ -406,14 +424,25 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
   const bh = client.businessHours;
   let rangos = rangosDelDia(bh, fechaISO);
   if (rangos === null && staffRanges !== null) rangos = staffRanges;
-  if (rangos === null) return { ok: true };              // sin horario fiable: no bloqueamos
+  // fechaISO ya se validó arriba (siempre truthy en este punto), así que
+  // null aquí solo puede significar "negocio sin businessHours" o "ese día
+  // quedó unknown" (el dueño nunca confirmó ese horario) -- config
+  // incompleta del negocio, no un dato inválido del cliente. Se mantiene
+  // fail-open a propósito: no bloquear reservas por una configuración que
+  // el cliente no controla. [auditoría FASE 2]
+  if (rangos === null) return { ok: true };
 
   if (!rangos.length) {
     return { ok: false, motivo: 'dia_cerrado', mensaje: 'Ese día el negocio está cerrado.' };
   }
 
   const pedido = minutosDe(horaISO);
-  if (pedido === null) return { ok: true };              // hora no normalizable: no bloqueamos
+  // Hora del cliente ilegible o fuera de rango (ej. "8:99 PM", minutos>59,
+  // horas>23): rechazo explícito. Antes: "no pude validar, acepto igual".
+  // [auditoría FASE 2 — fail-open]
+  if (pedido === null) {
+    return { ok: false, motivo: 'hora_invalida', mensaje: 'No entendí bien la hora. ¿Puedes indicarla de nuevo? Por ejemplo "3:00 PM".' };
+  }
 
   // Duración: si el servicio no cabe antes del cierre, no vale.
   const dur = durationFor(client, servicio);
@@ -1082,4 +1111,5 @@ export default async function handler(req, res) {
 export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
   configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml,
-  sendReservationEmails, resendMessageId, releaseInactiveIdempotencyLock, reservationLanguage, publicReservationView };
+  sendReservationEmails, resendMessageId, releaseInactiveIdempotencyLock, reservationLanguage, publicReservationView,
+  nowEnZona, durationFor };

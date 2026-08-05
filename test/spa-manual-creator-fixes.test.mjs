@@ -76,11 +76,11 @@ console.log('PROMPT DINÁMICO — spaBusinessInfoBlock (bilingüe)');
      blockEn.includes('Masaje relajante') && blockEn.includes('35000') && blockEn.includes('60 minutes'),
     'los mismos datos reales del negocio aparecen en el bloque inglés');
 
-  const promptEs = buildSystemPrompt('BASE-PROMPT-MARKER', spaClient, { gallery: 0, menuItems: [] }, 'es');
+  const promptEs = await buildSystemPrompt('BASE-PROMPT-MARKER', spaClient, { gallery: 0, menuItems: [] }, 'es');
   ok(promptEs.includes('IDIOMA: Responde SIEMPRE en español') && promptEs.includes('Spa QA Internacional') && promptEs.includes('BASE-PROMPT-MARKER'),
     '11. Mantiene español (directiva + datos + basePrompt, los tres presentes)');
   ok(!promptEs.includes('VERIFIED BUSINESS INFORMATION'), 'prompt español no contiene "VERIFIED BUSINESS INFORMATION"');
-  const promptEn = buildSystemPrompt('BASE-PROMPT-MARKER', { ...spaClient, languages: undefined }, { gallery: 0, menuItems: [] }, 'en');
+  const promptEn = await buildSystemPrompt('BASE-PROMPT-MARKER', { ...spaClient, languages: undefined }, { gallery: 0, menuItems: [] }, 'en');
   ok(promptEn.includes('LANGUAGE: Always reply in English') && promptEn.includes('Spa QA Internacional'),
     '12. Mantiene inglés (directiva + los mismos datos del negocio)');
   ok(promptEn.includes('VERIFIED BUSINESS INFORMATION') && promptEn.includes('Business hours:'),
@@ -124,7 +124,7 @@ console.log('PROMPT DINÁMICO — spaBusinessInfoBlock (bilingüe)');
   ok(!businessInfoBlock({ templateId: 'restaurant', businessName: 'Rest X', ownerEmail: 'owner-secreto@example.com', notificationEmails: ['equipo@example.com'], panelToken: 'no-debe-aparecer' }, 'es')
     .match(/owner-secreto@example\.com|equipo@example\.com|no-debe-aparecer/),
     'restaurante: tampoco expone ownerEmail/notificationEmails/panelToken');
-  const restPrompt = buildSystemPrompt('REST-BASE', { templateId: 'restaurant', businessName: 'Rest X', address: 'Calle 9' }, { gallery: 0, menuItems: [] }, 'es');
+  const restPrompt = await buildSystemPrompt('REST-BASE', { templateId: 'restaurant', businessName: 'Rest X', address: 'Calle 9' }, { gallery: 0, menuItems: [] }, 'es');
   ok(restPrompt.includes('INFORMACIÓN VALIDADA DEL NEGOCIO') && restPrompt.includes('Rest X') && restPrompt.includes('REST-BASE'),
     'restaurante: buildSystemPrompt ahora SÍ incluye la sección de datos reales, junto al basePrompt propio');
 }
@@ -149,9 +149,11 @@ console.log('PROMPT COMPLETO BILINGÜE — buildSystemPrompt (header + SPA_PROMP
 
   // basePrompt marcado para distinguir: en español debe pasar tal cual
   // (es el client.prompt real, potencialmente editado por el negocio); en
-  // inglés debe DESAPARECER, sustituido por SPA_BASE_PROMPT_EN.
-  const promptEs = buildSystemPrompt('SPA-PROMPT-BASE-ES-MARKER', spaClient, { gallery: 0, menuItems: [] }, 'es');
-  const promptEn = buildSystemPrompt('SPA-PROMPT-BASE-ES-MARKER', spaClient, { gallery: 0, menuItems: [] }, 'en');
+  // inglés debe DESAPARECER, sustituido por el promptBaseEn oficial de spa
+  // (templates/spa/prompt-base-en.txt, leído por lib/assistant-templates.mjs
+  // — ya no una constante embebida en este archivo). [auditoría FASE 4]
+  const promptEs = await buildSystemPrompt('SPA-PROMPT-BASE-ES-MARKER', spaClient, { gallery: 0, menuItems: [] }, 'es');
+  const promptEn = await buildSystemPrompt('SPA-PROMPT-BASE-ES-MARKER', spaClient, { gallery: 0, menuItems: [] }, 'en');
 
   console.log('  — Prompt español: debe contener todos los encabezados y datos en español');
   for (const needle of ['Hoy es', 'FORMATO', 'QUIÉN ERES', 'CÓMO HABLAS', 'LÍMITES', 'SEGURIDAD',
@@ -170,7 +172,7 @@ console.log('PROMPT COMPLETO BILINGÜE — buildSystemPrompt (header + SPA_PROMP
     'RESERVATIONS', 'SECURITY AND PRIVACY']) {
     ok(promptEn.includes(needle), `EN contiene "${needle}"`);
   }
-  ok(!promptEn.includes('SPA-PROMPT-BASE-ES-MARKER'), 'EN sustituye basePrompt/client.prompt español por SPA_BASE_PROMPT_EN');
+  ok(!promptEn.includes('SPA-PROMPT-BASE-ES-MARKER'), 'EN sustituye basePrompt/client.prompt español por el promptBaseEn oficial de spa');
   console.log('  — Prompt inglés: no debe quedar ningún encabezado o instrucción en español');
   for (const needle of ['Hoy es', 'FORMATO', 'QUIÉN ERES', 'CÓMO HABLAS', 'LÍMITES',
     'INFORMACIÓN VALIDADA DEL NEGOCIO', 'Horarios', 'SEGURIDAD Y PRIVACIDAD']) {
@@ -184,27 +186,41 @@ console.log('PROMPT COMPLETO BILINGÜE — buildSystemPrompt (header + SPA_PROMP
     ok(!p.includes('no-debe-aparecer-nunca-1234'), 'panelToken no aparece');
   }
 
-  console.log('  — Español intacto para Restaurante/Barbería; inglés generalizado (auditoría FASE 3, spaHeaderEn)');
-  const restEs = buildSystemPrompt('REST-BASE', { templateId: 'restaurant', businessName: 'Rest X' }, { gallery: 0, menuItems: [] }, 'es');
-  const restEn = buildSystemPrompt('REST-BASE', { templateId: 'restaurant', businessName: 'Rest X', language: 'en' }, { gallery: 0, menuItems: [] }, 'en');
-  const barberEs = buildSystemPrompt('BARBER-BASE', { templateId: 'barber', businessName: 'Barber X' }, { gallery: 0, menuItems: [] }, 'es');
-  const barberEn = buildSystemPrompt('BARBER-BASE', { templateId: 'barber', businessName: 'Barber X', language: 'en' }, { gallery: 0, menuItems: [] }, 'en');
+  console.log('  — Español intacto para Restaurante/Barbería; inglés AHORA usa su propio promptBaseEn oficial (auditoría FASE 4 — antes exclusivo de spa)');
+  const restEs = await buildSystemPrompt('REST-BASE', { templateId: 'restaurant', businessName: 'Rest X' }, { gallery: 0, menuItems: [] }, 'es');
+  const restEn = await buildSystemPrompt('REST-BASE', { templateId: 'restaurant', businessName: 'Rest X', language: 'en' }, { gallery: 0, menuItems: [] }, 'en');
+  const barberEs = await buildSystemPrompt('BARBER-BASE', { templateId: 'barber', businessName: 'Barber X' }, { gallery: 0, menuItems: [] }, 'es');
+  const barberEn = await buildSystemPrompt('BARBER-BASE', { templateId: 'barber', businessName: 'Barber X', language: 'en' }, { gallery: 0, menuItems: [] }, 'en');
   ok(restEs.includes('QUIÉN ERES') && restEs.includes('REST-BASE') && !restEs.includes('WHO YOU ARE'),
     'restaurante en español: header español intacto, basePrompt intacto (sin cambios)');
   ok(barberEs.includes('QUIÉN ERES') && barberEs.includes('BARBER-BASE') && !barberEs.includes('WHO YOU ARE'),
     'barbería en español: header español intacto, basePrompt intacto (sin cambios)');
-  // Antes, con activeLanguage:'en', Restaurante/Barbería recibían igual el
-  // header interno EN ESPAÑOL (spaHeaderEn dependía de templateId==='spa'),
-  // mezclado con una conversación en inglés. Ahora el idioma del header solo
-  // depende de activeLanguage, para cualquier plantilla — sin tocar
-  // effectiveBasePrompt (REST-BASE/BARBER-BASE se conservan tal cual, la
-  // traducción fija SPA_BASE_PROMPT_EN sigue siendo exclusiva de spa).
-  ok(restEn.includes('WHO YOU ARE') && !restEn.includes('QUIÉN ERES') && restEn.includes('REST-BASE'),
-    'restaurante en inglés: AHORA SÍ recibe el header interno en inglés (ya no depende de templateId==="spa")');
+  // Antes (auditoría FASE 3), con activeLanguage:'en', Restaurante/Barbería ya
+  // recibían el header interno en inglés (spaHeaderEn generalizado), pero el
+  // basePrompt en sí (REST-BASE/BARBER-BASE, el client.prompt real en
+  // español) seguía colándose sin traducir -- la mezcla que exactamente
+  // pedía cerrar esta fase. Ahora el basePrompt efectivo en inglés es el
+  // promptBaseEn oficial de CADA plantilla (templates/{restaurant,barber}/
+  // prompt-base-en.txt), nunca el marcador REST-BASE/BARBER-BASE (que
+  // representa el prompt en español, ya reemplazado). [auditoría FASE 4]
+  ok(restEn.includes('WHO YOU ARE') && !restEn.includes('QUIÉN ERES') && !restEn.includes('REST-BASE'),
+    'restaurante en inglés: el header Y el basePrompt están en inglés — REST-BASE (marcador del prompt español) ya no aparece');
+  ok(restEn.includes('restaurant') && restEn.includes('RESERVATIONS') && restEn.includes('SECURITY AND PRIVACY'),
+    'restaurante en inglés: usa su propio promptBaseEn oficial (contenido real, no una traducción genérica de spa)');
   ok(restEn.includes('VERIFIED BUSINESS INFORMATION') && restEn.includes('Rest X'),
     'restaurante en inglés: también recibe el bloque de datos reales, con etiquetas en inglés');
-  ok(barberEn.includes('WHO YOU ARE') && !barberEn.includes('QUIÉN ERES') && barberEn.includes('BARBER-BASE'),
-    'barbería en inglés: AHORA SÍ recibe el header interno en inglés (ya no depende de templateId==="spa")');
+  ok(barberEn.includes('WHO YOU ARE') && !barberEn.includes('QUIÉN ERES') && !barberEn.includes('BARBER-BASE'),
+    'barbería en inglés: el header Y el basePrompt están en inglés — BARBER-BASE (marcador del prompt español) ya no aparece');
+  ok(barberEn.includes('barbershop') && barberEn.includes('RESERVATIONS') && barberEn.includes('SECURITY AND PRIVACY'),
+    'barbería en inglés: usa su propio promptBaseEn oficial (contenido real, específico de barbería)');
+  // Diferencias reales por plantilla que deben sobrevivir en inglés
+  // (Requisito 8): spa mantiene su matiz médico/calmado, restaurante su
+  // sección de alergias/preferencias de comida, barbería no debe traer
+  // ninguna de las dos.
+  const spaEnOnly = await buildSystemPrompt('SPA-BASE', { templateId: 'spa', businessName: 'Spa X', language: 'en' }, { gallery: 0, menuItems: [] }, 'en');
+  ok(spaEnOnly.includes('medical') && spaEnOnly.includes('calm'), 'spa en inglés: conserva el matiz médico/calmado propio de spa');
+  ok(restEn.includes('FOOD PREFERENCES') && restEn.includes('allergen'), 'restaurante en inglés: conserva su sección de alergias/preferencias de comida');
+  ok(!barberEn.includes('FOOD PREFERENCES') && !barberEn.includes('medical'), 'barbería en inglés: NO hereda contenido de spa ni de restaurante (sin mezclar plantillas)');
 
   console.log('  — A. Prompt Spa completo en español —');
   console.log(promptEs);
@@ -490,10 +506,10 @@ console.log('REGRESIÓN — restaurante y barbería no cambian con estos fixes')
     address: 'Calle 1', ownerEmail: 'owner@example.com', timezone: 'UTC',
     notificationEmails: ['owner@example.com'], phoneCountry: 'US', phoneCountryCode: '+1', phoneNumber: '5550100',
     businessHours: { monday: { enabled: true, ranges: [{ start: '09:00', end: '17:00' }] } },
-    services: [{ nombre: 'Plato', precio: '10' }],
+    services: [{ nombre: 'Plato', precio: '10' }], reservationDuration: '60',
   });
   ok(restaurant.statusCode === 201 && restaurant.responseBody?.templateId === 'restaurant',
-    'restaurante sigue creándose igual (sin bufferMinutes/capacityPerSlot/duración numérica obligatorios)');
+    'restaurante sigue creándose igual (sin bufferMinutes/capacityPerSlot/duración numérica por plato obligatorios)');
 
   // Restaurante con un código de país que NO correspondería para Spa
   // (CL declarado con +1) igual se acepta: la validación de correspondencia
@@ -504,7 +520,7 @@ console.log('REGRESIÓN — restaurante y barbería no cambian con estos fixes')
     address: 'Calle 1', ownerEmail: 'owner@example.com', timezone: 'UTC',
     notificationEmails: ['owner@example.com'], phoneCountry: 'CL', phoneCountryCode: '+1', phoneNumber: '5550100',
     businessHours: { monday: { enabled: true, ranges: [{ start: '09:00', end: '17:00' }] } },
-    services: [{ nombre: 'Plato', precio: '10' }],
+    services: [{ nombre: 'Plato', precio: '10' }], reservationDuration: '60',
   });
   ok(restaurantMismatchedPhone.statusCode === 201,
     'restaurante: la validación de correspondencia país/código NO se aplica (es spa-only) — confirma que no se tocó su comportamiento');

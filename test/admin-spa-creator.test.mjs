@@ -52,8 +52,11 @@ assert.match(spaCreatorScript, /capacityPerSlot:\s*\+\$\('spa-capacity'\)\.value
 assert.match(admin, /id="spa-buffer-group"/, 'solo el grupo del buffer debe poder ocultarse; la capacidad debe seguir visible para todas las plantillas');
 assert.doesNotMatch(admin, /id="spa-capacity"[^>]*hidden|id="spa-reservas-section"/, 'la capacidad (y su sección) ya no deben poder ocultarse por completo');
 
-// Duración de servicio: obligatoria para Spa/Barbería, opcional para Restaurante.
-assert.match(spaCreatorScript, /const durationOk = isRestaurant \|\| \(Number\.isInteger\(\+service\.duracion\) && \+service\.duracion >= 1\)/);
+// Duración de servicio: obligatoria y válida (misma gramática que el backend,
+// no un chequeo numérico propio y más laxo) para Spa/Barbería, opcional para
+// Restaurante (auditoría, "validación estricta de duraciones").
+assert.match(spaCreatorScript, /const durationOk = isRestaurant \|\| isValidDurationMinutes\(service\.duracion\)/);
+assert.match(spaCreatorScript, /const parseDurationMinutes = txt => \{/, 'el frontend debe reutilizar la misma gramática de duración que el backend, no un chequeo propio');
 
 // Límites explícitos en el frontend (antes el backend los recortaba en
 // silencio: sanitizeBusinessHours a 2 rangos/día, sanitizeServices a 40).
