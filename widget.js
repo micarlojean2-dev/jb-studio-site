@@ -197,10 +197,6 @@
   // dispara no vuelve a nombrar el servicio. [Objetivo 4]
   var selectedService = '';
 
-  // ── Cancel flow state ────────────────────────────────────────────────────
-  var cancelStep = 0;    // 0 = idle, 1 = asking contacto, 2 = asking fecha
-  var cancelData = {};
-
   // ── Active reservation state (misma lógica que asistente.html) ───────────
   var RESERVA_SESS = SESS + '_reserva';
   var activeReservation = null;
@@ -744,49 +740,6 @@
     CORE.irAlFondo(msgsEl, true);
   }
 
-  // ── Submit cancel request to /api/cancel-reservation ────────────────────
-  function submitCancellation() {
-    var lang = cfg.language === 'en' ? 'en' : 'es';
-    busy = true;
-    inp.disabled = true;
-    snd.disabled = true;
-    showTyping();
-
-    fetch(API + '/api/cancel-reservation', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ clientId: clientId, contacto: cancelData.contacto, fecha: cancelData.fecha }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        hideTyping();
-        if (d.found) {
-          addMsg('bot', lang === 'en'
-            ? '✅ Your reservation has been cancelled. We hope to see you again soon!'
-            : '✅ Tu reserva fue cancelada correctamente. ¡Esperamos verte pronto!');
-        } else {
-          addMsg('bot', lang === 'en'
-            ? 'No reservation was found with those details. Please verify your email/phone and date, then try again.'
-            : 'No encontramos una reserva con esos datos. Verifica el email/teléfono y la fecha e intenta de nuevo.');
-        }
-      })
-      .catch(function (err) {
-        captureWidgetError(err, 'reservation_cancel');
-        hideTyping();
-        addMsg('bot', lang === 'en'
-          ? "Sorry, that didn't go through 😅 Mind trying again?"
-          : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
-      })
-      .finally(function () {
-        cancelStep = 0;
-        cancelData = {};
-        busy = false;
-        inp.disabled = false;
-        snd.disabled = false;
-        inp.focus();
-      });
-  }
-
   // ── Submit completed booking to /api/reservations ────────────────────────
 // Extrae datos de reserva de un mensaje libre. Solo captura lo inequívoco:
 // ante la duda no rellena, para que el flujo pregunte. Un campo inventado se
@@ -1295,6 +1248,7 @@ function extractBooking(text, menu) {
           activeReservation.servicio = d.reservation.servicio || activeReservation.servicio;
           activeReservation.specialRequests = d.reservation.specialRequests || activeReservation.specialRequests;
           activeReservation.estado = d.reservation.estado || activeReservation.estado;
+          activeReservation.actionToken = d.reservation.actionToken || activeReservation.actionToken;
           saveReserva();
           addMsg('bot', T.modifyDone + CORE.reservaResumen(activeReservation, lang));
         } else if (d.ok === false && d.motivo) {
@@ -1322,28 +1276,6 @@ function extractBooking(text, menu) {
     // El idioma ya quedó fijado por el selector inicial (o por client.language
     // como fallback): nunca se vuelve a detectar del texto libre aquí. [Objetivo 1, regla 7]
     var lang = cfg.language === 'en' ? 'en' : 'es';
-
-    // ── Active cancel flow: collect next field ───────────────────────────
-    if (cancelStep > 0) {
-      if (/^(salir|exit)$/i.test(t)) {
-        cancelStep = 0; cancelData = {};
-        addMsg('user', t);
-        addMsg('bot', lang === 'en'
-          ? 'Process cancelled. Is there anything else I can help with?'
-          : 'Proceso cancelado. ¿Hay algo más en lo que pueda ayudarte?');
-        return;
-      }
-      var cstep = CANCEL_STEPS[cancelStep - 1];
-      cancelData[cstep.field] = t;
-      addMsg('user', t);
-      cancelStep++;
-      if (cancelStep <= CANCEL_STEPS.length) {
-        addMsg('bot', CANCEL_STEPS[cancelStep - 1].ask[lang]);
-      } else {
-        submitCancellation();
-      }
-      return;
-    }
 
     // Modo modificar: el siguiente mensaje trae el cambio para la reserva activa.
     if (modifyMode) {
@@ -1496,14 +1428,13 @@ function extractBooking(text, menu) {
       return;
     }
 
-    // ── Cancel intent detected: start flow ──────────────────────────────
+    // Public cancellation requires the action token from an active reservation
+    // or the secure link received by email; contact/date cannot authorize it.
     if (featureOn('cancellation') && isCancellationRequest(t)) {
       addMsg('user', t);
-      cancelStep = 1;
-      var cancelIntro = lang === 'en'
-        ? '🗓️ I\'ll help you cancel your reservation. Write "exit" at any time to stop.\n\n'
-        : '🗓️ Te ayudo a cancelar tu reserva. Escribe "salir" en cualquier momento para salir.\n\n';
-      addMsg('bot', cancelIntro + CANCEL_STEPS[0].ask[lang]);
+      addMsg('bot', lang === 'en'
+        ? 'To cancel securely, open the reservation link from your confirmation email.'
+        : 'Para cancelar de forma segura, abre el enlace de reserva de tu correo de confirmación.');
       return;
     }
 

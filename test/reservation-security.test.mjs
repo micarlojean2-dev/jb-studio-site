@@ -8,15 +8,16 @@ globalThis.fetch = async () => { throw new Error('network disabled in reservatio
 const { default: reservationHandler, __test: reservationTest } = await import('../api/reservations.js');
 const { default: cancellationHandler, __test: cancellationTest } = await import('../api/cancel-reservation.js');
 
-function fakeRedis({ failKeys = false, failReservationWrite = false } = {}) {
+function fakeRedis({ failGet = false, failKeys = false, failLock = false, failReservationWrite = false } = {}) {
   const data = new Map();
   const match = (pattern, key) => new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replaceAll('\\*', '.*')}$`).test(key);
   return {
     data,
-    async get(key) { return data.get(key) ?? null; },
+    async get(key) { if (failGet) throw new Error('redis unavailable'); return data.get(key) ?? null; },
     async mget(...keys) { return keys.map((key) => data.get(key) ?? null); },
     async keys(pattern) { if (failKeys) throw new Error('redis unavailable'); return [...data.keys()].filter((key) => match(pattern, key)); },
     async set(key, value, options = {}) {
+      if (options.nx && failLock) throw new Error('redis unavailable');
       if (options.nx && data.has(key)) return null;
       if (failReservationWrite && key.startsWith('reservations:')) throw new Error('redis write unavailable');
       data.set(key, value);
@@ -136,6 +137,66 @@ console.log('6. A valid token cancels once and cannot be reused');
   assert.equal(second.body.found, false);
   assert.equal(redis.data.get(key).estado, 'cancelada');
   assert.ok(redis.data.get(key).actionTokenUsedAt);
+}
+
+console.log('7. Invalid, expired, and cross-client tokens cannot select reservations');
+{
+  const redis = fakeRedis();
+  const token = 'secure-token';
+  redis.data.set('client:secure-spa', client);
+  redis.data.set('client:other-spa', client);
+  redis.data.set('reservations:secure-spa:2', {
+    estado: 'confirmada', actionTokenHash: reservationTest.actionTokenHash(token), actionTokenExpiresAt: '2040-07-21T23:59:59.999Z',
+  });
+  reservationTest.setRedisForTests(redis);
+  assert.equal((await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'invalid-token.test' }, body: { clientId: 'secure-spa', action: 'lookup', actionToken: 'wrong' } })).body.found, false);
+  assert.equal((await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'cross-token.test' }, body: { clientId: 'other-spa', action: 'lookup', actionToken: token } })).body.found, false);
+  redis.data.get('reservations:secure-spa:2').actionTokenExpiresAt = '2000-01-01T00:00:00.000Z';
+  assert.equal((await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'expired-token.test' }, body: { clientId: 'secure-spa', action: 'lookup', actionToken: token } })).body.found, false);
+}
+
+console.log('8. A legacy token migrates on use and rescheduling rotates it');
+{
+  const redis = fakeRedis();
+  const legacyToken = 'legacy-token';
+  const key = 'reservations:secure-spa:3';
+  redis.data.set('client:secure-spa', client);
+  redis.data.set(key, { clientId: 'secure-spa', estado: 'confirmada', nombre: 'Legacy', fecha: '2040-07-20', fechaISO: '2040-07-20', hora: '10:00', horaISO: '10:00', servicio: 'Masaje', duracion: 60, actionToken: legacyToken });
+  reservationTest.setRedisForTests(redis);
+  const lookup = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'legacy-lookup.test' }, body: { clientId: 'secure-spa', action: 'lookup', actionToken: legacyToken } });
+  assert.equal(lookup.body.found, true);
+  assert.equal(redis.data.get(key).actionToken, undefined);
+  const rescheduled = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'legacy-reschedule.test' }, body: { clientId: 'secure-spa', action: 'reschedule', actionToken: legacyToken, fecha: '2040-07-20', hora: '11:00' } });
+  assert.equal(rescheduled.body.ok, true);
+  const nextToken = rescheduled.body.reservation.actionToken;
+  assert.ok(nextToken && nextToken !== legacyToken);
+  assert.equal((await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'old-token.test' }, body: { clientId: 'secure-spa', action: 'lookup', actionToken: legacyToken } })).body.found, false);
+  assert.equal((await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'new-token.test' }, body: { clientId: 'secure-spa', action: 'lookup', actionToken: nextToken } })).body.found, true);
+}
+
+console.log('9. Redis failures fail closed during lookup, locks, and cancellation');
+{
+  const lookupRedis = fakeRedis({ failKeys: true });
+  lookupRedis.data.set('client:secure-spa', client);
+  reservationTest.setRedisForTests(lookupRedis);
+  const lookup = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'lookup-storage.test' }, body: { clientId: 'secure-spa', action: 'lookup', actionToken: 'x' } });
+  assert.deepEqual(lookup.body, { error: 'storage_unavailable', retryable: true });
+
+  const lockRedis = fakeRedis({ failLock: true });
+  lockRedis.data.set('client:secure-spa', client);
+  reservationTest.setRedisForTests(lockRedis);
+  assert.equal((await call(reservationHandler, booking('lock-failure'))).statusCode, 503);
+
+  const cancelRedis = fakeRedis({ failGet: true });
+  cancelRedis.data.set('client:secure-spa', client);
+  cancellationTest.setRedisForTests(cancelRedis);
+  const cancellation = await call(cancellationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'cancel-storage.test' }, body: { clientId: 'secure-spa', actionToken: 'x' } });
+  assert.deepEqual(cancellation.body, { error: 'storage_unavailable', retryable: true });
+}
+
+console.log('10. Token expiry honors the business timezone');
+{
+  assert.equal(reservationTest.actionTokenExpiry('2040-07-20', 'America/Los_Angeles'), '2040-07-21T06:59:59.999Z');
 }
 
 console.log('Reservation security handler tests verified');

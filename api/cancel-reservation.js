@@ -36,15 +36,54 @@ function tokenMatches(hash, token) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-function actionTokenIsActive(reservation, token) {
+function rawTokenMatches(storedToken, token) {
+  if (!storedToken || !token) return false;
+  const expected = Buffer.from(String(storedToken));
+  const actual = Buffer.from(String(token));
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+function actionTokenState(reservation, token) {
+  if (!reservation || reservation.actionTokenUsedAt) return null;
   const expiresAt = Date.parse(reservation && reservation.actionTokenExpiresAt);
-  return !!reservation && !reservation.actionTokenUsedAt && Number.isFinite(expiresAt) && expiresAt > Date.now() &&
-    tokenMatches(reservation.actionTokenHash, token);
+  if (reservation.actionTokenHash) {
+    return Number.isFinite(expiresAt) && expiresAt > Date.now() && tokenMatches(reservation.actionTokenHash, token) ? 'secure' : null;
+  }
+  return rawTokenMatches(reservation.actionToken, token) ? 'legacy' : null;
+}
+
+function actionTokenExpiry(fechaISO, timezone) {
+  const match = String(fechaISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  let candidate = NaN;
+  if (match) {
+    const [year, month, day] = match.slice(1).map(Number);
+    const utcGuess = Date.UTC(year, month - 1, day, 23, 59, 59, 999);
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(utcGuess));
+      const part = Object.fromEntries(parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
+      const localAsUtc = Date.UTC(+part.year, +part.month - 1, +part.day, +part.hour, +part.minute, +part.second, 999);
+      candidate = utcGuess - (localAsUtc - utcGuess);
+    } catch (e) {}
+  }
+  return new Date(Math.max(Date.now() + 86400000, Number.isFinite(candidate) ? candidate : Date.now() + 86400000)).toISOString();
+}
+
+function migrateLegacyActionToken(reservation, token, timezone) {
+  if (actionTokenState(reservation, token) !== 'legacy') return false;
+  reservation.actionTokenHash = actionTokenHash(token);
+  reservation.actionTokenExpiresAt = actionTokenExpiry(reservation.fechaISO, timezone);
+  reservation.actionTokenUsedAt = null;
+  delete reservation.actionToken;
+  return true;
 }
 
 async function releaseOwnedLock(key, owner) {
   const script = redis.createScript('if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) end return 0');
   await script.eval([key], [owner]);
+}
+
+function storageUnavailable(res) {
+  return res.status(503).json({ error: 'storage_unavailable', retryable: true });
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -68,17 +107,26 @@ export default async function handler(req, res) {
     return res.status(400).json({ found: false, error: 'Valid actionToken is required' });
 
   try {
-    const client = await redis.get(`client:${clientId}`);
+    let client;
+    try {
+      client = await redis.get(`client:${clientId}`);
+    } catch (err) {
+      captureApiException(err, { clientId, feature: 'redis', route: '/api/cancel-reservation' });
+      return storageUnavailable(res);
+    }
     if (!client)        return res.status(404).json({ error: 'Client not found' });
     if (!client.active) return res.status(403).json({ error: 'Client inactive' });
 
     // ── Find all reservations for this client ────────────────────────────
-    const keys = await redis.keys(`reservations:${clientId}:*`);
+    let keys, items;
+    try {
+      keys = await redis.keys(`reservations:${clientId}:*`);
+      items = keys.length === 1 ? [await redis.get(keys[0])] : keys.length ? await redis.mget(...keys) : [];
+    } catch (err) {
+      captureApiException(err, { clientId, feature: 'redis', route: '/api/cancel-reservation' });
+      return storageUnavailable(res);
+    }
     if (!keys.length) return res.status(200).json({ found: false });
-
-    const items = keys.length === 1
-      ? [await redis.get(keys[0])]
-      : await redis.mget(...keys);
 
     // Only an unexpired, unused hashed action capability can select a reservation.
     let match     = null;
@@ -86,7 +134,7 @@ export default async function handler(req, res) {
 
     items.forEach((r, i) => {
       if (!r) return;
-      if (r.estado === 'cancelada' || !actionTokenIsActive(r, actionToken)) return;
+      if (r.estado === 'cancelada' || !actionTokenState(r, actionToken)) return;
       match = r;
       matchKey = keys[i];
     });
@@ -97,16 +145,21 @@ export default async function handler(req, res) {
     const lockOwner = randomUUID();
     try {
       const got = await redis.set(lockKey, lockOwner, { nx: true, px: 15000 });
-      if (got !== 'OK' && got !== true) return res.status(503).json({ error: 'No pudimos completar la cancelación. Intenta nuevamente.' });
+      if (got !== 'OK' && got !== true) return storageUnavailable(res);
     } catch (err) {
       captureApiException(err, { clientId, feature: 'redis', route: '/api/cancel-reservation' });
-      return res.status(503).json({ error: 'No pudimos completar la cancelación. Intenta nuevamente.' });
+      return storageUnavailable(res);
     }
 
     try {
       // Reload while holding the capability lock so parallel requests cannot consume it twice.
-      match = await redis.get(matchKey);
-      if (!match || match.estado === 'cancelada' || !actionTokenIsActive(match, actionToken)) {
+      try {
+        match = await redis.get(matchKey);
+      } catch (err) {
+        captureApiException(err, { clientId, feature: 'redis', route: '/api/cancel-reservation' });
+        return storageUnavailable(res);
+      }
+      if (!match || match.estado === 'cancelada' || !actionTokenState(match, actionToken)) {
         return res.status(200).json({ found: false });
       }
 
@@ -114,9 +167,15 @@ export default async function handler(req, res) {
     const fechaCancelacion = new Date().toISOString();
     match.estado           = 'cancelada';
     match.fechaCancelacion = fechaCancelacion;
+    migrateLegacyActionToken(match, actionToken, client.timezone);
     match.actionTokenUsedAt = fechaCancelacion;
     match.cancelledBy = 'cliente';
-    await redis.set(matchKey, match);
+    try {
+      await redis.set(matchKey, match);
+    } catch (err) {
+      captureApiException(err, { clientId, feature: 'redis', route: '/api/cancel-reservation' });
+      return storageUnavailable(res);
+    }
     console.log(`[api/cancel-reservation] Cancelled ${matchKey}`);
     const activity = await registrarActividad(clientId, {
       type: 'cancelled', cliente: match.nombre, servicio: match.servicio,
@@ -151,4 +210,4 @@ export default async function handler(req, res) {
   }
 }
 
-export const __test = { actionTokenHash, tokenMatches, actionTokenIsActive, setRedisForTests(value) { redis = value; } };
+export const __test = { actionTokenHash, tokenMatches, actionTokenState, actionTokenExpiry, migrateLegacyActionToken, setRedisForTests(value) { redis = value; } };

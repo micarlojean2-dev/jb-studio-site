@@ -410,7 +410,6 @@
   var bookingReview = false;   // el resumen final está a la vista, esperando confirmación
   var resumenBotones = null;   // botones del resumen activo, para no dejar un par duplicado
   var submitting = false;      // evita envíos duplicados de la reserva
-  var cancelStep  = 0, cancelData  = {};
   // Estado de la reserva activa creada en esta conversación. Persiste tras
   // recargar para reconocerla, impedir duplicados y permitir modificar/cancelar
   // por su actionToken (sin depender solo del historial de texto). [BUG-4/5]
@@ -1298,6 +1297,7 @@ function extractBooking(text, menu) {
           activeReservation.servicio = d.reservation.servicio || activeReservation.servicio;
           activeReservation.specialRequests = d.reservation.specialRequests || activeReservation.specialRequests;
           activeReservation.estado = d.reservation.estado || activeReservation.estado;
+          activeReservation.actionToken = d.reservation.actionToken || activeReservation.actionToken;
           saveReserva();
           addMsg('bot', T.modifyDone + CORE.reservaResumen(activeReservation, lang));
         } else if (d.ok === false && d.motivo) {
@@ -1317,32 +1317,6 @@ function extractBooking(text, menu) {
     dupPending = true;
     addMsg('bot', s.text);
     offerReservationActions(lang);
-  }
-
-  function submitCancellation() {
-    var lang = cfg.language === 'en' ? 'en' : 'es';
-    busy = true; inp.disabled = true; snd.disabled = true;
-    showTyping();
-    fetch(API + '/api/cancel-reservation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: clientId, contacto: cancelData.contacto, fecha: cancelData.fecha }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        hideTyping();
-        addMsg('bot', d.found
-          ? (lang === 'en' ? '✅ Your reservation has been cancelled. We hope to see you again soon!' : '✅ Tu reserva fue cancelada correctamente. ¡Esperamos verte pronto!')
-          : (lang === 'en' ? 'No reservation was found with those details. Please verify your email/phone and date, then try again.' : 'No encontramos una reserva con esos datos. Verifica el email/teléfono y la fecha e intenta de nuevo.'));
-      })
-      .catch(function () {
-        hideTyping();
-        addMsg('bot', lang === 'en' ? "Sorry, that didn't go through 😅 Mind trying again?" : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
-      })
-      .finally(function () {
-        cancelStep = 0; cancelData = {};
-        busy = false; inp.disabled = false; snd.disabled = false; inp.focus();
-      });
   }
 
   function submitEmailAction(data) {
@@ -1392,22 +1366,6 @@ function extractBooking(text, menu) {
         return;
       }
       submitEmailAction(requested);
-      return;
-    }
-
-    if (cancelStep > 0) {
-      if (/^(salir|exit)$/i.test(t)) {
-        cancelStep = 0; cancelData = {};
-        addMsg('user', t);
-        addMsg('bot', lang === 'en' ? 'Process cancelled. Is there anything else I can help with?' : 'Proceso cancelado. ¿Hay algo más en lo que pueda ayudarte?');
-        return;
-      }
-      var cstep = CANCEL_STEPS[cancelStep - 1];
-      cancelData[cstep.field] = t;
-      addMsg('user', t);
-      cancelStep++;
-      if (cancelStep <= CANCEL_STEPS.length) addMsg('bot', CANCEL_STEPS[cancelStep - 1].ask[lang]);
-      else submitCancellation();
       return;
     }
 
@@ -1570,11 +1528,9 @@ function extractBooking(text, menu) {
 
     if (featureOn('cancellation') && isCancellationRequest(t)) {
       addMsg('user', t);
-      cancelStep = 1;
-      var cancelIntro = lang === 'en'
-        ? '🗓️ I\'ll help you cancel your reservation. Write "exit" at any time to stop.\n\n'
-        : '🗓️ Te ayudo a cancelar tu reserva. Escribe "salir" en cualquier momento para salir.\n\n';
-      addMsg('bot', cancelIntro + CANCEL_STEPS[0].ask[lang]);
+      addMsg('bot', lang === 'en'
+        ? 'To cancel securely, open the reservation link from your confirmation email.'
+        : 'Para cancelar de forma segura, abre el enlace de reserva de tu correo de confirmación.');
       return;
     }
 

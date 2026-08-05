@@ -197,16 +197,53 @@ function tokenMatches(hash, token) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-function actionTokenIsActive(reservation, token) {
-  const expiresAt = Date.parse(reservation && reservation.actionTokenExpiresAt);
-  return !!reservation && !reservation.actionTokenUsedAt && Number.isFinite(expiresAt) && expiresAt > Date.now() &&
-    tokenMatches(reservation.actionTokenHash, token);
+function rawTokenMatches(storedToken, token) {
+  if (!storedToken || !token) return false;
+  const expected = Buffer.from(String(storedToken));
+  const actual = Buffer.from(String(token));
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-function actionTokenExpiry(fechaISO) {
-  const candidate = new Date(`${fechaISO}T23:59:59.999Z`).getTime();
+function actionTokenState(reservation, token) {
+  if (!reservation || reservation.actionTokenUsedAt) return null;
+  const expiresAt = Date.parse(reservation && reservation.actionTokenExpiresAt);
+  if (reservation.actionTokenHash) {
+    return Number.isFinite(expiresAt) && expiresAt > Date.now() && tokenMatches(reservation.actionTokenHash, token) ? 'secure' : null;
+  }
+  return rawTokenMatches(reservation.actionToken, token) ? 'legacy' : null;
+}
+
+function actionTokenIsActive(reservation, token) {
+  return actionTokenState(reservation, token) !== null;
+}
+
+function actionTokenExpiry(fechaISO, timezone) {
+  const match = String(fechaISO || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  let candidate = NaN;
+  if (match) {
+    const [year, month, day] = match.slice(1).map(Number);
+    const utcGuess = Date.UTC(year, month - 1, day, 23, 59, 59, 999);
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+      }).formatToParts(new Date(utcGuess));
+      const part = Object.fromEntries(parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
+      const localAsUtc = Date.UTC(+part.year, +part.month - 1, +part.day, +part.hour, +part.minute, +part.second, 999);
+      candidate = utcGuess - (localAsUtc - utcGuess);
+    } catch (e) {}
+  }
   const endOfDay = Number.isFinite(candidate) ? candidate : Date.now() + 86400000;
   return new Date(Math.max(Date.now() + 86400000, endOfDay)).toISOString();
+}
+
+function migrateLegacyActionToken(reservation, token, timezone) {
+  if (actionTokenState(reservation, token) !== 'legacy') return false;
+  reservation.actionTokenHash = actionTokenHash(token);
+  reservation.actionTokenExpiresAt = actionTokenExpiry(reservation.fechaISO, timezone);
+  reservation.actionTokenUsedAt = null;
+  delete reservation.actionToken;
+  return true;
 }
 
 async function releaseOwnedLock(key, owner) {
@@ -879,10 +916,25 @@ export default async function handler(req, res) {
     // phone) or any other client's data. [auditoría — reagendado sin saludo genérico]
     if (action === 'lookup') {
       if (!actionToken) return res.status(400).json({ error: 'actionToken is required' });
-      const keys = await redis.keys(`reservations:${clientId}:*`);
-      const items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
-      const match = items.find((item) => actionTokenIsActive(item, actionToken));
+      let keys, items;
+      try {
+        keys = await redis.keys(`reservations:${clientId}:*`);
+        items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+      } catch (err) {
+        captureApiException(err, { clientId, feature: 'redis', route: '/api/reservations' });
+        return res.status(503).json({ error: 'storage_unavailable', retryable: true });
+      }
+      const index = items.findIndex((item) => actionTokenIsActive(item, actionToken));
+      const match = index >= 0 ? items[index] : null;
       if (!match) return res.status(200).json({ found: false });
+      if (migrateLegacyActionToken(match, actionToken, client.timezone)) {
+        try {
+          await redis.set(keys[index], match);
+        } catch (err) {
+          captureApiException(err, { clientId, feature: 'redis', route: '/api/reservations' });
+          return res.status(503).json({ error: 'storage_unavailable', retryable: true });
+        }
+      }
       return res.status(200).json({ found: true, reservation: publicReservationView(client, match) });
     }
 
@@ -964,7 +1016,7 @@ export default async function handler(req, res) {
       const nextActionToken = randomUUID();
       candidate.actionToken = nextActionToken;
       candidate.actionTokenHash = actionTokenHash(nextActionToken);
-      candidate.actionTokenExpiresAt = actionTokenExpiry(candidate.fechaISO);
+      candidate.actionTokenExpiresAt = actionTokenExpiry(candidate.fechaISO, client.timezone);
       candidate.actionTokenUsedAt = null;
       const { actionToken: rawActionToken, ...storedCandidate } = candidate;
       try {
@@ -973,6 +1025,8 @@ export default async function handler(req, res) {
         captureApiException(err, { clientId, feature: 'redis', route: '/api/reservations' });
         return res.status(503).json({ error: 'No pudimos guardar la reserva. Intenta nuevamente.' });
       }
+      await releaseAvailabilityLocks(rescheduleLock);
+      rescheduleLock = null;
       const activity = await registrarActividad(clientId, {
         type: 'rescheduled', cliente: candidate.nombre, servicio: candidate.servicio,
         fecha: candidate.fecha, hora: candidate.hora,
@@ -1054,7 +1108,7 @@ export default async function handler(req, res) {
       // a hash, expiry and one-use state so a leaked record cannot authorize actions.
       actionToken:    rawActionToken,
       actionTokenHash: actionTokenHash(rawActionToken),
-      actionTokenExpiresAt: actionTokenExpiry(parseFechaISO(fecha, nowEnZona(client.timezone))),
+      actionTokenExpiresAt: actionTokenExpiry(parseFechaISO(fecha, nowEnZona(client.timezone)), client.timezone),
       actionTokenUsedAt: null,
       estado:         'confirmada',
       fechaConfirmacion: new Date(ts).toISOString(),
@@ -1171,9 +1225,16 @@ export default async function handler(req, res) {
       captureApiException(e, { clientId, feature: 'redis', route: '/api/reservations' });
       return res.status(503).json({ error: 'No pudimos guardar la reserva. Intenta nuevamente.' });
     }
-    // Record the created key in the lock so a later retry with the same key (or
-    // a concurrent loser) resolves to THIS reservation instead of a new one.
-    await redis.set(lockKey, key, { ex: 24 * 60 * 60 }).catch(() => {});
+    // Record the created key before responding. If this mapping cannot be
+    // persisted, a retry must not be allowed to silently create another booking.
+    try {
+      await redis.set(lockKey, key, { ex: 24 * 60 * 60 });
+    } catch (err) {
+      captureApiException(err, { clientId, feature: 'redis', route: '/api/reservations' });
+      return res.status(503).json({ error: 'storage_unavailable', retryable: true, reservationCreated: true, reservationId: key });
+    }
+    await releaseAvailabilityLocks(availabilityLock);
+    availabilityLock = null;
     console.log(`[api/reservations] Saved ${key}`);
     const activity = await registrarActividad(clientId, {
       type: 'created', cliente: reservation.nombre, servicio: reservation.servicio,
@@ -1233,5 +1294,6 @@ export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
   configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml,
   sendReservationEmails, resendMessageId, releaseInactiveIdempotencyLock, reservationLanguage, publicReservationView,
-  nowEnZona, durationFor, actionTokenHash, tokenMatches, actionTokenIsActive,
+  nowEnZona, durationFor, actionTokenHash, tokenMatches, actionTokenState, actionTokenIsActive,
+  actionTokenExpiry, migrateLegacyActionToken,
   setRedisForTests(value) { redis = value; } };
