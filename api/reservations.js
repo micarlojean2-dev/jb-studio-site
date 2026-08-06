@@ -906,7 +906,7 @@ export default async function handler(req, res) {
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
-  if (action !== 'reschedule' && action !== 'lookup' && action !== 'list' && (!nombre || !fecha || !hora))
+  if (action !== 'reschedule' && action !== 'lookup' && action !== 'list' && action !== 'validate' && (!nombre || !fecha || !hora))
     return res.status(400).json({ error: 'nombre, fecha and hora are required' });
 
   try {
@@ -978,6 +978,29 @@ export default async function handler(req, res) {
         return out;
       }, []);
       return res.status(200).json({ found: true, reservations });
+    }
+
+    // Read-only early availability check for chat surfaces. It deliberately
+    // reuses the final validator so duration, Spa buffer, timezone and the
+    // specific day's closing time cannot diverge from reservation creation.
+    if (action === 'validate') {
+      if (!fecha || !hora) return res.status(400).json({ error: 'fecha and hora are required' });
+      let keys, items;
+      try {
+        keys = await redis.keys(`reservations:${clientId}:*`);
+        items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+      } catch (err) {
+        captureApiException(err, { clientId, feature: 'reservation_validation', route: '/api/reservations' });
+        return res.status(503).json({ error: 'storage_unavailable', retryable: true });
+      }
+      return res.status(200).json(validarReserva(
+        client,
+        parseFechaISO(fecha, nowEnZona(client.timezone)),
+        normalizeHora(hora),
+        servicio,
+        undefined,
+        items.filter(Boolean),
+      ));
     }
 
     // Reprogramming is intentionally handled by this existing endpoint so the

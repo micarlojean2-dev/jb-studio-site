@@ -21,8 +21,8 @@ assert.match(html, /Cancelar/);
 assert.match(html, /Reagendar/);
 
 const source = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../api/reservations.js', import.meta.url), 'utf8'));
-assert.match(source, /action !== 'reschedule' && action !== 'lookup' && action !== 'list' && \(!nombre \|\| !fecha \|\| !hora\)/,
-  'secure rescheduling and token-authorized reads bypass the creation-only name requirement');
+assert.match(source, /action !== 'reschedule' && action !== 'lookup' && action !== 'list' && action !== 'validate' && \(!nombre \|\| !fecha \|\| !hora\)/,
+  'secure actions and read-only validation bypass the creation-only name requirement');
 const assistant = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../asistente.html', import.meta.url), 'utf8'));
 assert.match(assistant, /window\.location\.hash\.slice\(1\) \|\| window\.location\.search/,
   'email action tokens are read from URL fragments before query strings');

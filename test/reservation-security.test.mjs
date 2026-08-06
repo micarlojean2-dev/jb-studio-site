@@ -103,6 +103,26 @@ console.log('1b. Disabled reservation features reject creation, rescheduling, an
   console.log('✓ disabled reservation features cannot create, reschedule, or cancel');
 }
 
+console.log('1c. Early validation rejects a service that runs past closing without creating a reservation');
+{
+  const redis = fakeRedis();
+  const closingHours = Object.fromEntries(['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+    .map((day) => [day, { enabled: true, ranges: [{ start: '09:00', end: '21:00' }] }]));
+  redis.data.set('client:secure-spa', { ...client, templateId: 'spa', businessHours: closingHours });
+  reservationTest.setRedisForTests(redis);
+
+  const validation = await call(reservationHandler, {
+    method: 'POST', headers: { 'x-forwarded-for': 'early-closing.test' }, body: {
+      clientId: 'secure-spa', action: 'validate', fecha: '2040-07-20', hora: '8:59 PM', servicio: 'Masaje',
+    },
+  });
+  assert.equal(validation.statusCode, 200);
+  assert.equal(validation.body.ok, false);
+  assert.equal(validation.body.motivo, 'no_cabe_antes_del_cierre');
+  assert.equal([...redis.data.keys()].filter((key) => key.startsWith('reservations:')).length, 0);
+  console.log('✓ early validation rejects 8:59 PM + 60 min before collecting contact data');
+}
+
 console.log('2. Invalid times do not create a reservation');
 {
   const redis = fakeRedis();

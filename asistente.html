@@ -397,6 +397,7 @@
   function featureOn(key) { return CORE.featureOn(cfg, key); }
 
   var bookingStep = 0, bookingData = {};
+  var earlyValidationKey = '';
   // Servicio recordado aunque el cliente aún no esté en modo reserva: se fija
   // al mencionarlo en chat libre, al pulsar una tarjeta o al elegirlo del
   // catálogo. Al iniciar una reserva sirve de respaldo si el mensaje que la
@@ -956,11 +957,46 @@ function resolverHora(n, minutos, sufijo, businessHours) {
     }
   }
 
+  function validarDisponibilidadTemprana(lang) {
+    if (!bookingData.servicio || !bookingData.fecha || !bookingData.hora) return false;
+    var key = [bookingData.servicio, bookingData.fecha, bookingData.hora].join('\u0000');
+    if (earlyValidationKey === key) return false;
+    busy = true; inp.disabled = true; snd.disabled = true;
+    fetch(API + '/api/reservations', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: clientId, action: 'validate', servicio: bookingData.servicio, fecha: bookingData.fecha, hora: bookingData.hora }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok) {
+          earlyValidationKey = key;
+          askBookingTurn(lang);
+          return;
+        }
+        var motivo = d && d.motivo;
+        var campo = motivo === 'dia_cerrado' || motivo === 'feriado' ? 'fecha' : 'hora';
+        delete bookingData[campo];
+        earlyValidationKey = '';
+        bookingPending = campo;
+        bookingReview = false;
+        addMsg('bot', CORE.motivoDisponibilidadMensaje(motivo, cfg, lang, d && d.alternativa));
+        save();
+      })
+      .catch(function () {
+        // The final creation validation remains authoritative if this UX check cannot run.
+        earlyValidationKey = key;
+        askBookingTurn(lang);
+      })
+      .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
+    return true;
+  }
+
   // Cada turno de la reserva lo redacta DeepSeek: se le manda el historial y el
   // estado estructurado (lo capturado y lo que falta) y responde natural,
   // pidiendo solo el próximo dato. El frontend sigue siendo dueño del estado y
   // la validación; el modelo nunca confirma ni inventa disponibilidad.
   function askBookingTurn(lang) {
+    if (validarDisponibilidadTemprana(lang)) return;
     var faltan = bookingFaltan();
     var completo = faltan.length === 0;
     bookingPending = completo ? null : faltan[0];
