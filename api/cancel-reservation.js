@@ -120,6 +120,14 @@ export default async function handler(req, res) {
     }
     if (!client)        return res.status(404).json({ error: 'Client not found' });
     if (!client.active) return res.status(403).json({ error: 'Client inactive' });
+    if (client.features?.reservations === false || client.features?.cancellation === false) {
+      return res.status(200).json({
+        found: false,
+        ok: false,
+        motivo: 'cancelacion_desactivada',
+        mensaje: 'La cancelación no está disponible para este negocio en este momento.',
+      });
+    }
 
     // ── Find all reservations for this client ────────────────────────────
     let keys, items;

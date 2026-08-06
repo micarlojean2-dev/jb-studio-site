@@ -73,6 +73,36 @@ console.log('1. Redis availability read failure does not create a reservation');
   assert.equal([...redis.data.keys()].filter((key) => key.startsWith('reservations:')).length, 0);
 }
 
+console.log('1b. Disabled reservation features reject creation, rescheduling, and cancellation');
+{
+  const redis = fakeRedis();
+  redis.data.set('client:secure-spa', { ...client, features: { reservations: false, cancellation: false, rescheduling: false } });
+  reservationTest.setRedisForTests(redis);
+  cancellationTest.setRedisForTests(redis);
+
+  const create = await call(reservationHandler, booking('feature-disabled'));
+  assert.equal(create.body.ok, false);
+  assert.equal(create.body.motivo, 'reservas_desactivadas');
+  assert.equal([...redis.data.keys()].filter((key) => key.startsWith('reservations:')).length, 0);
+
+  const reschedule = await call(reservationHandler, {
+    method: 'POST', headers: { 'x-forwarded-for': 'feature-reschedule.test' }, body: {
+      clientId: 'secure-spa', action: 'reschedule', actionToken: 'unused-token', fecha: '2040-07-20', hora: '11:00',
+    },
+  });
+  assert.equal(reschedule.body.ok, false);
+  assert.equal(reschedule.body.motivo, 'reservas_desactivadas');
+
+  const cancel = await call(cancellationHandler, {
+    method: 'POST', headers: { 'x-forwarded-for': 'feature-cancel.test' }, body: {
+      clientId: 'secure-spa', actionToken: 'unused-token',
+    },
+  });
+  assert.equal(cancel.body.ok, false);
+  assert.equal(cancel.body.motivo, 'cancelacion_desactivada');
+  console.log('✓ disabled reservation features cannot create, reschedule, or cancel');
+}
+
 console.log('2. Invalid times do not create a reservation');
 {
   const redis = fakeRedis();

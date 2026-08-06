@@ -498,22 +498,6 @@ window.JBChatCore = (function () {
       ' ' + (en ? 'What new date and time would you prefer?' : '¿Qué nueva fecha y hora prefieres?');
   }
 
-  var BOOKING_STEPS = [
-      { field: 'nombre',   ask: { es: '¿Cuál es tu nombre completo?',                           en: 'What is your full name?' } },
-      { field: 'telefono', ask: { es: '¿Cuál es tu número de teléfono?',                        en: "What's your phone number?" } },
-      { field: 'email',    ask: { es: '¿Cuál es tu email?',                                     en: "What's your email address?" } },
-      { field: 'fecha',    ask: { es: '¿Qué fecha prefieres? (ej: 15 de julio)',                 en: 'What date do you prefer? (e.g. July 15)' } },
-      { field: 'hora',     ask: { es: '¿A qué hora? (ej: 3:00 PM)',                             en: 'What time? (e.g. 3:00 PM)' } },
-      { field: 'servicio', ask: { es: '¿Qué servicio te gustaría?',                                en: 'Which service would you like?' } },
-      { field: 'personas', ask: { es: '¿Para cuántas personas sería? (escribe 1 si es solo para ti)', en: 'For how many people? (write 1 if it is just you)' } },
-      { field: 'specialRequests', ask: { es: '¿Tienes alguna petición especial? Escribe "No" si no tienes ninguna.', en: 'Do you have any special requests? Write "No" if none.' } },
-    ];
-
-  var CANCEL_STEPS = [
-      { field: 'contacto', ask: { es: '¿Cuál es el email o teléfono con el que hiciste la reserva?', en: 'What email or phone number did you use to book?' } },
-      { field: 'fecha',    ask: { es: '¿Cuál es la fecha de tu reserva? (ej: 15 de julio)',           en: 'What is the date of your reservation? (e.g. July 15)' } },
-    ];
-
   function horasAbiertas(businessHours) {
     var set = {};
     if (!businessHours) return null;
@@ -992,39 +976,6 @@ window.JBChatCore = (function () {
       if (!m) return 'rgba(26,74,46,' + a + ')';
       return 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + a + ')';
     }
-  // Devuelve el primer campo sin rellenar, o -1 si ya está todo.
-  function nextMissingIndex(bookingData) {
-    for (var i = 0; i < BOOKING_STEPS.length; i++) {
-      var f = BOOKING_STEPS[i].field;
-      if (bookingData[f]) continue;
-      // personas y nota son opcionales: se auto-llenan y no bloquean el flujo
-      if (f === 'personas') { bookingData[f] = '1'; continue; }
-      if (f === 'nota')     { bookingData[f] = '';  continue; }
-      return i;
-    }
-    return -1;
-  }
-
-  function askConProgreso(i, lang) {
-    var etiqueta = (lang === 'en' ? 'Step ' : 'Paso ') + (i + 1) + '/' + BOOKING_STEPS.length;
-    return etiqueta + '\n' + BOOKING_STEPS[i].ask[lang];
-  }
-
-  function resumenDeLoCapturado(data, lang) {
-    var L = RESUMEN_LABEL[lang];
-    return ['nombre', 'servicio', 'fecha', 'hora', 'personas', 'telefono', 'email']
-      .filter(function (k) { return data[k]; })
-      .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + L[k] + ': ' + data[k]; })
-      .join('\n');
-  }
-
-  function lineasResumen(data, lang) {
-    var L = RESUMEN_LABEL[lang];
-    return ['nombre', 'servicio', 'fecha', 'hora', 'personas', 'telefono', 'email']
-      .filter(function (k) { return data[k]; })
-      .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + L[k] + ': ' + data[k]; });
-  }
-
   // Saludo y acciones rápidas: el texto es común; los botones los pinta cada
   // superficie con sus clases.
   function greeting(cfg, puedeReservar) {
@@ -1300,10 +1251,7 @@ window.JBChatCore = (function () {
     generalPhotosIntro: generalPhotosIntro,
     limpiarNombre: limpiarNombre,
     esSinPeticionEspecial: esSinPeticionEspecial,
-    BOOKING_STEPS: BOOKING_STEPS,
-    CANCEL_STEPS: CANCEL_STEPS,
     RESUMEN_ICONOS: RESUMEN_ICONOS,
-    RESUMEN_LABEL: RESUMEN_LABEL,
     summaryLabel: summaryLabel,
     genIdempotencyKey: genIdempotencyKey,
     reservaResumen: reservaResumen,
@@ -1337,10 +1285,6 @@ window.JBChatCore = (function () {
     specialRequestsQuestion: specialRequestsQuestion,
     iconFor: iconFor,
     hexToRgba: hexToRgba,
-    nextMissingIndex: nextMissingIndex,
-    askConProgreso: askConProgreso,
-    resumenDeLoCapturado: resumenDeLoCapturado,
-    lineasResumen: lineasResumen,
     greeting: greeting,
     accionesRapidas: accionesRapidas,
     featureOn: featureOn,
