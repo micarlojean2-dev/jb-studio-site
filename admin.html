@@ -7252,7 +7252,7 @@ LÍMITES ESTRICTOS:
         <div class="form-group"><label for="spa-address">Dirección</label><input id="spa-address" class="admin-input" required></div>
         <div class="form-group"><label for="spa-phone-number">Teléfono del negocio (lo verán tus clientes)</label><div style="display:flex;gap:8px"><select id="spa-phone-country" class="admin-input" style="flex:0 0 148px" required><option value="">País</option><option value="US|+1">Estados Unidos +1</option><option value="CA|+1">Canadá +1</option><option value="MX|+52">México +52</option><option value="CL|+56">Chile +56</option><option value="AR|+54">Argentina +54</option><option value="CO|+57">Colombia +57</option><option value="PE|+51">Perú +51</option><option value="BR|+55">Brasil +55</option><option value="ES|+34">España +34</option><option value="GB|+44">Reino Unido +44</option></select><input id="spa-phone-number" class="admin-input" type="tel" placeholder="912345678" style="flex:1" required></div><div id="spa-phone-error" class="spa-error"></div></div>
         <div class="form-group"><label for="spa-email">Correo de notificaciones</label><input id="spa-email" class="admin-input" type="email" required></div>
-        <div class="form-group"><label for="spa-timezone">Zona horaria</label><input id="spa-timezone" class="admin-input" list="spa-timezones" placeholder="America/Santiago" required><p id="spa-timezone-hint" class="setup-hint" aria-live="polite"></p><datalist id="spa-timezones"><option value="America/Santiago"><option value="America/Mexico_City"><option value="America/Bogota"><option value="America/Lima"><option value="America/Argentina/Buenos_Aires"><option value="America/Sao_Paulo"><option value="Europe/Madrid"><option value="America/New_York"></datalist></div>
+        <div class="form-group"><label for="spa-timezone">Zona horaria</label><input id="spa-timezone" class="admin-input" list="spa-timezones" placeholder="America/Santiago" required><p id="spa-timezone-hint" class="setup-hint" aria-live="polite"></p><p class="setup-hint">Powered by <a href="https://www.geoapify.com/" target="_blank" rel="noopener noreferrer">Geoapify</a></p><datalist id="spa-timezones"><option value="America/Santiago"><option value="America/Mexico_City"><option value="America/Bogota"><option value="America/Lima"><option value="America/Argentina/Buenos_Aires"><option value="America/Sao_Paulo"><option value="Europe/Madrid"><option value="America/New_York"></datalist></div>
       </div></section>
       <section class="spa-creator-section"><h3>Horarios</h3><p class="wizard-step-sub">Activa los días de atención e indica uno o más rangos (máximo 2 por día).</p><div id="spa-hours"></div><div id="spa-hours-error" class="spa-error"></div></section>
       <section class="spa-creator-section"><h3>Servicios</h3><p class="wizard-step-sub" id="spa-duration-hint"></p><div id="spa-services"></div><button type="button" id="spa-add-service" class="copy-link">+ Agregar servicio</button><button type="button" id="spa-import-toggle" class="copy-link">Importar lista</button><div id="spa-import-panel" class="svc-import-panel" hidden><label for="spa-import">Una línea por servicio: <code>Nombre | Precio | Duración</code></label><textarea id="spa-import" class="admin-input admin-textarea" placeholder="Masaje relajante | 35000 | 60"></textarea><button type="button" id="spa-import-run" class="copy-link">Importar</button></div><div id="spa-services-error" class="spa-error"></div></section>
@@ -7375,8 +7375,8 @@ LÍMITES ESTRICTOS:
     return 0;
   };
   const isValidDurationMinutes = value => { const n = parseDurationMinutes(value); return n >= 1 && n <= 1440; };
-  // Zona horaria automática (auditoría FASE 5): se detecta la zona del
-  // navegador del administrador al abrir el creador, pero nunca se
+  // Zona horaria automática: se detecta desde la dirección del negocio y el
+  // país seleccionado, nunca desde el navegador del administrador. No se
   // sobrescribe una zona que el administrador ya haya elegido a mano --
   // "manualmente" sobrevive a reset(), porque reset() llama a
   // form.reset() en cada apertura del modal y eso borraría el campo antes
@@ -7386,36 +7386,46 @@ LÍMITES ESTRICTOS:
   // duplica listeners ni pierde la elección manual (auditoría, prueba 11).
   let spaTimezoneManual = false;
   const spaTimezoneHint = $('spa-timezone-hint');
-  const detectBrowserTimezone = () => {
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      return tz && validTimezone(tz) ? tz : null;
-    } catch { return null; }
-  };
+  let timezoneLookupId = 0;
   $('spa-timezone').addEventListener('input', () => {
     spaTimezoneManual = true;
     spaTimezoneHint.textContent = 'Zona seleccionada manualmente. Puedes editarla si el negocio está en otro país.';
   });
-  // Se llama desde reset() DESPUÉS de form.reset() (que ya dejó el campo
-  // vacío). Si la zona era manual, se restaura el valor guardado antes de
-  // limpiar; si no, se intenta detectar la del navegador. Si la detección
-  // falla, el campo queda vacío a propósito (nunca UTC en silencio) y
-  // "required" + validTimezone en validate() bloquean la creación hasta
-  // que el administrador elija una zona a mano (auditoría, requisito 7).
+  async function suggestTimezoneFromAddress() {
+    const address = $('spa-address').value.trim();
+    const country = ($('spa-phone-country').value.split('|')[0] || '').trim();
+    if (!address || !country || spaTimezoneManual) return;
+    const requestId = ++timezoneLookupId;
+    spaTimezoneHint.textContent = 'Buscando zona horaria según la dirección...';
+    try {
+      const response = await fetch('/api/clients?action=detect-timezone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': window.__jbAdmin.getToken() },
+        body: JSON.stringify({ address, country }),
+      });
+      const data = await response.json();
+      if (requestId !== timezoneLookupId) return;
+      if (response.ok && data.timezone && validTimezone(data.timezone)) {
+        $('spa-timezone').value = data.timezone;
+        spaTimezoneHint.textContent = `${data.timezone} · Detectada desde ${data.address || address}. Puedes cambiarla si no corresponde al negocio.`;
+      } else {
+        spaTimezoneHint.textContent = 'No pudimos confirmar la zona horaria con esa dirección. Elígela manualmente.';
+      }
+    } catch {
+      if (requestId === timezoneLookupId) spaTimezoneHint.textContent = 'No pudimos confirmar la zona horaria con esa dirección. Elígela manualmente.';
+    }
+    if (requestId === timezoneLookupId) validate();
+  }
+  // Se llama desde reset() DESPUÉS de form.reset(). Si la zona era manual,
+  // se restaura; en caso contrario se espera una dirección y país verificables.
   function applySpaTimezone(preserved) {
     if (spaTimezoneManual && preserved) {
       $('spa-timezone').value = preserved;
       spaTimezoneHint.textContent = 'Zona seleccionada manualmente. Puedes editarla si el negocio está en otro país.';
       return;
     }
-    const detected = detectBrowserTimezone();
-    if (detected) {
-      $('spa-timezone').value = detected;
-      spaTimezoneHint.textContent = `${detected} · Detectada automáticamente desde este dispositivo. Puedes cambiarla si el negocio está en otro país.`;
-    } else {
-      $('spa-timezone').value = '';
-      spaTimezoneHint.textContent = 'No se pudo detectar la zona horaria automáticamente. Elígela manualmente.';
-    }
+    $('spa-timezone').value = '';
+    spaTimezoneHint.textContent = 'Escribe la dirección y selecciona el país para detectar la zona horaria.';
   }
   // capacityPerSlot se valida/envia SIEMPRE (las 3 plantillas: barberos,
   // cabinas o mesas simultaneas, ver api/reservations.js). bufferMinutes
@@ -7466,7 +7476,7 @@ LÍMITES ESTRICTOS:
     create.disabled = errors.length > 0 || fields.some(([id,test]) => !test($(id).value.trim()));
     return !create.disabled;
   }
-  function reset() { const preservedTimezone = spaTimezoneManual ? $('spa-timezone').value.trim() : ''; form.reset(); $('spa-services').innerHTML = ''; $('spa-success').style.display = 'none'; $('spa-import-panel').hidden = true; renderHours(); addService(); onTypeChange(); applySpaTimezone(preservedTimezone); }
+  function reset() { const preservedTimezone = spaTimezoneManual ? $('spa-timezone').value.trim() : ''; form.reset(); $('spa-services').innerHTML = ''; $('spa-success').style.display = 'none'; $('spa-import-panel').hidden = true; renderHours(); addService(); applySpaTimezone(preservedTimezone); onTypeChange(); }
   // Carga las plantillas aqui (no al cargar la pagina): #open-spa-creator-btn
   // vive dentro de #admin-panel, oculto hasta que tryLogin() tiene exito, asi
   // que para cuando este click puede ocurrir el token ya existe. Si TEMPLATES
@@ -7477,6 +7487,8 @@ LÍMITES ESTRICTOS:
   });
   $('spa-creator-close').addEventListener('click', () => overlay.hidden = true); overlay.addEventListener('click', event => { if (event.target === overlay) overlay.hidden = true; });
   $('spa-hours').addEventListener('change', event => { if (event.target.matches('.spa-day-open')) { const row = event.target.closest('.spa-hours-row'); if (event.target.checked && !row.querySelector('.spa-hours-ranges').children.length) addRange(row); syncRangeButton(row); } validate(); }); $('spa-hours').addEventListener('click', event => { if (event.target.matches('.spa-add-range')) addRange(event.target.closest('.spa-hours-row')); if (event.target.matches('.hour-range-remove')) { const row = event.target.closest('.spa-hours-row'); event.target.parentElement.remove(); syncRangeButton(row); } validate(); });
+  $('spa-address').addEventListener('change', suggestTimezoneFromAddress);
+  $('spa-phone-country').addEventListener('change', suggestTimezoneFromAddress);
   $('spa-add-service').addEventListener('click', () => { if (!addService()) $('spa-services-error').textContent = `Máximo ${MAX_SERVICES} servicios.`; validate(); }); $('spa-services').addEventListener('click', event => { if (event.target.matches('.hour-range-remove')) { event.target.closest('.spa-service-row').remove(); validate(); } }); $('spa-import-toggle').addEventListener('click', () => $('spa-import-panel').hidden = !$('spa-import-panel').hidden);
   // Antes de importar se quitan las filas vacias existentes (ej. la fila en
   // blanco que reset() ya deja lista para llenar a mano) -- si no, quedaban

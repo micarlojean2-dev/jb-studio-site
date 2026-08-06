@@ -1,6 +1,6 @@
 // Test obligatorio (auditoría FASE 5 — zona horaria automática):
-//  1. Navegador detecta America/Los_Angeles -> el campo #spa-timezone queda prellenado.
-//  2. Navegador detecta America/Santiago -> se conserva.
+//  1. Dirección + país obtienen una zona IANA del endpoint interno.
+//  2. Una respuesta sin coincidencia deja la selección manual.
 //  3. Administrador cambia manualmente la zona detectada -> no se vuelve a
 //     sobrescribir al cerrar/reabrir el modal.
 //  4. Detección vacía o que lanza error -> el formulario exige selección manual
@@ -83,9 +83,8 @@ function basePayload(templateId, id, phoneNumber, timezone) {
 
 // ---------------------------------------------------------------------------
 // Harness frontend: extrae el #spa-creator-form REAL de admin.html (mismo
-// patrón que test/e2e-admin-to-chatbot.test.mjs) y permite instrumentar/mockear
-// Intl.DateTimeFormat ANTES de disparar el click que abre el modal, para
-// simular lo que "detecta" el navegador del administrador.
+// patrón que test/e2e-admin-to-chatbot.test.mjs) y simula el endpoint interno
+// que consulta Geoapify desde el servidor.
 // ---------------------------------------------------------------------------
 const adminSrc = readFileSync(join(root, 'admin.html'), 'utf8');
 const modalHtml = adminSrc.match(/<div id="spa-creator-overlay"[\s\S]*?<\/div>\s*\n<script>/)[0].replace(/<script>$/, '');
@@ -101,8 +100,12 @@ async function buildDom() {
     { runScripts: 'outside-only', url: 'https://jbstudio.app/admin' });
   const { window } = dom;
   window.__jbAdmin = { getToken: () => 'timezone-auto-deteccion-token', refreshClients: () => {} };
+  window.__timezoneLookup = null;
   window.fetch = async (url) => {
     if (String(url).includes('action=templates')) return { ok: true, json: async () => TEMPLATES };
+    if (String(url).includes('action=detect-timezone')) return window.__timezoneLookup
+      ? window.__timezoneLookup()
+      : { ok: true, json: async () => ({ timezone: null, address: null }) };
     throw new Error('fetch inesperado: ' + url);
   };
   // Cuenta cuántas veces se registra un listener "input" sobre #spa-timezone,
@@ -118,22 +121,6 @@ async function buildDom() {
   return dom;
 }
 
-// Sustituye Intl.DateTimeFormat en el realm del jsdom: las llamadas SIN
-// argumentos (Intl.DateTimeFormat().resolvedOptions().timeZone, la detección)
-// quedan controladas por `detected`; las llamadas CON argumentos (la
-// validación real de validTimezone/isValidTimezone) siguen usando el motor
-// real, sin mockear -- así seguimos probando la validación de verdad.
-function mockDetection(window, detected) {
-  const OriginalDTF = window.Intl.DateTimeFormat;
-  window.Intl.DateTimeFormat = function (...args) {
-    if (args.length === 0) {
-      if (detected instanceof Error) throw detected;
-      return { resolvedOptions: () => ({ timeZone: detected }) };
-    }
-    return new OriginalDTF(...args);
-  };
-}
-
 function $(dom, id) { return dom.window.document.getElementById(id); }
 async function openCreator(dom) {
   $(dom, 'open-spa-creator-btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
@@ -142,33 +129,26 @@ async function openCreator(dom) {
 
 console.log('FASE 5 — zona horaria automática\n');
 
-// 1) Navegador detecta America/Los_Angeles -> campo prellenado.
+// 1) Una dirección confirmada por el backend llena el campo sin marcarlo rojo.
 {
   const dom = await buildDom();
-  mockDetection(dom.window, 'America/Los_Angeles');
   await openCreator(dom);
-  assert.equal($(dom, 'spa-timezone').value, 'America/Los_Angeles', 'prueba 1: el campo se prellena con la zona detectada');
-  assert.match($(dom, 'spa-timezone-hint').textContent, /Detectada autom/, 'prueba 1: la etiqueta indica detección automática');
-  console.log('✓ 1) detección America/Los_Angeles prellena el campo');
-}
-
-// 2) Navegador detecta America/Santiago -> se conserva (no hardcodeado a un
-//    único valor de prueba).
-{
-  const dom = await buildDom();
-  mockDetection(dom.window, 'America/Santiago');
-  await openCreator(dom);
-  assert.equal($(dom, 'spa-timezone').value, 'America/Santiago', 'prueba 2: el campo se prellena con America/Santiago');
-  console.log('✓ 2) detección America/Santiago se conserva');
+  dom.window.__timezoneLookup = async () => ({ ok: true, json: async () => ({ timezone: 'America/Santiago', address: 'Avenida Apoquindo 3000, Las Condes, Chile' }) });
+  $(dom, 'spa-address').value = 'Av. Apoquindo 3000';
+  $(dom, 'spa-phone-country').value = 'CL|+56';
+  $(dom, 'spa-address').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal($(dom, 'spa-timezone').value, 'America/Santiago', 'prueba 1: el campo se prellena con la zona de la dirección');
+  assert.match($(dom, 'spa-timezone-hint').textContent, /Detectada desde Avenida Apoquindo/, 'prueba 1: la etiqueta cita la dirección confirmada');
+  assert.equal($(dom, 'spa-timezone').classList.contains('spa-field-invalid'), false, 'prueba 1: una zona válida sugerida no queda marcada en rojo');
+  console.log('✓ 1) dirección + país sugieren America/Santiago sin borde rojo');
 }
 
 // 3) Administrador cambia manualmente la zona detectada -> no se vuelve a
 //    sobrescribir, ni siquiera cerrando y reabriendo el modal varias veces.
 {
   const dom = await buildDom();
-  mockDetection(dom.window, 'America/Los_Angeles');
   await openCreator(dom);
-  assert.equal($(dom, 'spa-timezone').value, 'America/Los_Angeles');
   $(dom, 'spa-timezone').value = 'Europe/Madrid';
   $(dom, 'spa-timezone').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
   assert.match($(dom, 'spa-timezone-hint').textContent, /manualmente/, 'prueba 3: la etiqueta refleja la elección manual');
@@ -183,22 +163,24 @@ console.log('FASE 5 — zona horaria automática\n');
   console.log('✓ 3) elección manual nunca se sobrescribe al reabrir el modal');
 }
 
-// 4) Detección vacía o que lanza error -> exige selección manual (nunca UTC
-//    en silencio) y bloquea la creación.
-for (const [label, detected] of [['vacía', ''], ['error', new Error('no soportado')]]) {
+// 4) Sin una coincidencia confirmada, exige selección manual (nunca UTC en
+// silencio) y bloquea la creación.
+{
   const dom = await buildDom();
-  mockDetection(dom.window, detected);
   await openCreator(dom);
-  assert.equal($(dom, 'spa-timezone').value, '', `prueba 4 (${label}): el campo queda vacío, nunca UTC en silencio`);
-  assert.match($(dom, 'spa-timezone-hint').textContent, /manualmente/, `prueba 4 (${label}): la etiqueta pide selección manual`);
-  console.log(`✓ 4) detección ${label}: exige selección manual, sin caer en UTC`);
+  $(dom, 'spa-address').value = 'Dirección sin confirmar';
+  $(dom, 'spa-phone-country').value = 'CL|+56';
+  $(dom, 'spa-address').dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal($(dom, 'spa-timezone').value, '', 'prueba 4: el campo queda vacío, nunca UTC en silencio');
+  assert.match($(dom, 'spa-timezone-hint').textContent, /manualmente/, 'prueba 4: la etiqueta pide selección manual');
+  console.log('✓ 4) sin coincidencia: exige selección manual, sin caer en UTC');
 }
 
 // 5) Zona inválida escrita a mano -> el frontend bloquea la creación
 //    (create.disabled se mantiene true).
 {
   const dom = await buildDom();
-  mockDetection(dom.window, 'America/Los_Angeles');
   await openCreator(dom);
   // Completa el resto del formulario para aislar el timezone como única causa
   // de bloqueo.
@@ -322,7 +304,6 @@ for (const [label, detected] of [['vacía', ''], ['error', new Error('no soporta
 //     previa ni registra un listener "input" duplicado en #spa-timezone.
 {
   const dom = await buildDom();
-  mockDetection(dom.window, 'America/Los_Angeles');
   await openCreator(dom);
   $(dom, 'spa-timezone').value = 'America/Bogota';
   $(dom, 'spa-timezone').dispatchEvent(new dom.window.Event('input', { bubbles: true }));
