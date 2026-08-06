@@ -278,6 +278,8 @@ console.log('8. Paridad widget.js / asistente.html — mismo comportamiento en l
 console.log('9. asistente.html — entrada desde enlace de reagendado: ejecución real, sin saludo general');
 {
   ok(/else if \(!emailAction\) showGreetingNow\(\);/.test(asistente), 'el saludo genérico NUNCA se dispara cuando hay emailAction (verificado en el propio código)');
+  ok(/if \(emailAction\) \{\s*\/\/ A secure email link[\s\S]*?sessionStorage\.removeItem\(SESS\);[\s\S]*?sessionStorage\.removeItem\(BOOKING_SESS\);[\s\S]*?sessionStorage\.removeItem\(RESERVA_SESS\);[\s\S]*?\} catch \(e\) \{\}\s*\} else \{\s*try \{ msgs = JSON\.parse\(sessionStorage\.getItem\(SESS\)/.test(asistente),
+    'enlace seguro con sesión previa: descarta historial, reserva activa y flujo pendiente antes de restaurar estado');
 
   const anchor = asistente.indexOf('Links from email must work even if this browser has an unrelated');
   const start = asistente.indexOf('if (emailAction) {', anchor);

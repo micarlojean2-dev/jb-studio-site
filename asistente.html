@@ -438,19 +438,33 @@
   var CANCEL_TRIGGERS  = /\bcancel(ar)?\b|quiero cancelar/i;
   var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserva|hora libre|turno|quiero una cita/i;
 
-  try { msgs = JSON.parse(sessionStorage.getItem(SESS) || '[]'); } catch (e) { msgs = []; }
   var BOOKING_SESS = SESS + '_booking';
-  try {
-    var restoredBooking = JSON.parse(sessionStorage.getItem(BOOKING_SESS) || 'null');
-    if (restoredBooking && typeof restoredBooking === 'object') {
-      bookingStep = restoredBooking.bookingStep || 0;
-      bookingData = restoredBooking.bookingData || {};
-      bookingPending = restoredBooking.bookingPending || null;
-      bookingReview = !!(restoredBooking.awaitingConfirmation || restoredBooking.bookingReview);
-      horaPendiente = restoredBooking.horaPendiente || null;
-      selectedService = restoredBooking.selectedService || '';
-    }
-  } catch (e) {}
+  if (emailAction) {
+    // A secure email link is a separate, token-authorized flow. A prior chat
+    // session must not hide its cancellation or rescheduling confirmation.
+    activeReservation = null;
+    msgs = [];
+    bookingStep = 0; bookingData = {}; bookingPending = null;
+    bookingReview = false; selectedService = ''; horaPendiente = null;
+    try {
+      sessionStorage.removeItem(SESS);
+      sessionStorage.removeItem(BOOKING_SESS);
+      sessionStorage.removeItem(RESERVA_SESS);
+    } catch (e) {}
+  } else {
+    try { msgs = JSON.parse(sessionStorage.getItem(SESS) || '[]'); } catch (e) { msgs = []; }
+    try {
+      var restoredBooking = JSON.parse(sessionStorage.getItem(BOOKING_SESS) || 'null');
+      if (restoredBooking && typeof restoredBooking === 'object') {
+        bookingStep = restoredBooking.bookingStep || 0;
+        bookingData = restoredBooking.bookingData || {};
+        bookingPending = restoredBooking.bookingPending || null;
+        bookingReview = !!(restoredBooking.awaitingConfirmation || restoredBooking.bookingReview);
+        horaPendiente = restoredBooking.horaPendiente || null;
+        selectedService = restoredBooking.selectedService || '';
+      }
+    } catch (e) {}
+  }
   function save() { try {
     sessionStorage.setItem(SESS, JSON.stringify(msgs.slice(-60)));
     if (bookingStep || selectedService) sessionStorage.setItem(BOOKING_SESS, JSON.stringify({ bookingStep: bookingStep, bookingData: bookingData, bookingPending: bookingPending, bookingReview: bookingReview, awaitingConfirmation: bookingReview, horaPendiente: horaPendiente, language: cfg.language, selectedService: selectedService }));
