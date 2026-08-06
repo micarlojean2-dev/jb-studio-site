@@ -199,4 +199,66 @@ console.log('10. Token expiry honors the business timezone');
   assert.equal(reservationTest.actionTokenExpiry('2040-07-20', 'America/Los_Angeles'), '2040-07-21T06:59:59.999Z');
 }
 
+console.log('11. Chat selection lists and manages only exact email-and-phone matches');
+{
+  const redis = fakeRedis();
+  const token = 'chat-selection-token';
+  const sourceKey = 'reservations:secure-spa:chat-source';
+  const peerKey = 'reservations:secure-spa:chat-peer';
+  const outsiderKey = 'reservations:secure-spa:chat-outsider';
+  const base = {
+    clientId: 'secure-spa', estado: 'confirmada', email: 'same@qa.test', telefono: '5551234567',
+    fecha: '2040-07-20', fechaISO: '2040-07-20', horaISO: '10:00', servicio: 'Masaje', duracion: 60,
+  };
+  redis.data.set('client:secure-spa', client);
+  redis.data.set(sourceKey, { ...base, nombre: 'Source', hora: '10:00', actionTokenHash: reservationTest.actionTokenHash(token), actionTokenExpiresAt: '2040-07-21T23:59:59.999Z', actionTokenUsedAt: null });
+  redis.data.set(peerKey, { ...base, nombre: 'Peer', hora: '11:00', horaISO: '11:00' });
+  redis.data.set(outsiderKey, { ...base, nombre: 'Outsider', email: 'other@qa.test', hora: '12:00', horaISO: '12:00' });
+  reservationTest.setRedisForTests(redis);
+  cancellationTest.setRedisForTests(redis);
+
+  const list = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'chat-list.test' }, body: { clientId: 'secure-spa', action: 'list', actionToken: token } });
+  assert.equal(list.body.found, true);
+  assert.deepEqual(list.body.reservations.map((reservation) => Object.keys(reservation).sort()), [
+    ['fecha', 'hora', 'reservationId', 'servicio'], ['fecha', 'hora', 'reservationId', 'servicio'],
+  ]);
+  assert.deepEqual(list.body.reservations.map((reservation) => reservation.reservationId).sort(), [peerKey, sourceKey].sort());
+
+  const invalidList = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'chat-invalid.test' }, body: { clientId: 'secure-spa', action: 'list', actionToken: 'expired-or-invalid' } });
+  assert.deepEqual(invalidList.body, { found: false });
+
+  const crossReschedule = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'chat-reschedule.test' }, body: { clientId: 'secure-spa', action: 'reschedule', actionToken: token, selectedReservationId: outsiderKey, fecha: '2040-07-20', hora: '13:00' } });
+  assert.deepEqual(crossReschedule.body, { found: false });
+  assert.equal(redis.data.get(outsiderKey).hora, '12:00');
+
+  const peerReschedule = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'chat-peer-reschedule.test' }, body: { clientId: 'secure-spa', action: 'reschedule', actionToken: token, selectedReservationId: peerKey, fecha: '2040-07-20', hora: '13:00' } });
+  assert.equal(peerReschedule.body.ok, true);
+  assert.equal(redis.data.get(peerKey).hora, '13:00');
+  assert.equal((await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'chat-source-still-valid.test' }, body: { clientId: 'secure-spa', action: 'list', actionToken: token } })).body.found, true);
+
+  const crossCancel = await call(cancellationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'chat-cancel.test' }, body: { clientId: 'secure-spa', actionToken: token, selectedReservationId: outsiderKey } });
+  assert.deepEqual(crossCancel.body, { found: false });
+  const peerCancel = await call(cancellationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'chat-peer-cancel.test' }, body: { clientId: 'secure-spa', actionToken: token, selectedReservationId: peerKey } });
+  assert.equal(peerCancel.body.found, true);
+  assert.equal(redis.data.get(peerKey).estado, 'cancelada');
+  redis.data.get(sourceKey).actionTokenExpiresAt = '2000-01-01T00:00:00.000Z';
+  const expiredList = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'chat-expired.test' }, body: { clientId: 'secure-spa', action: 'list', actionToken: token } });
+  assert.deepEqual(expiredList.body, { found: false });
+}
+
+console.log('12. Chat selection shares the five-per-IP-per-hour reservation rate limit');
+{
+  const redis = fakeRedis();
+  const token = 'rate-limit-list-token';
+  redis.data.set('client:secure-spa', client);
+  redis.data.set('reservations:secure-spa:rate-limit', {
+    estado: 'confirmada', email: 'rate@qa.test', telefono: '5551234567',
+    actionTokenHash: reservationTest.actionTokenHash(token), actionTokenExpiresAt: '2040-07-21T23:59:59.999Z', actionTokenUsedAt: null,
+  });
+  reservationTest.setRedisForTests(redis);
+  const req = { method: 'POST', headers: { 'x-forwarded-for': 'chat-rate-limit.test' }, body: { clientId: 'secure-spa', action: 'list', actionToken: token } };
+  for (let i = 0; i < 5; i++) assert.equal((await call(reservationHandler, req)).statusCode, 200);
+  assert.equal((await call(reservationHandler, req)).statusCode, 429);
+}
+
 console.log('Reservation security handler tests verified');

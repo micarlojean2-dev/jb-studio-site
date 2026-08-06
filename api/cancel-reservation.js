@@ -43,6 +43,10 @@ function rawTokenMatches(storedToken, token) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
+function sameChatContact(a, b) {
+  return !!a?.email && !!a?.telefono && a.email === b?.email && a.telefono === b?.telefono;
+}
+
 function actionTokenState(reservation, token) {
   if (!reservation || reservation.actionTokenUsedAt) return null;
   const expiresAt = Date.parse(reservation && reservation.actionTokenExpiresAt);
@@ -99,7 +103,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, actionToken } = req.body || {};
+  const { clientId, actionToken, selectedReservationId } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -129,17 +133,26 @@ export default async function handler(req, res) {
     if (!keys.length) return res.status(200).json({ found: false });
 
     // Only an unexpired, unused hashed action capability can select a reservation.
-    let match     = null;
-    let matchKey  = null;
+    let source     = null;
+    let sourceKey  = null;
 
     items.forEach((r, i) => {
       if (!r) return;
-      if (r.estado === 'cancelada' || !actionTokenState(r, actionToken)) return;
-      match = r;
-      matchKey = keys[i];
+      if (!actionTokenState(r, actionToken)) return;
+      source = r;
+      sourceKey = keys[i];
     });
 
-    if (!match) return res.status(200).json({ found: false });
+    const chatSelection = typeof selectedReservationId === 'string';
+    let match = source;
+    let matchKey = sourceKey;
+    if (chatSelection) {
+      const selectedIndex = keys.indexOf(selectedReservationId);
+      match = selectedIndex >= 0 ? items[selectedIndex] : null;
+      matchKey = selectedIndex >= 0 ? keys[selectedIndex] : null;
+      if (!source || !match || !sameChatContact(source, match)) return res.status(200).json({ found: false });
+    }
+    if (!match || match.estado === 'cancelada') return res.status(200).json({ found: false });
 
     const lockKey = `reservation-action-lock:${actionTokenHash(actionToken)}`;
     const lockOwner = randomUUID();
@@ -154,12 +167,15 @@ export default async function handler(req, res) {
     try {
       // Reload while holding the capability lock so parallel requests cannot consume it twice.
       try {
-        match = await redis.get(matchKey);
+        const reloadedSource = await redis.get(sourceKey);
+        match = sourceKey === matchKey ? reloadedSource : await redis.get(matchKey);
+        source = reloadedSource;
       } catch (err) {
         captureApiException(err, { clientId, feature: 'redis', route: '/api/cancel-reservation' });
         return storageUnavailable(res);
       }
-      if (!match || match.estado === 'cancelada' || !actionTokenState(match, actionToken)) {
+      if (!source || !actionTokenState(source, actionToken) || !match || match.estado === 'cancelada' ||
+        (chatSelection && !sameChatContact(source, match)) || (!chatSelection && !actionTokenState(match, actionToken))) {
         return res.status(200).json({ found: false });
       }
 
@@ -167,8 +183,10 @@ export default async function handler(req, res) {
     const fechaCancelacion = new Date().toISOString();
     match.estado           = 'cancelada';
     match.fechaCancelacion = fechaCancelacion;
-    migrateLegacyActionToken(match, actionToken, client.timezone);
-    match.actionTokenUsedAt = fechaCancelacion;
+    if (!chatSelection) {
+      migrateLegacyActionToken(match, actionToken, client.timezone);
+      match.actionTokenUsedAt = fechaCancelacion;
+    }
     match.cancelledBy = 'cliente';
     try {
       await redis.set(matchKey, match);
@@ -210,4 +228,4 @@ export default async function handler(req, res) {
   }
 }
 
-export const __test = { actionTokenHash, tokenMatches, actionTokenState, actionTokenExpiry, migrateLegacyActionToken, setRedisForTests(value) { redis = value; } };
+export const __test = { actionTokenHash, tokenMatches, actionTokenState, actionTokenExpiry, migrateLegacyActionToken, sameChatContact, setRedisForTests(value) { redis = value; } };

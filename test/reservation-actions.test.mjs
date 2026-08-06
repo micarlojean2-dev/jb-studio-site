@@ -21,8 +21,8 @@ assert.match(html, /Cancelar/);
 assert.match(html, /Reagendar/);
 
 const source = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../api/reservations.js', import.meta.url), 'utf8'));
-assert.match(source, /action !== 'reschedule' && action !== 'lookup' && \(!nombre \|\| !fecha \|\| !hora\)/,
-  'secure rescheduling and the read-only lookup bypass the creation-only name requirement');
+assert.match(source, /action !== 'reschedule' && action !== 'lookup' && action !== 'list' && \(!nombre \|\| !fecha \|\| !hora\)/,
+  'secure rescheduling and token-authorized reads bypass the creation-only name requirement');
 const assistant = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../asistente.html', import.meta.url), 'utf8'));
 assert.match(assistant, /window\.location\.hash\.slice\(1\) \|\| window\.location\.search/,
   'email action tokens are read from URL fragments before query strings');
@@ -32,6 +32,10 @@ for (const [name, source] of [['asistente.html', assistant], ['widget.js', widge
     `${name} stores the rotated token after rescheduling`);
   assert.doesNotMatch(source, /JSON\.stringify\(\{ clientId: clientId, contacto: cancelData\.contacto, fecha: cancelData\.fecha \}\)/,
     `${name} never sends contact plus date to cancel a reservation`);
+  assert.match(source, /action: 'list', actionToken: activeReservation\.actionToken/,
+    `${name} lists contact-bound reservations before chat cancellation or rescheduling`);
+  assert.match(source, /selectedReservationId: selectedReservationId/,
+    `${name} sends a selected reservation ID only after chat selection`);
 }
 // Auditoría FASE 3: el prompt genérico fue reemplazado por un lookup de solo
 // lectura + contexto real de la reserva (nombre/servicio/fecha/hora), que

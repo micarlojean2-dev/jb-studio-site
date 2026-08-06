@@ -346,6 +346,14 @@ function contactMatches(a, b) {
   return !!a && !!b && norm(a) === norm(b);
 }
 
+function sameChatContact(a, b) {
+  return !!a?.email && !!a?.telefono && a.email === b?.email && a.telefono === b?.telefono;
+}
+
+function chatReservationView(reservationId, reservation) {
+  return { reservationId, servicio: reservation.servicio || '', fecha: reservation.fecha || '', hora: reservation.hora || '' };
+}
+
 // Returns the key of an existing active reservation that is effectively the
 // same booking (same day + time + contact), or null. Returning the key lets the
 // caller answer with existingReservationId instead of a blind "duplicada".
@@ -894,11 +902,11 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, idempotencyKey, language } = req.body || {};
+  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, selectedReservationId, idempotencyKey, language } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
-  if (action !== 'reschedule' && action !== 'lookup' && (!nombre || !fecha || !hora))
+  if (action !== 'reschedule' && action !== 'lookup' && action !== 'list' && (!nombre || !fecha || !hora))
     return res.status(400).json({ error: 'nombre, fecha and hora are required' });
 
   try {
@@ -938,6 +946,25 @@ export default async function handler(req, res) {
       return res.status(200).json({ found: true, reservation: publicReservationView(client, match) });
     }
 
+    if (action === 'list') {
+      if (!actionToken) return res.status(200).json({ found: false });
+      let keys, items;
+      try {
+        keys = await redis.keys(`reservations:${clientId}:*`);
+        items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+      } catch (err) {
+        captureApiException(err, { clientId, feature: 'redis', route: '/api/reservations' });
+        return res.status(503).json({ error: 'storage_unavailable', retryable: true });
+      }
+      const source = items.find((item) => actionTokenIsActive(item, actionToken));
+      if (!source || !source.email || !source.telefono) return res.status(200).json({ found: false });
+      const reservations = items.reduce((out, item, index) => {
+        if (activa(item) && sameChatContact(source, item)) out.push(chatReservationView(keys[index], item));
+        return out;
+      }, []);
+      return res.status(200).json({ found: true, reservations });
+    }
+
     // Reprogramming is intentionally handled by this existing endpoint so the
     // Hobby function limit stays unchanged. The random token from the email is
     // the authority; no browser session or contact information is trusted.
@@ -959,10 +986,19 @@ export default async function handler(req, res) {
         captureApiException(err, { clientId, feature: 'redis', route: '/api/reservations' });
         return res.status(503).json({ error: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' });
       }
-      const index = items.findIndex((item) => actionTokenIsActive(item, actionToken));
-      if (index < 0) return res.status(404).json({ error: 'Reservation not found' });
+      const sourceIndex = items.findIndex((item) => actionTokenIsActive(item, actionToken));
+      const chatSelection = typeof selectedReservationId === 'string';
+      let index = sourceIndex;
+      if (chatSelection) {
+        index = keys.indexOf(selectedReservationId);
+        if (sourceIndex < 0 || index < 0 || !sameChatContact(items[sourceIndex], items[index])) {
+          return res.status(200).json({ found: false });
+        }
+      } else if (index < 0) return res.status(404).json({ error: 'Reservation not found' });
       const existing = items[index];
-      if (!activa(existing)) return res.status(409).json({ error: 'Reservation is not active' });
+      if (!activa(existing)) return chatSelection
+        ? res.status(200).json({ found: false })
+        : res.status(409).json({ error: 'Reservation is not active' });
       const candidate = {
         ...existing,
         fecha: String(fecha).slice(0, 60),
@@ -1013,11 +1049,13 @@ export default async function handler(req, res) {
       candidate.fechaAnterior = existing.fecha;
       candidate.horaAnterior = existing.hora;
       candidate.fechaReprogramacion = new Date().toISOString();
-      const nextActionToken = randomUUID();
-      candidate.actionToken = nextActionToken;
-      candidate.actionTokenHash = actionTokenHash(nextActionToken);
-      candidate.actionTokenExpiresAt = actionTokenExpiry(candidate.fechaISO, client.timezone);
-      candidate.actionTokenUsedAt = null;
+      if (!chatSelection) {
+        const nextActionToken = randomUUID();
+        candidate.actionToken = nextActionToken;
+        candidate.actionTokenHash = actionTokenHash(nextActionToken);
+        candidate.actionTokenExpiresAt = actionTokenExpiry(candidate.fechaISO, client.timezone);
+        candidate.actionTokenUsedAt = null;
+      }
       const { actionToken: rawActionToken, ...storedCandidate } = candidate;
       try {
         await redis.set(keys[index], storedCandidate);
@@ -1294,6 +1332,6 @@ export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
   configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml,
   sendReservationEmails, resendMessageId, releaseInactiveIdempotencyLock, reservationLanguage, publicReservationView,
-  nowEnZona, durationFor, actionTokenHash, tokenMatches, actionTokenState, actionTokenIsActive,
+  nowEnZona, durationFor, actionTokenHash, tokenMatches, actionTokenState, actionTokenIsActive, sameChatContact, chatReservationView,
   actionTokenExpiry, migrateLegacyActionToken,
   setRedisForTests(value) { redis = value; } };

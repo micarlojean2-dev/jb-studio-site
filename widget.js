@@ -200,6 +200,7 @@
   // ── Active reservation state (misma lógica que asistente.html) ───────────
   var RESERVA_SESS = SESS + '_reserva';
   var activeReservation = null;
+  var selectedReservationId = null;
   var dupAttempts = 0;
   var spamUntil = 0;
   var modifyMode = false;
@@ -1218,9 +1219,45 @@ function extractBooking(text, menu) {
     if (!activeReservation) return;
     var T = CORE.reservaTextos(lang);
     if (act === 'keep') { addMsg('bot', T.keepMsg); return; }
-    if (act === 'cancel') { submitActiveCancel(lang); return; }
-    modifyMode = true;
-    addMsg('bot', T.askChange);
+    selectChatReservation(act, lang);
+  }
+
+  function selectChatReservation(act, lang, update) {
+    var T = CORE.reservaTextos(lang);
+    if (!activeReservation || !activeReservation.actionToken) { addMsg('bot', T.notFound); return; }
+    var continuing = false;
+    busy = true; inp.disabled = true; snd.disabled = true;
+    fetch(API + '/api/reservations', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: clientId, action: 'list', actionToken: activeReservation.actionToken }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      var reservations = d && d.found && Array.isArray(d.reservations) ? d.reservations : [];
+      if (reservations.length <= 1) {
+        selectedReservationId = null;
+        if (act === 'cancel') { continuing = true; submitActiveCancel(lang); }
+        else if (update) { continuing = true; submitModify(update, lang); }
+        else { modifyMode = true; addMsg('bot', T.askChange); }
+        return;
+      }
+      addMsg('bot', lang === 'en' ? 'Which reservation would you like to manage?' : '¿Qué reserva quieres gestionar?');
+      var wrap = document.createElement('div'); wrap.className = 'jbw-quick';
+      reservations.forEach(function (reservation) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'jbw-quick-btn';
+        b.textContent = [reservation.servicio, reservation.fecha, reservation.hora].filter(Boolean).join(' · ');
+        b.addEventListener('click', function () {
+          wrap.remove(); selectedReservationId = reservation.reservationId;
+          activeReservation.reservationId = reservation.reservationId;
+          activeReservation.servicio = reservation.servicio; activeReservation.fecha = reservation.fecha; activeReservation.hora = reservation.hora;
+          if (act === 'cancel') { continuing = true; submitActiveCancel(lang); }
+          else if (update) { continuing = true; submitModify(update, lang); }
+          else { modifyMode = true; addMsg('bot', T.askChange); }
+        });
+        wrap.appendChild(b);
+      });
+      msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
+    }).catch(function (err) { captureWidgetError(err, 'reservation_list'); addMsg('bot', T.netFail); })
+    .finally(function () { if (!continuing) { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); } });
   }
 
   function submitActiveCancel(lang) {
@@ -1229,12 +1266,12 @@ function extractBooking(text, menu) {
     busy = true; inp.disabled = true; snd.disabled = true; showTyping();
     fetch(API + '/api/cancel-reservation', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: clientId, actionToken: activeReservation.actionToken }),
+      body: JSON.stringify(Object.assign({ clientId: clientId, actionToken: activeReservation.actionToken }, selectedReservationId ? { selectedReservationId: selectedReservationId } : {})),
     }).then(function (r) { return r.json(); }).then(function (d) {
       hideTyping();
       if (d.found || d.ok) {
         addMsg('bot', T.cancelled);
-        activeReservation = null; dupAttempts = 0; spamUntil = 0; modifyMode = false; saveReserva();
+        activeReservation = null; selectedReservationId = null; dupAttempts = 0; spamUntil = 0; modifyMode = false; saveReserva();
       } else addMsg('bot', T.cancelFail);
     }).catch(function (err) { captureWidgetError(err, 'reservation_cancel'); hideTyping(); addMsg('bot', T.netFail); })
     .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
@@ -1247,6 +1284,7 @@ function extractBooking(text, menu) {
       clientId: clientId, action: 'reschedule', actionToken: activeReservation.actionToken,
       fecha: update.fecha || activeReservation.fecha, hora: update.hora || activeReservation.hora,
     };
+    if (selectedReservationId) body.selectedReservationId = selectedReservationId;
     if (update.partySize || update.personas) body.partySize = update.partySize || update.personas;
     if (update.specialRequests) body.specialRequests = update.specialRequests;
     if (update.foodPreferences) body.foodPreferences = update.foodPreferences;
@@ -1262,6 +1300,7 @@ function extractBooking(text, menu) {
           activeReservation.specialRequests = d.reservation.specialRequests || activeReservation.specialRequests;
           activeReservation.estado = d.reservation.estado || activeReservation.estado;
           activeReservation.actionToken = d.reservation.actionToken || activeReservation.actionToken;
+          selectedReservationId = null;
           saveReserva();
           addMsg('bot', T.modifyDone + CORE.reservaResumen(activeReservation, lang));
         } else if (d.ok === false && d.motivo) {
@@ -1317,7 +1356,7 @@ function extractBooking(text, menu) {
         dupPending = false;
         if (accionesBotones && accionesBotones.parentNode) accionesBotones.remove();
         accionesBotones = null;
-        addMsg('user', t); submitActiveCancel(lang); return;
+        addMsg('user', t); selectChatReservation('cancel', lang); return;
       }
       if (MODIFY_TRIGGERS.test(t)) {
         addMsg('user', t);
@@ -1330,7 +1369,7 @@ function extractBooking(text, menu) {
           preguntarModifyHoraAmbigua(ambDirectW, directUpdateW, lang);
           return;
         }
-        if (Object.keys(directUpdateW).length) { submitModify(directUpdateW, lang); return; }
+        if (Object.keys(directUpdateW).length) { selectChatReservation('modify', lang, directUpdateW); return; }
         handleReservationAction('modify', lang);
         return;
       }
