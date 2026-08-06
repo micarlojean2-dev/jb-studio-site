@@ -269,10 +269,10 @@ console.log('Restaurante: contrato de duración de reserva\n');
 
   // 13) reagendar sin volver a mandar "servicio": debe conservar la misma
   // duración (60), no perderla ni recalcularla a 0.
-  const actionToken = primeraReserva.actionToken;
+  const actionToken = primera.responseBody.actionToken;
   const reagendada = await postReservation({
     clientId: 'rest-reservas', action: 'reschedule', actionToken,
-    fecha: '2026-08-11', hora: '19:00',
+    fecha: '2026-08-10', hora: '18:00',
   }, '172.16.9.13');
   assert.equal(reagendada.responseBody.ok, true, `prueba 13: el reagendado se acepta (fue ${JSON.stringify(reagendada.responseBody)})`);
   assert.equal(reagendada.responseBody.reservation.duracion, 60, 'prueba 13: el reagendado conserva la misma duración (60), sin volver a pedir servicio');

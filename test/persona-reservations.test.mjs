@@ -63,7 +63,7 @@ console.log('1. Shared chat requirements and extraction');
 
 console.log('2. Server-side persona validation');
 {
-  const restaurant = { templateId: 'restaurant', businessHours: hours, menu: [], capacityPerSlot: 2 };
+  const restaurant = { templateId: 'restaurant', businessHours: hours, menu: [], capacityPerSlot: 2, reservationDuration: '60 min' };
   const barber = {
     templateId: 'barber', businessHours: hours, menu: [{ nombre: 'Corte', duracion: '60 min' }],
     staff: [{ id: 'ana', name: 'Ana', businessHours: hours }], capacityPerSlot: 2,

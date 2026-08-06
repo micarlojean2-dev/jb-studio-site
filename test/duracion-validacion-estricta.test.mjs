@@ -252,8 +252,8 @@ console.log('✓ 12) Restaurante con reservationDuration inválida -> rechazado'
   const originalReserva = readReservation(original.responseBody.reservationId);
   assert.equal(originalReserva.duracion, 45, 'prueba 15: duración original 45');
   const reagendada = await postReservation({
-    clientId: 'dur-barber-reagenda', action: 'reschedule', actionToken: originalReserva.actionToken,
-    fecha: '2026-08-11', hora: '12:00',
+    clientId: 'dur-barber-reagenda', action: 'reschedule', actionToken: original.responseBody.actionToken,
+    fecha: '2026-08-10', hora: '12:00',
   }, '172.16.10.13');
   assert.equal(reagendada.responseBody.ok, true, `prueba 15: reagendado aceptado (fue ${JSON.stringify(reagendada.responseBody)})`);
   assert.equal(reagendada.responseBody.reservation.duracion, 45, 'prueba 15: el reagendado conserva exactamente la misma duración (45), sin recalcularla a 0');

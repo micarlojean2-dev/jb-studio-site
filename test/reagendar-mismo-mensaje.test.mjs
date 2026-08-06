@@ -74,6 +74,12 @@ async function buildDom({ onReschedule } = {}) {
     }
     if (u.includes('/api/reservations') && options.method === 'POST') {
       const body = JSON.parse(options.body);
+      if (body.action === 'list') {
+        return {
+          ok: true,
+          json: async () => ({ found: true, reservations: [{ reservationId: 'r1', servicio: 'Masaje relajante', fecha: 'lunes', hora: '8:00 PM' }] }),
+        };
+      }
       if (body.action === 'reschedule') {
         rescheduleCalls.push(body);
         if (onReschedule) return onReschedule(body);

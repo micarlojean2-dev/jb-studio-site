@@ -197,13 +197,10 @@
   // dispara no vuelve a nombrar el servicio. [Objetivo 4]
   var selectedService = '';
 
-  // ── Cancel flow state ────────────────────────────────────────────────────
-  var cancelStep = 0;    // 0 = idle, 1 = asking contacto, 2 = asking fecha
-  var cancelData = {};
-
   // ── Active reservation state (misma lógica que asistente.html) ───────────
   var RESERVA_SESS = SESS + '_reserva';
   var activeReservation = null;
+  var selectedReservationId = null;
   var dupAttempts = 0;
   var spamUntil = 0;
   var modifyMode = false;
@@ -744,49 +741,6 @@
     CORE.irAlFondo(msgsEl, true);
   }
 
-  // ── Submit cancel request to /api/cancel-reservation ────────────────────
-  function submitCancellation() {
-    var lang = cfg.language === 'en' ? 'en' : 'es';
-    busy = true;
-    inp.disabled = true;
-    snd.disabled = true;
-    showTyping();
-
-    fetch(API + '/api/cancel-reservation', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ clientId: clientId, contacto: cancelData.contacto, fecha: cancelData.fecha }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        hideTyping();
-        if (d.found) {
-          addMsg('bot', lang === 'en'
-            ? '✅ Your reservation has been cancelled. We hope to see you again soon!'
-            : '✅ Tu reserva fue cancelada correctamente. ¡Esperamos verte pronto!');
-        } else {
-          addMsg('bot', lang === 'en'
-            ? 'No reservation was found with those details. Please verify your email/phone and date, then try again.'
-            : 'No encontramos una reserva con esos datos. Verifica el email/teléfono y la fecha e intenta de nuevo.');
-        }
-      })
-      .catch(function (err) {
-        captureWidgetError(err, 'reservation_cancel');
-        hideTyping();
-        addMsg('bot', lang === 'en'
-          ? "Sorry, that didn't go through 😅 Mind trying again?"
-          : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
-      })
-      .finally(function () {
-        cancelStep = 0;
-        cancelData = {};
-        busy = false;
-        inp.disabled = false;
-        snd.disabled = false;
-        inp.focus();
-      });
-  }
-
   // ── Submit completed booking to /api/reservations ────────────────────────
 // Extrae datos de reserva de un mensaje libre. Solo captura lo inequívoco:
 // ante la duda no rellena, para que el flujo pregunte. Un campo inventado se
@@ -960,8 +914,13 @@ function extractBooking(text, menu) {
       addMsg('bot', lang === 'en' ? 'Sorry, morning or afternoon? 😊' : 'Perdona, ¿de la mañana o de la tarde? 😊');
       return true;
     }
-    bookingData.hora = horaPendiente.n + horaPendiente.mm + (esPM ? ' PM' : ' AM');
+    var hora = horaPendiente.n + horaPendiente.mm + (esPM ? ' PM' : ' AM');
     var amb = horaPendiente; horaPendiente = null;
+    if (CORE.horaDentroDeHorario(hora, cfg.businessHours) === false) {
+      rechazarHoraFueraDeHorario(lang);
+      return true;
+    }
+    bookingData.hora = hora;
     addMsg('bot', (lang === 'en' ? 'Got it 😊 ' : 'Perfecto 😊 ') + '⏰ ' + bookingData.hora);
     seguirDesdeLoQueFalta(lang);
     return true;
@@ -1014,6 +973,14 @@ function extractBooking(text, menu) {
       if (bookingData[k]) out[k] = bookingData[k];
     });
     return out;
+  }
+
+  function rechazarHoraFueraDeHorario(lang) {
+    delete bookingData.hora;
+    bookingPending = 'hora';
+    bookingReview = false;
+    addMsg('bot', CORE.motivoDisponibilidadMensaje('fuera_de_horario', cfg, lang));
+    save();
   }
 
   function recordFoodRequest(text, lang) {
@@ -1252,9 +1219,45 @@ function extractBooking(text, menu) {
     if (!activeReservation) return;
     var T = CORE.reservaTextos(lang);
     if (act === 'keep') { addMsg('bot', T.keepMsg); return; }
-    if (act === 'cancel') { submitActiveCancel(lang); return; }
-    modifyMode = true;
-    addMsg('bot', T.askChange);
+    selectChatReservation(act, lang);
+  }
+
+  function selectChatReservation(act, lang, update) {
+    var T = CORE.reservaTextos(lang);
+    if (!activeReservation || !activeReservation.actionToken) { addMsg('bot', T.notFound); return; }
+    var continuing = false;
+    busy = true; inp.disabled = true; snd.disabled = true;
+    fetch(API + '/api/reservations', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: clientId, action: 'list', actionToken: activeReservation.actionToken }),
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      var reservations = d && d.found && Array.isArray(d.reservations) ? d.reservations : [];
+      if (reservations.length <= 1) {
+        selectedReservationId = null;
+        if (act === 'cancel') { continuing = true; submitActiveCancel(lang); }
+        else if (update) { continuing = true; submitModify(update, lang); }
+        else { modifyMode = true; addMsg('bot', T.askChange); }
+        return;
+      }
+      addMsg('bot', lang === 'en' ? 'Which reservation would you like to manage?' : '¿Qué reserva quieres gestionar?');
+      var wrap = document.createElement('div'); wrap.className = 'jbw-quick';
+      reservations.forEach(function (reservation) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'jbw-quick-btn';
+        b.textContent = [reservation.servicio, reservation.fecha, reservation.hora].filter(Boolean).join(' · ');
+        b.addEventListener('click', function () {
+          wrap.remove(); selectedReservationId = reservation.reservationId;
+          activeReservation.reservationId = reservation.reservationId;
+          activeReservation.servicio = reservation.servicio; activeReservation.fecha = reservation.fecha; activeReservation.hora = reservation.hora;
+          if (act === 'cancel') { continuing = true; submitActiveCancel(lang); }
+          else if (update) { continuing = true; submitModify(update, lang); }
+          else { modifyMode = true; addMsg('bot', T.askChange); }
+        });
+        wrap.appendChild(b);
+      });
+      msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
+    }).catch(function (err) { captureWidgetError(err, 'reservation_list'); addMsg('bot', T.netFail); })
+    .finally(function () { if (!continuing) { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); } });
   }
 
   function submitActiveCancel(lang) {
@@ -1263,12 +1266,12 @@ function extractBooking(text, menu) {
     busy = true; inp.disabled = true; snd.disabled = true; showTyping();
     fetch(API + '/api/cancel-reservation', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: clientId, actionToken: activeReservation.actionToken }),
+      body: JSON.stringify(Object.assign({ clientId: clientId, actionToken: activeReservation.actionToken }, selectedReservationId ? { selectedReservationId: selectedReservationId } : {})),
     }).then(function (r) { return r.json(); }).then(function (d) {
       hideTyping();
       if (d.found || d.ok) {
         addMsg('bot', T.cancelled);
-        activeReservation = null; dupAttempts = 0; spamUntil = 0; modifyMode = false; saveReserva();
+        activeReservation = null; selectedReservationId = null; dupAttempts = 0; spamUntil = 0; modifyMode = false; saveReserva();
       } else addMsg('bot', T.cancelFail);
     }).catch(function (err) { captureWidgetError(err, 'reservation_cancel'); hideTyping(); addMsg('bot', T.netFail); })
     .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
@@ -1281,6 +1284,7 @@ function extractBooking(text, menu) {
       clientId: clientId, action: 'reschedule', actionToken: activeReservation.actionToken,
       fecha: update.fecha || activeReservation.fecha, hora: update.hora || activeReservation.hora,
     };
+    if (selectedReservationId) body.selectedReservationId = selectedReservationId;
     if (update.partySize || update.personas) body.partySize = update.partySize || update.personas;
     if (update.specialRequests) body.specialRequests = update.specialRequests;
     if (update.foodPreferences) body.foodPreferences = update.foodPreferences;
@@ -1295,6 +1299,8 @@ function extractBooking(text, menu) {
           activeReservation.servicio = d.reservation.servicio || activeReservation.servicio;
           activeReservation.specialRequests = d.reservation.specialRequests || activeReservation.specialRequests;
           activeReservation.estado = d.reservation.estado || activeReservation.estado;
+          activeReservation.actionToken = d.reservation.actionToken || activeReservation.actionToken;
+          selectedReservationId = null;
           saveReserva();
           addMsg('bot', T.modifyDone + CORE.reservaResumen(activeReservation, lang));
         } else if (d.ok === false && d.motivo) {
@@ -1323,28 +1329,6 @@ function extractBooking(text, menu) {
     // como fallback): nunca se vuelve a detectar del texto libre aquí. [Objetivo 1, regla 7]
     var lang = cfg.language === 'en' ? 'en' : 'es';
 
-    // ── Active cancel flow: collect next field ───────────────────────────
-    if (cancelStep > 0) {
-      if (/^(salir|exit)$/i.test(t)) {
-        cancelStep = 0; cancelData = {};
-        addMsg('user', t);
-        addMsg('bot', lang === 'en'
-          ? 'Process cancelled. Is there anything else I can help with?'
-          : 'Proceso cancelado. ¿Hay algo más en lo que pueda ayudarte?');
-        return;
-      }
-      var cstep = CANCEL_STEPS[cancelStep - 1];
-      cancelData[cstep.field] = t;
-      addMsg('user', t);
-      cancelStep++;
-      if (cancelStep <= CANCEL_STEPS.length) {
-        addMsg('bot', CANCEL_STEPS[cancelStep - 1].ask[lang]);
-      } else {
-        submitCancellation();
-      }
-      return;
-    }
-
     // Modo modificar: el siguiente mensaje trae el cambio para la reserva activa.
     if (modifyMode) {
       addMsg('user', t);
@@ -1372,7 +1356,7 @@ function extractBooking(text, menu) {
         dupPending = false;
         if (accionesBotones && accionesBotones.parentNode) accionesBotones.remove();
         accionesBotones = null;
-        addMsg('user', t); submitActiveCancel(lang); return;
+        addMsg('user', t); selectChatReservation('cancel', lang); return;
       }
       if (MODIFY_TRIGGERS.test(t)) {
         addMsg('user', t);
@@ -1385,7 +1369,7 @@ function extractBooking(text, menu) {
           preguntarModifyHoraAmbigua(ambDirectW, directUpdateW, lang);
           return;
         }
-        if (Object.keys(directUpdateW).length) { submitModify(directUpdateW, lang); return; }
+        if (Object.keys(directUpdateW).length) { selectChatReservation('modify', lang, directUpdateW); return; }
         handleReservationAction('modify', lang);
         return;
       }
@@ -1454,6 +1438,7 @@ function extractBooking(text, menu) {
 
       var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
        var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
+       var fueraDeHorario = yaVisto.__horaFueraDeHorario; if (fueraDeHorario) delete yaVisto.__horaFueraDeHorario;
        var traidos = Object.keys(yaVisto);
        traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
        // Cambio explícito de servicio dentro del flujo: se recuerda para la
@@ -1490,20 +1475,20 @@ function extractBooking(text, menu) {
          bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
       }
 
+       if (fueraDeHorario) { rechazarHoraFueraDeHorario(lang); return; }
        if (amb) { preguntarHoraAmbigua(amb, lang); return; }
        save();
        askBookingTurn(lang);
       return;
     }
 
-    // ── Cancel intent detected: start flow ──────────────────────────────
+    // Public cancellation requires the action token from an active reservation
+    // or the secure link received by email; contact/date cannot authorize it.
     if (featureOn('cancellation') && isCancellationRequest(t)) {
       addMsg('user', t);
-      cancelStep = 1;
-      var cancelIntro = lang === 'en'
-        ? '🗓️ I\'ll help you cancel your reservation. Write "exit" at any time to stop.\n\n'
-        : '🗓️ Te ayudo a cancelar tu reserva. Escribe "salir" en cualquier momento para salir.\n\n';
-      addMsg('bot', cancelIntro + CANCEL_STEPS[0].ask[lang]);
+      addMsg('bot', lang === 'en'
+        ? 'To cancel securely, open the reservation link from your confirmation email.'
+        : 'Para cancelar de forma segura, abre el enlace de reserva de tu correo de confirmación.');
       return;
     }
 
@@ -1520,8 +1505,10 @@ function extractBooking(text, menu) {
       bookingStep = 1;          // en modo reserva; DeepSeek conduce
       bookingData = {};
 
-      var ambigua = preExtraido.__horaAmbigua;
-      delete preExtraido.__horaAmbigua;
+       var ambigua = preExtraido.__horaAmbigua;
+       var fueraDeHorarioInicial = preExtraido.__horaFueraDeHorario;
+       delete preExtraido.__horaAmbigua;
+       delete preExtraido.__horaFueraDeHorario;
       Object.keys(preExtraido).forEach(function (k) { bookingData[k] = preExtraido[k]; });
       // bookingData.servicio || selectedService: si este mensaje no vuelve a
       // nombrar el servicio, se usa el que ya se había elegido antes. [Objetivo 4]
@@ -1531,7 +1518,8 @@ function extractBooking(text, menu) {
        if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
        recordFoodRequest(t, lang);
 
-       if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
+        if (fueraDeHorarioInicial) { rechazarHoraFueraDeHorario(lang); return; }
+        if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
        save();
        askBookingTurn(lang);
       return;

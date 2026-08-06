@@ -306,6 +306,7 @@ for (const [label, detected] of [['vacía', ''], ['error', new Error('no soporta
     id: legacyId, businessName: 'Negocio Legado', active: true, timezone: 'UTC',
     whatsapp: '+56900000099', businessHours: HOURS, capacityPerSlot: 2,
     services: [{ id: 'svc-1', nombre: 'Servicio', precio: '100', duracion: 30 }],
+    menu: [{ id: 'svc-1', nombre: 'Servicio', precio: '100', duracion: 30 }],
   }));
   const legacyClient = readClient(legacyId);
   const resultado = validarReserva(legacyClient, '2026-08-10', '11:00', 'Servicio', 0, []); // lunes dentro de horario
