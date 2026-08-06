@@ -57,6 +57,36 @@ function normalizeTimezone(tz) {
   }
 }
 
+const GEOAPIFY_URL = 'https://api.geoapify.com/v1/geocode/search';
+const GEOAPIFY_CONFIDENCE_MINIMUM = 0.9;
+
+async function detectTimezone(address, country) {
+  if (!process.env.GEOAPIFY_API_KEY) return { unavailable: true };
+  const url = new URL(GEOAPIFY_URL);
+  url.searchParams.set('text', address);
+  url.searchParams.set('filter', `countrycode:${country}`);
+  url.searchParams.set('limit', '2');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('apiKey', process.env.GEOAPIFY_API_KEY);
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Geoapify returned ${response.status}`);
+  const results = (await response.json()).results;
+  const first = Array.isArray(results) ? results[0] : null;
+  const second = Array.isArray(results) ? results[1] : null;
+  const timezone = first?.timezone?.name;
+  const confidence = Number(first?.rank?.confidence || 0);
+  const ambiguousTimezone = second
+    && Number(second?.rank?.confidence || 0) >= confidence - 0.02
+    && second?.timezone?.name
+    && second.timezone.name !== timezone;
+
+  if (first?.country_code?.toLowerCase() !== country || confidence < GEOAPIFY_CONFIDENCE_MINIMUM || ambiguousTimezone || !isValidTimezone(timezone)) {
+    return { timezone: null, address: null };
+  }
+  return { timezone, address: String(first.formatted || address) };
+}
+
 // Cuántas citas simultáneas admite el negocio: barberos, cabinas, mesas.
 function normalizeCapacity(v) {
   const n = parseInt(v, 10);
@@ -357,6 +387,26 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   if (!auth(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+  // ── POST ?action=detect-timezone: Geoapify lookup for the creator. ──────
+  // The provider key is read only in this server function; callers receive
+  // either an IANA suggestion or null when the location is not unambiguous.
+  if (req.method === 'POST' && req.query?.action === 'detect-timezone') {
+    const address = String(req.body?.address || '').trim();
+    const country = String(req.body?.country || '').trim().toLowerCase();
+    if (!address || address.length > 300 || !/^[a-z]{2}$/.test(country)) {
+      return res.status(400).json({ error: 'Address and country are required' });
+    }
+    try {
+      const suggestion = await detectTimezone(address, country);
+      if (suggestion.unavailable) return res.status(503).json({ error: 'Timezone detection is unavailable' });
+      return res.status(200).json(suggestion);
+    } catch (err) {
+      console.error('[api/clients] detect-timezone:', err.message);
+      captureApiException(err, { feature: 'client_panel', route: '/api/clients?action=detect-timezone' });
+      return res.status(502).json({ error: 'Timezone lookup failed' });
+    }
+  }
 
   // ── POST ?action=preview-token: mint a short-lived admin preview token ──
   // Lets the admin talk to a chatbot that has not been paid for yet, without
