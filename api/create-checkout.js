@@ -56,7 +56,7 @@ export default async function handler(req, res) {
       client_reference_id:  clientId,
       customer_email:       client.ownerEmail || undefined,
       metadata:             { clientId },
-      subscription_data:    { metadata: { clientId } },
+      subscription_data:    { metadata: { clientId }, trial_period_days: 10 },
       success_url: `https://jbstudio.app/success?client=${encodeURIComponent(clientId)}`,
       cancel_url:  'https://jbstudio.app/cancel',
     });
