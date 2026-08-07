@@ -751,7 +751,7 @@
 
   function openPortal() {
     var btn = document.getElementById('portal-btn');
-    if (!btn || !btn.href || btn.href === '#' || btn.dataset.loading === '1') return;
+    if (!btn || btn.dataset.loading === '1') return;
     btn.dataset.loading = '1';
     btn.textContent = '…';
     fetch(API + '/api/create-portal-session', {
