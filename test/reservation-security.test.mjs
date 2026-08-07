@@ -123,6 +123,32 @@ console.log('1c. Early validation rejects a service that runs past closing witho
   console.log('✓ early validation rejects 8:59 PM + 60 min before collecting contact data');
 }
 
+console.log('1d. Early validation rejects a restaurant table without a dish using its standard duration');
+{
+  const redis = fakeRedis();
+  const closingHours = Object.fromEntries(['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+    .map((day) => [day, { enabled: true, ranges: [{ start: '10:00', end: '22:00' }] }]));
+  redis.data.set('client:secure-restaurant', {
+    ...client,
+    templateId: 'restaurant',
+    businessHours: closingHours,
+    menu: [{ nombre: 'Plato de prueba', duracion: '' }],
+    reservationDuration: '90 min',
+  });
+  reservationTest.setRedisForTests(redis);
+
+  const validation = await call(reservationHandler, {
+    method: 'POST', headers: { 'x-forwarded-for': 'restaurant-closing.test' }, body: {
+      clientId: 'secure-restaurant', action: 'validate', fecha: '2040-07-20', hora: '8:45 PM', servicio: '',
+    },
+  });
+  assert.equal(validation.statusCode, 200);
+  assert.equal(validation.body.ok, false);
+  assert.equal(validation.body.motivo, 'no_cabe_antes_del_cierre');
+  assert.equal([...redis.data.keys()].filter((key) => key.startsWith('reservations:')).length, 0);
+  console.log('✓ early validation uses the restaurant standard 90 min duration without a dish');
+}
+
 console.log('2. Invalid times do not create a reservation');
 {
   const redis = fakeRedis();

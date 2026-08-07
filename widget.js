@@ -913,13 +913,13 @@ function resolverHora(n, minutos, sufijo, businessHours) {
   }
 
   function validarDisponibilidadTemprana(lang) {
-    if (!bookingData.servicio || !bookingData.fecha || !bookingData.hora) return false;
-    var key = [bookingData.servicio, bookingData.fecha, bookingData.hora].join('\u0000');
+    if ((!bookingData.servicio && CORE.templateId(cfg) !== 'restaurant') || !bookingData.fecha || !bookingData.hora) return false;
+    var key = [bookingData.servicio || '', bookingData.fecha, bookingData.hora].join('\u0000');
     if (earlyValidationKey === key) return false;
     busy = true; inp.disabled = true; snd.disabled = true;
     fetch(API + '/api/reservations', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: clientId, action: 'validate', servicio: bookingData.servicio, fecha: bookingData.fecha, hora: bookingData.hora }),
+      body: JSON.stringify({ clientId: clientId, action: 'validate', servicio: bookingData.servicio || '', fecha: bookingData.fecha, hora: bookingData.hora }),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
