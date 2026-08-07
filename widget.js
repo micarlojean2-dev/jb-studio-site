@@ -880,6 +880,10 @@ function resolverHora(n, minutos, sufijo, businessHours) {
   }
 
    var BARE_OK = { nombre: 1, telefono: 1, email: 1, contacto: 1, specialRequests: 1 };
+  var BOOKING_FIELD_LABEL_EN = {
+    nombre: 'name', telefono: 'phone number', email: 'email', contacto: 'contact info',
+    fecha: 'date', hora: 'time', servicio: 'service', personas: 'number of people', specialRequests: 'special requests'
+  };
   function bookingFaltan() {
     return CORE.bookingRequirements(cfg, bookingData);
   }
@@ -984,7 +988,7 @@ function resolverHora(n, minutos, sufijo, businessHours) {
         var nx = CORE.extractNotas(raw);
         if (nx.notas.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, nx.notas);
         var txt = raw ? CORE.limpiarMarcadores(nx.limpio) : '';
-        if (!txt) txt = (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + faltan[0] + '?';
+        if (!txt) txt = (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + (lang === 'en' ? (BOOKING_FIELD_LABEL_EN[faltan[0]] || faltan[0]) : faltan[0]) + '?';
         addMsg('bot', txt);
         // Se persiste el texto ya saneado (lo mismo que se mostró): así ni el
         // cliente ni DeepSeek vuelven a ver marcadores al recargar el historial.
