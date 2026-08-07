@@ -313,6 +313,19 @@ export default async function handler(req, res) {
         const clientId = sub.metadata?.clientId;
         if (!clientId) { console.warn('[stripe-webhook] subscription.updated: no clientId'); break; }
 
+        // Cancelación durante trial: Stripe marca canceled_at pero el status
+        // sigue siendo "trialing". Se procesa primero para que anule cualquier
+        // patch.active = true que hubiera venido después.
+        if (sub.canceled_at) {
+          await updateClient(clientId, {
+            active:        false,
+            paymentStatus: 'cancelled',
+            cancelledAt:   isoDate(sub.canceled_at),
+          });
+          console.log(`[stripe-webhook] Client ${clientId} → subscription canceled_at=${isoDate(sub.canceled_at)}`);
+          break;
+        }
+
         const patch = { cancelAtPeriodEnd: !!sub.cancel_at_period_end };
 
         if (sub.status === 'active' || sub.status === 'trialing') {
