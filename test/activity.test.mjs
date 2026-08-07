@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { registrarActividad } from '../lib/activity.js';
-import { createReservationsListHandler } from '../api/reservations-list.js';
+import { createReservationsListApiHandler } from '../api/client-config.js';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
@@ -29,7 +29,7 @@ await registrarActividad('spa', { type: 'rescheduled', cliente: 'Ana', servicio:
 
 assert.equal(lists.get('activity:spa').length, 3, 'stores each activity independently from digest events');
 const response = { statusCode: 0, body: null, setHeader() {}, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; }, end() {} };
-await createReservationsListHandler({ redis: store })({ method: 'GET', query: { clientId: 'spa', token: 'panel-key', scope: 'activity' }, body: {} }, response);
+await createReservationsListApiHandler({ redis: store })({ method: 'GET', query: { clientId: 'spa', token: 'panel-key', scope: 'activity' }, body: {} }, response);
 assert.equal(response.statusCode, 200, 'authenticated activity endpoint succeeds');
 assert.deepEqual(response.body.activities.map((a) => a.type), ['rescheduled', 'cancelled', 'created'], 'returns newest activities first');
 

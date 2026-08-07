@@ -130,6 +130,34 @@
     @keyframes card-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } } @keyframes urgency-pulse { 0%,100% { box-shadow:0 0 0 0 rgba(182,64,67,0); } 50% { box-shadow:0 0 0 4px rgba(182,64,67,.12); } }
     @media (max-width:640px) { .hdr { padding:13px 16px; }.hdr-biz { flex-basis:100%; }.hdr-btn { min-height:40px; }.wrap { padding:24px 14px 52px; }.agenda-intro { align-items:flex-start; flex-direction:column; gap:8px; }.summary-grid { grid-template-columns:repeat(2,1fr); gap:8px; margin-bottom:24px; }.summary-card { padding:13px; }.summary-value { font-size:24px; }.agenda-list-header { align-items:stretch; flex-direction:column; gap:10px; }.filters { display:grid; grid-template-columns:repeat(3,1fr); width:100%; }.filter-btn { min-height:44px; padding:8px 5px; }.sheet { grid-template-columns:1fr; gap:10px; }.rcard { padding:16px; }.rname { font-size:19px; }.date-day { font-size:17px; }.activity { margin-top:28px; } }
     @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; } }
+
+    /* ── Plan status banner ── */
+    .plan-banner {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px 18px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .plan-banner.trial    { border-color: #c9a84c; background: #fffdf5; }
+    .plan-banner.paid      { border-color: #88ae99; background: #f4faf6; }
+    .plan-banner.inactive  { border-color: var(--line); background: var(--card); }
+    .plan-icon   { font-size: 22px; }
+    .plan-text   { flex: 1; min-width: 160px; }
+    .plan-title  { font-size: 14px; font-weight: 700; }
+    .plan-sub    { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+    .plan-btn {
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+      background: var(--accent); color: #fff; border: none; border-radius: 8px;
+      padding: 9px 15px; text-decoration: none; display: inline-block;
+    }
+    .plan-btn:hover { background: var(--accent-dark); }
+    .plan-btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+    .plan-btn.ghost:hover { border-color: #cfc9bb; color: var(--ink); }
   </style>
 </head>
 <body data-sentry-page="client_panel">
@@ -155,6 +183,14 @@
       <select id="panel-language" class="hdr-btn" onchange="setPanelLanguage(this.value)" aria-label="Language selector"><option value="es">Español</option><option value="en">English</option></select>
       <button class="hdr-btn" id="refresh-btn" onclick="loadReservations()" data-i18n="refresh">↻ Actualizar</button>
       <button class="hdr-btn ghost" onclick="logout()" data-i18n="logout">Salir</button>
+    </div>
+    <div id="plan-banner" class="plan-banner inactive" style="display:none">
+      <span class="plan-icon" id="plan-icon">🟡</span>
+      <div class="plan-text">
+        <div class="plan-title" id="plan-title">—</div>
+        <div class="plan-sub"   id="plan-sub">—</div>
+      </div>
+      <span id="portal-btn-wrap"></span>
     </div>
     <div class="wrap">
       <section class="agenda-intro" aria-labelledby="agenda-title">
@@ -226,8 +262,8 @@
   var LANGUAGE_STORE_KEY = 'jbr_panel_language';
   var panelLanguage = localStorage.getItem(LANGUAGE_STORE_KEY) === 'en' ? 'en' : 'es';
   var I18N = {
-    es: { language: 'Idioma', myAppointments: 'Tus citas', loginDesc: 'Introduce tu clave de acceso para ver las citas de tu negocio.', accessKey: 'Clave de acceso', enter: 'Entrar', loginError: 'Clave incorrecta. Inténtalo de nuevo.', refresh: '↻ Actualizar', logout: 'Salir', businessSchedule: 'Agenda del negocio', autoRefresh: 'Actualización automática', todayAppointments: 'Citas de hoy', upcomingAppointments: 'Próximas citas', rescheduled: 'Reprogramadas', cancelled: 'Canceladas', schedule: 'Agenda', upcoming: 'Próximas', recentActivity: 'Actividad reciente', latestChanges: 'Últimos cambios', invalidLink: 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio', verifying: 'Verificando…', new: 'Nueva', specialRequests: 'Peticiones especiales', noSpecialRequests: 'Sin peticiones especiales', reservation: 'Reserva', time: 'Hora', datePending: 'Fecha por confirmar', people: 'Personas', table: 'Mesa', barber: 'Barbero', phone: 'Teléfono', email: 'Correo', cancelledOn: 'Cancelada', by: 'Por', before: 'Antes', noRecentActivity: 'Aún no hay actividad reciente.', customer: 'Cliente', cancelledAppointment: 'canceló una cita', rescheduledAppointment: 'reagendó una cita', createdReservation: 'creó una nueva reserva', now: 'Ahora', createdSeconds: 'Creada hace unos segundos', createdMinutes: 'Creada hace ', createdHours: 'Creada hace ', createdOn: 'Creada el ', in: 'En ', tomorrowAt: 'Mañana a las ', remaining: 'Faltan ', minute: 'minuto', minutes: 'minutos', hour: 'hora', hours: 'horas', day: 'día', days: 'días', appointment: 'cita', appointments: 'citas', cancelledSuffix: 'canceladas', upcomingSuffix: 'próximas', emptyUpcoming: 'No hay citas próximas.', emptyCancelled: 'No hay citas canceladas.', emptyGeneric: 'No hay citas para este filtro.', all: 'Todas', todayFilter: 'Hoy', tomorrowFilter: 'Mañana', pastFilter: 'Pasadas', past: 'Pasada', updated: 'Actualizado ' },
-    en: { language: 'Language', myAppointments: 'Your appointments', loginDesc: 'Enter your access key to view your business appointments.', accessKey: 'Access key', enter: 'Sign in', loginError: 'Incorrect access key. Please try again.', refresh: '↻ Refresh', logout: 'Sign out', businessSchedule: 'Business schedule', autoRefresh: 'Auto-refresh', todayAppointments: "Today's appointments", upcomingAppointments: 'Upcoming appointments', rescheduled: 'Rescheduled', cancelled: 'Cancelled', schedule: 'Schedule', upcoming: 'Upcoming', recentActivity: 'Recent activity', latestChanges: 'Latest changes', invalidLink: 'Invalid link. Access jbstudio.app/reservas/your-business', verifying: 'Verifying…', new: 'New', specialRequests: 'Special requests', noSpecialRequests: 'No special requests', reservation: 'Reservation', time: 'Time', datePending: 'Date to be confirmed', people: 'People', table: 'Table', barber: 'Barber', phone: 'Phone', email: 'Email', cancelledOn: 'Cancelled', by: 'By', before: 'Before', noRecentActivity: 'No recent activity yet.', customer: 'Customer', cancelledAppointment: 'cancelled an appointment', rescheduledAppointment: 'rescheduled an appointment', createdReservation: 'created a new reservation', now: 'Now', createdSeconds: 'Created seconds ago', createdMinutes: 'Created ', createdHours: 'Created ', createdOn: 'Created on ', in: 'In ', tomorrowAt: 'Tomorrow at ', remaining: 'Remaining: ', minute: 'minute', minutes: 'minutes', hour: 'hour', hours: 'hours', day: 'day', days: 'days', appointment: 'appointment', appointments: 'appointments', cancelledSuffix: 'cancelled', upcomingSuffix: 'upcoming', emptyUpcoming: 'No upcoming appointments.', emptyCancelled: 'No cancelled appointments.', emptyGeneric: 'No appointments for this filter.', all: 'All', todayFilter: 'Today', tomorrowFilter: 'Tomorrow', pastFilter: 'Past', past: 'Past', updated: 'Updated ' }
+    es: { language: 'Idioma', myAppointments: 'Tus citas', loginDesc: 'Introduce tu clave de acceso para ver las citas de tu negocio.', accessKey: 'Clave de acceso', enter: 'Entrar', loginError: 'Clave incorrecta. Inténtalo de nuevo.', refresh: '↻ Actualizar', logout: 'Salir', businessSchedule: 'Agenda del negocio', autoRefresh: 'Actualización automática', todayAppointments: 'Citas de hoy', upcomingAppointments: 'Próximas citas', rescheduled: 'Reprogramadas', cancelled: 'Canceladas', schedule: 'Agenda', upcoming: 'Próximas', recentActivity: 'Actividad reciente', latestChanges: 'Últimos cambios', invalidLink: 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio', verifying: 'Verificando…', new: 'Nueva', specialRequests: 'Peticiones especiales', noSpecialRequests: 'Sin peticiones especiales', reservation: 'Reserva', time: 'Hora', datePending: 'Fecha por confirmar', people: 'Personas', table: 'Mesa', barber: 'Barbero', phone: 'Teléfono', email: 'Correo', cancelledOn: 'Cancelada', by: 'Por', before: 'Antes', noRecentActivity: 'Aún no hay actividad reciente.', customer: 'Cliente', cancelledAppointment: 'canceló una cita', rescheduledAppointment: 'reagendó una cita', createdReservation: 'creó una nueva reserva', now: 'Ahora', createdSeconds: 'Creada hace unos segundos', createdMinutes: 'Creada hace ', createdHours: 'Creada hace ', createdOn: 'Creada el ', in: 'En ', tomorrowAt: 'Mañana a las ', remaining: 'Faltan ', minute: 'minuto', minutes: 'minutos', hour: 'hora', hours: 'horas', day: 'día', days: 'días', appointment: 'cita', appointments: 'citas', cancelledSuffix: 'canceladas', upcomingSuffix: 'próximas', emptyUpcoming: 'No hay citas próximas.', emptyCancelled: 'No hay citas canceladas.', emptyGeneric: 'No hay citas para este filtro.', all: 'Todas', todayFilter: 'Hoy', tomorrowFilter: 'Mañana', pastFilter: 'Pasadas', past: 'Pasada', updated: 'Actualizado ', planTrialActive: 'Prueba gratuita activa', planTrialEnded: 'Prueba gratuita terminada', planTrialDaysLeft: 'Quedan %% día%% de prueba gratuita', planPaid: 'Suscripción activa', planInactive: 'Sin suscripción activa', manageSubscription: 'Gestionar suscripción', portalError: 'No se pudo abrir el portal. Contacta a soporte.', planDays: 'día', planDaysPlural: 'días', planDay: 'día' },
+    en: { language: 'Language', myAppointments: 'Your appointments', loginDesc: 'Enter your access key to view your business appointments.', accessKey: 'Access key', enter: 'Sign in', loginError: 'Incorrect access key. Please try again.', refresh: '↻ Refresh', logout: 'Sign out', businessSchedule: 'Business schedule', autoRefresh: 'Auto-refresh', todayAppointments: "Today's appointments", upcomingAppointments: 'Upcoming appointments', rescheduled: 'Rescheduled', cancelled: 'Cancelled', schedule: 'Schedule', upcoming: 'Upcoming', recentActivity: 'Recent activity', latestChanges: 'Latest changes', invalidLink: 'Invalid link. Access jbstudio.app/reservas/your-business', verifying: 'Verifying…', new: 'New', specialRequests: 'Special requests', noSpecialRequests: 'No special requests', reservation: 'Reservation', time: 'Time', datePending: 'Date to be confirmed', people: 'People', table: 'Table', barber: 'Barber', phone: 'Phone', email: 'Email', cancelledOn: 'Cancelled', by: 'By', before: 'Before', noRecentActivity: 'No recent activity yet.', customer: 'Customer', cancelledAppointment: 'cancelled an appointment', rescheduledAppointment: 'rescheduled an appointment', createdReservation: 'created a new reservation', now: 'Now', createdSeconds: 'Created seconds ago', createdMinutes: 'Created ', createdHours: 'Created ', createdOn: 'Created on ', in: 'In ', tomorrowAt: 'Tomorrow at ', remaining: 'Remaining: ', minute: 'minute', minutes: 'minutes', hour: 'hour', hours: 'hours', day: 'day', days: 'days', appointment: 'appointment', appointments: 'appointments', cancelledSuffix: 'cancelled', upcomingSuffix: 'upcoming', emptyUpcoming: 'No upcoming appointments.', emptyCancelled: 'No cancelled appointments.', emptyGeneric: 'No appointments for this filter.', all: 'All', todayFilter: 'Today', tomorrowFilter: 'Tomorrow', pastFilter: 'Past', past: 'Past', updated: 'Updated ', planTrialActive: 'Free trial active', planTrialEnded: 'Free trial ended', planTrialDaysLeft: '%% day%% of free trial remaining', planPaid: 'Subscription active', planInactive: 'No active subscription', manageSubscription: 'Manage subscription', portalError: 'Could not open portal. Contact support.', planDays: 'day', planDaysPlural: 'days', planDay: 'day' }
   };
   function tr(key) { return I18N[panelLanguage][key] || key; }
   function setPanelLanguage(language) {
@@ -306,16 +342,79 @@
     document.getElementById('login').style.display = 'none';
     document.getElementById('panel').style.display = 'block';
     document.getElementById('hdr-biz').textContent = clientId.replace(/-/g, ' ');
-    allData = data || [];
+    allData = Array.isArray(data) ? data : (data.reservations || []);
     activitiesData = activities || [];
+    if (!Array.isArray(data) && data.plan !== undefined) {
+      renderPlanBannerFromData(data);
+    } else {
+      loadPlanStatus();
+    }
     render();
     startAutoRefresh();
+  }
+
+  function renderPlanBannerFromData(d) {
+    var icon  = document.getElementById('plan-icon');
+    var title = document.getElementById('plan-title');
+    var sub   = document.getElementById('plan-sub');
+    var btnWrap = document.getElementById('portal-btn-wrap');
+    var banner = document.getElementById('plan-banner');
+    if (!banner) return;
+    banner.style.display = 'flex';
+
+    var s = d;
+    var isTrialing = s.trial_end && s.paymentStatus !== 'paid' && s.paymentStatus !== 'failed' && s.paymentStatus !== 'cancelled';
+    var trialDaysLeft = 0;
+    if (s.trial_end) {
+      trialDaysLeft = Math.ceil((new Date(s.trial_end) - Date.now()) / 86400000);
+    }
+
+    if (isTrialing && trialDaysLeft > 0) {
+      banner.className = 'plan-banner trial';
+      icon.textContent = '⏳';
+      title.textContent = tr('planTrialActive');
+      var daysLeftText = trialDaysLeft === 1
+        ? (panelLanguage === 'en' ? '1 day of free trial remaining' : 'Queda 1 día de prueba gratuita')
+        : (panelLanguage === 'en' ? trialDaysLeft + ' days of free trial remaining' : 'Quedan ' + trialDaysLeft + ' días de prueba gratuita');
+      sub.textContent = daysLeftText;
+      if (s.stripeCustomerId) {
+        btnWrap.innerHTML = '<button class="plan-btn" id="portal-btn" onclick="openPortal()">' + esc(tr('manageSubscription')) + '</button>';
+      } else {
+        btnWrap.innerHTML = '';
+      }
+    } else if (s.paymentStatus === 'paid' || s.active) {
+      banner.className = 'plan-banner paid';
+      icon.textContent = '✅';
+      title.textContent = tr('planPaid');
+      sub.textContent = s.paidUntil
+        ? (panelLanguage === 'en' ? 'Next payment: ' + new Date(s.paidUntil).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+                                 : 'Próximo pago: ' + new Date(s.paidUntil).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }))
+        : (panelLanguage === 'en' ? 'Active subscription' : 'Suscripción activa');
+      if (s.stripeCustomerId) {
+        btnWrap.innerHTML = '<button class="plan-btn" id="portal-btn" onclick="openPortal()">' + esc(tr('manageSubscription')) + '</button>';
+      } else {
+        btnWrap.innerHTML = '';
+      }
+    } else {
+      banner.className = 'plan-banner inactive';
+      icon.textContent = 'ℹ️';
+      title.textContent = tr('planInactive');
+      sub.textContent = panelLanguage === 'en' ? 'No active subscription' : 'Sin suscripción activa';
+      btnWrap.innerHTML = '';
+    }
   }
 
   // Carga bajo demanda (botón Actualizar). No hay polling continuo.
   function loadReservations() {
     Promise.all([fetchList(currentToken), fetchActivity(currentToken)])
-      .then(function (results) { allData = results[0] || []; activitiesData = results[1].activities || []; animateCards = false; render(); })
+      .then(function (results) {
+        var d = results[0];
+        allData = Array.isArray(d) ? d : (d.reservations || []);
+        if (!Array.isArray(d) && d.plan !== undefined) renderPlanBannerFromData(d);
+        activitiesData = results[1].activities || [];
+        animateCards = false;
+        render();
+      })
       .catch(function () {});
   }
 
@@ -641,6 +740,83 @@
     animateCards = false;
     var now = new Date();
     document.getElementById('updated').textContent = tr('updated') + now.toLocaleTimeString(panelLanguage === 'en' ? 'en-US' : 'es-ES', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function loadPlanStatus() {
+    fetch(API + '/api/client-status?clientId=' + encodeURIComponent(clientId) + '&token=' + encodeURIComponent(currentToken))
+      .then(function(r) { if (!r.ok) return null; return r.json(); })
+      .then(function(s) { if (s) renderPlanBanner(s); })
+      .catch(function() {});
+  }
+
+  function openPortal() {
+    var btn = document.getElementById('portal-btn');
+    if (!btn || !btn.href || btn.href === '#' || btn.dataset.loading === '1') return;
+    btn.dataset.loading = '1';
+    btn.textContent = '…';
+    fetch(API + '/api/create-portal-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': currentToken },
+      body: JSON.stringify({ clientId: clientId }),
+    })
+      .then(function(r) { if (!r.ok) throw new Error('portal error'); return r.json(); })
+      .then(function(d) { if (d.url) window.open(d.url, '_blank'); else throw new Error('no url'); })
+      .catch(function() { alert(tr('portalError')); })
+      .finally(function() {
+        if (btn) { btn.dataset.loading = '0'; btn.textContent = tr('manageSubscription'); }
+      });
+  }
+
+  function renderPlanBanner(s) {
+    var banner = document.getElementById('plan-banner');
+    if (!banner) return;
+    banner.style.display = 'flex';
+
+    var icon  = document.getElementById('plan-icon');
+    var title = document.getElementById('plan-title');
+    var sub   = document.getElementById('plan-sub');
+    var btnWrap = document.getElementById('portal-btn-wrap');
+
+    var isTrialing = s.trial_end && s.paymentStatus !== 'paid' && s.paymentStatus !== 'failed' && s.paymentStatus !== 'cancelled';
+    var trialDaysLeft = 0;
+    if (s.trial_end) {
+      trialDaysLeft = Math.ceil((new Date(s.trial_end) - Date.now()) / 86400000);
+    }
+
+    if (isTrialing && trialDaysLeft > 0) {
+      banner.className = 'plan-banner trial';
+      icon.textContent = '⏳';
+      title.textContent = tr('planTrialActive');
+      var daysWord = trialDaysLeft === 1 ? tr('planDay') : tr('planDaysPlural');
+      var daysLeftText = trialDaysLeft === 1
+        ? (panelLanguage === 'en' ? '1 day of free trial remaining' : 'Queda 1 día de prueba gratuita')
+        : (panelLanguage === 'en' ? trialDaysLeft + ' days of free trial remaining' : 'Quedan ' + trialDaysLeft + ' días de prueba gratuita');
+      sub.textContent = daysLeftText;
+      if (s.stripeCustomerId) {
+        btnWrap.innerHTML = '<button class="plan-btn" onclick="openPortal()">' + esc(tr('manageSubscription')) + '</button>';
+      } else {
+        btnWrap.innerHTML = '';
+      }
+    } else if (s.paymentStatus === 'paid' || s.active) {
+      banner.className = 'plan-banner paid';
+      icon.textContent = '✅';
+      title.textContent = tr('planPaid');
+      sub.textContent = s.paidUntil
+        ? (panelLanguage === 'en' ? 'Next payment: ' + new Date(s.paidUntil).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+                                 : 'Próximo pago: ' + new Date(s.paidUntil).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }))
+        : (panelLanguage === 'en' ? 'Active subscription' : 'Suscripción activa');
+      if (s.stripeCustomerId) {
+        btnWrap.innerHTML = '<button class="plan-btn" onclick="openPortal()">' + esc(tr('manageSubscription')) + '</button>';
+      } else {
+        btnWrap.innerHTML = '';
+      }
+    } else {
+      banner.className = 'plan-banner inactive';
+      icon.textContent = 'ℹ️';
+      title.textContent = tr('planInactive');
+      sub.textContent = panelLanguage === 'en' ? 'No active subscription' : 'Sin suscripción activa';
+      btnWrap.innerHTML = '';
+    }
   }
 </script>
 </body>

@@ -1,5 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { createHash, randomUUID } from 'node:crypto';
+import Stripe from 'stripe';
 import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { loadClientMedia } from '../lib/media.js';
 import { findServiceByLinkedItemId } from '../lib/services.js';
@@ -27,11 +28,8 @@ export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
 // divergir (el modelo decía "hay fotos" que el widget nunca podía pintar).
 const publicMedia = loadClientMedia;
 
-export function createClientConfigHandler({ redis } = {}) {
-  const store = redis || new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
-  });
+export function createClientConfigHandler({ redis: store } = {}) {
+  const dataStore = store || redis;
   return async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -43,11 +41,11 @@ export function createClientConfigHandler({ redis } = {}) {
   if (!/^[a-z0-9-]+$/.test(id)) return res.status(400).json({ error: 'Invalid id' });
 
   try {
-    const client = await store.get(`client:${id}`);
+    const client = await dataStore.get(`client:${id}`);
     if (!client) return res.status(404).json({ error: 'Not found' });
 
     // Return only public-safe fields — never expose prompt, panelToken, ownerEmail
-    const media = await publicMedia(store, id);
+    const media = await publicMedia(dataStore, id);
     // findServiceByLinkedItemId (lib/services.js) es la única fuente de este
     // fallback id→nombre — antes vivía reimplementado aquí a mano. Se arma
     // por entrada de imagen (no por servicio) para conservar el mismo
@@ -358,10 +356,199 @@ let productionHandler;
 let imagesHandler;
 let healthHandler;
 let buildHandler;
+let clientStatusHandler;
+let portalHandler;
+let reservationsHandler;
+
+const redis = new Redis({
+  url:   process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+export function createReservationsListApiHandler({ redis: store } = {}) {
+  const dataStore = store || redis;
+  return async function handler(req, res) {
+    res.setHeader('Access-Control-Allow-Origin',  '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+
+    const clientId = req.query?.clientId;
+    const token    = req.query?.token || req.body?.token;
+
+    if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
+      return res.status(400).json({ error: 'Invalid clientId' });
+
+    function authorized(token, client) {
+      if (!token) return false;
+      if (client.panelToken && token === client.panelToken) return true;
+      if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) return true;
+      return false;
+    }
+
+    try {
+      const client = await dataStore.get(`client:${clientId}`);
+      if (!client) return res.status(404).json({ error: 'Client not found' });
+      if (!authorized(token, client)) return res.status(401).json({ error: 'Unauthorized' });
+
+      if (req.method === 'GET' && req.query?.scope === 'activity') {
+        const raw = await dataStore.lrange(`activity:${clientId}`, 0, -1);
+        const activities = (raw || []).map((value) => {
+          try { return typeof value === 'string' ? JSON.parse(value) : value; } catch (_) { return null; }
+        }).filter(Boolean).reverse();
+        return res.status(200).json({ activities });
+      }
+
+      if (req.method === 'GET') {
+        const keys = await dataStore.keys(`reservations:${clientId}:*`);
+        if (!keys.length) return res.status(200).json([]);
+
+        const items = keys.length === 1
+          ? [await dataStore.get(keys[0])]
+          : await dataStore.mget(...keys);
+
+        const reservations = items
+          .filter(Boolean)
+          .map((r, i) => ({ ...r, _key: keys[i] }))
+          .sort((a, b) => (b.fechaSolicitud || '').localeCompare(a.fechaSolicitud || ''));
+
+        const trialEnd = client.trial_end
+          ? new Date(Number(client.trial_end) * 1000).toISOString()
+          : null;
+
+        return res.status(200).json({
+          reservations,
+          plan:                client.plan               || null,
+          active:              client.active             || false,
+          paymentStatus:       client.paymentStatus      || 'none',
+          trial_end:           trialEnd,
+          paidUntil:           client.paidUntil          || null,
+          gracePeriodEndsAt:   client.gracePeriodEndsAt  || null,
+          stripeCustomerId:    client.stripeCustomerId   || null,
+          stripeSubscriptionId: client.stripeSubscriptionId || null,
+          cancelAtPeriodEnd:   client.cancelAtPeriodEnd  || false,
+          cancelledAt:         client.cancelledAt        || null,
+        });
+      }
+
+      if (req.method === 'PUT') {
+        const { key, estado } = req.body || {};
+        const VALID_ESTADOS = ['pendiente', 'confirmada', 'rechazada', 'cancelada'];
+        if (!key || !VALID_ESTADOS.includes(estado))
+          return res.status(400).json({ error: 'key and valid estado are required' });
+        if (!key.startsWith(`reservations:${clientId}:`))
+          return res.status(403).json({ error: 'Key does not belong to this client' });
+
+        const reservation = await dataStore.get(key);
+        if (!reservation) return res.status(404).json({ error: 'Reservation not found' });
+
+        reservation.estado = estado;
+        if (estado === 'cancelada')   reservation.fechaCancelacion  = new Date().toISOString();
+        if (estado === 'confirmada')  reservation.fechaConfirmacion = new Date().toISOString();
+        if (estado === 'rechazada')   reservation.fechaRechazo      = new Date().toISOString();
+
+        await dataStore.set(key, reservation);
+        return res.status(200).json({ ok: true, reservation });
+      }
+
+      return res.status(405).json({ error: 'Method not allowed' });
+
+    } catch (err) {
+      console.error('[api/client-config/__scope=reservations]', err.message);
+      captureApiException(err, { clientId, feature: 'client_panel', route: '/api/client-config?__scope=reservations' });
+      return res.status(500).json({ error: 'Database error' });
+    }
+  };
+}
+
+function createClientStatusHandler({ redis: store } = {}) {
+  const dataStore = store || redis;
+  return async function handler(req, res) {
+    res.setHeader('Access-Control-Allow-Origin',  '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+
+    const clientId = req.query?.clientId;
+    const token    = req.query?.token;
+
+    if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
+      return res.status(400).json({ error: 'Invalid clientId' });
+
+    try {
+      const client = await dataStore.get(`client:${clientId}`);
+      if (!client) return res.status(404).json({ error: 'Client not found' });
+
+      if (!token) return res.status(401).json({ error: 'Unauthorized' });
+      if (client.panelToken !== token && process.env.ADMIN_TOKEN !== token)
+        return res.status(401).json({ error: 'Unauthorized' });
+
+      const trialEnd = client.trial_end
+        ? new Date(Number(client.trial_end) * 1000).toISOString()
+        : null;
+
+      return res.status(200).json({
+        plan:               client.plan               || null,
+        active:             client.active             || false,
+        paymentStatus:      client.paymentStatus      || 'none',
+        trial_end:          trialEnd,
+        paidUntil:          client.paidUntil          || null,
+        gracePeriodEndsAt:  client.gracePeriodEndsAt  || null,
+        stripeCustomerId:   client.stripeCustomerId   || null,
+        stripeSubscriptionId: client.stripeSubscriptionId || null,
+        cancelAtPeriodEnd:  client.cancelAtPeriodEnd  || false,
+        cancelledAt:        client.cancelledAt        || null,
+      });
+    } catch (err) {
+      console.error('[api/client-config/__scope=status]', err.message);
+      captureApiException(err, { clientId, feature: 'client_panel', route: '/api/client-config' });
+      return res.status(500).json({ error: 'Database error' });
+    }
+  };
+}
+
+function createPortalHandler({ redis: store } = {}) {
+  const dataStore = store || redis;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  return async function handler(req, res) {
+    res.setHeader('Access-Control-Allow-Origin',  'https://jbstudio.app');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-token');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+    const token     = req.headers['x-admin-token'];
+    const { clientId } = req.body || {};
+
+    if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN)
+      return res.status(401).json({ error: 'Unauthorized' });
+
+    if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
+      return res.status(400).json({ error: 'Invalid clientId' });
+
+    try {
+      const client = await dataStore.get(`client:${clientId}`);
+      if (!client) return res.status(404).json({ error: 'Client not found' });
+
+      if (!client.stripeCustomerId)
+        return res.status(400).json({ error: 'No Stripe customer found for this client' });
+
+      const session = await stripe.billingPortal.sessions.create({
+        customer:  client.stripeCustomerId,
+        return_url: `https://jbstudio.app/reservas/${encodeURIComponent(clientId)}`,
+      });
+
+      return res.status(200).json({ url: session.url });
+    } catch (err) {
+      console.error('[api/client-config/__scope=portal]', err.message);
+      captureApiException(err, { clientId, feature: 'billing', route: '/api/client-config' });
+      return res.status(500).json({ error: err.message });
+    }
+  };
+}
+
 export default async function handler(req, res) {
-  // Las peticiones admin de imágenes entran reescritas con __scope=images y el
-  // health check con __scope=health (vercel.json). El resto es el config
-  // público, intacto.
   if (req.query?.__scope === 'images') {
     if (!imagesHandler) imagesHandler = createClientImagesHandler();
     return imagesHandler(req, res);
@@ -373,6 +560,18 @@ export default async function handler(req, res) {
   if (req.query?.__scope === 'build') {
     if (!buildHandler) buildHandler = createBuildHandler();
     return buildHandler(req, res);
+  }
+  if (req.query?.__scope === 'status') {
+    if (!clientStatusHandler) clientStatusHandler = createClientStatusHandler();
+    return clientStatusHandler(req, res);
+  }
+  if (req.query?.__scope === 'portal') {
+    if (!portalHandler) portalHandler = createPortalHandler();
+    return portalHandler(req, res);
+  }
+  if (req.query?.__scope === 'reservations') {
+    if (!reservationsHandler) reservationsHandler = createReservationsListApiHandler();
+    return reservationsHandler(req, res);
   }
   if (!productionHandler) productionHandler = createClientConfigHandler();
   return productionHandler(req, res);

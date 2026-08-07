@@ -15,6 +15,18 @@
       "destination": "/api/client-config?__scope=build"
     },
     {
+      "source": "/api/client-status",
+      "destination": "/api/client-config?__scope=status"
+    },
+    {
+      "source": "/api/create-portal-session",
+      "destination": "/api/client-config?__scope=portal"
+    },
+    {
+      "source": "/api/reservations-list",
+      "destination": "/api/client-config?__scope=reservations"
+    },
+    {
       "source": "/ventas",
       "destination": "/ventas.html"
     },

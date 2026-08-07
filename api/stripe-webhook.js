@@ -245,7 +245,7 @@ export default async function handler(req, res) {
         const periodEnd = invoice.lines?.data?.[0]?.period?.end || null;
         const paidUntil = isoDate(periodEnd);
 
-        await updateClient(clientId, {
+        const patch = {
           active:                true,
           paymentStatus:         'paid',
           paymentFailed:         false,
@@ -255,7 +255,14 @@ export default async function handler(req, res) {
           nextPaymentAt:         paidUntil,
           paidUntil,
           gracePeriodEndsAt:     null,
-        });
+        };
+
+        try {
+          const sub = await stripe.subscriptions.retrieve(subscriptionId);
+          if (sub.trial_end) patch.trial_end = String(sub.trial_end);
+        } catch (_) {}
+
+        await updateClient(clientId, patch);
         console.log(`[stripe-webhook] Client ${clientId} paid — active until ${paidUntil}`);
 
         // Bienvenida solo la primera vez que se activa. Las renovaciones
@@ -313,6 +320,7 @@ export default async function handler(req, res) {
           patch.paymentStatus     = 'paid';
           patch.paymentFailed     = false;
           patch.gracePeriodEndsAt = null;
+          patch.trial_end         = sub.trial_end ? String(sub.trial_end) : null;
         } else if (sub.status === 'past_due') {
           patch.active        = true; // en período de gracia — sigue activo
           patch.paymentStatus = 'past_due';
@@ -345,6 +353,20 @@ export default async function handler(req, res) {
           cancelledAt:   new Date().toISOString().slice(0, 10),
         });
         console.log(`[stripe-webhook] Client ${clientId} subscription deleted — cancelled`);
+        break;
+      }
+
+      // ── 0. Trial por terminar (Stripe avisa 3 días antes) ─────────────────
+      // Stripe envía este evento 3 días antes de que termine el trial.
+      // El email de aviso lo envía Stripe automáticamente — no ours.
+      case 'customer.subscription.trial_will_end': {
+        const sub     = event.data.object;
+        const clientId = sub.metadata?.clientId;
+        if (!clientId) { console.warn('[stripe-webhook] trial_will_end: no clientId'); break; }
+        await updateClient(clientId, {
+          trial_end: sub.trial_end ? String(sub.trial_end) : null,
+        });
+        console.log(`[stripe-webhook] Client ${clientId} trial ending at ${sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : 'unknown'}`);
         break;
       }
 
