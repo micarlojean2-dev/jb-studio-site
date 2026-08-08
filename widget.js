@@ -154,9 +154,10 @@
     cfg.language = lang === 'en' ? 'en' : 'es';
     try { sessionStorage.setItem(LANGUAGE_SESS, cfg.language); } catch (e) {}
   }
-  function isCancellationRequest(text) {
-    return CANCEL_TRIGGERS.test(text) || (hasLanguageChoice() && /\bi want to cancel my appointment\b/i.test(text));
-  }
+  // isCancellationRequest() se eliminó en la MIGRACIÓN 1 (intención por IA):
+  // sin callers tras mover la detección de cancelación a interpretation.intent
+  // (ver send()). asistente.html conserva su propia copia — no comparte esta
+  // función con widget.js, así que no se ve afectado.
 
   // Feature gating — legacy clients (no cfg.features at all) keep every
   // behavior enabled, exactly like before this was added. Only a client
@@ -209,10 +210,11 @@
     if (activeReservation) sessionStorage.setItem(RESERVA_SESS, JSON.stringify(activeReservation));
     else sessionStorage.removeItem(RESERVA_SESS);
   } catch (e) {} }
-  var MODIFY_TRIGGERS = CORE.MODIFY_TRIGGERS;   // raíz compartida (arreglo del \b que fallaba con "modificar")
-
-  var CANCEL_TRIGGERS  = /\bcancel(ar)?\b|quiero cancelar/i;
-  var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserva|hora libre|turno|quiero una cita/i;
+  // MODIFY_TRIGGERS/CANCEL_TRIGGERS/BOOKING_TRIGGERS se eliminaron en la
+  // MIGRACIÓN 1 (intención por IA): sin callers en este archivo tras mover la
+  // detección de booking/reschedule/cancellation a interpretation.intent
+  // (ver send()). CORE.MODIFY_TRIGGERS sigue existiendo en chat-core.js sin
+  // cambios — asistente.html todavía lo usa.
 
   try { msgs = JSON.parse(sessionStorage.getItem(SESS) || '[]'); } catch (e) { msgs = []; }
   var BOOKING_SESS = SESS + '_booking';
@@ -1302,34 +1304,13 @@ function resolverHora(n, minutos, sufijo, businessHours) {
       return;
     }
 
-    // Con una reserva ya activa, un nuevo intento de reservar no crea otra:
-    // se ofrece modificar o cancelar. [BUG-4/5]
-    if (activeReservation && bookingStep === 0 && featureOn('reservations')) {
-      var preARW = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
-      var looksNewW = CORE.pareceReserva(t, preARW) || BOOKING_TRIGGERS.test(t);
-      if (isCancellationRequest(t)) {
-        dupPending = false;
-        if (accionesBotones && accionesBotones.parentNode) accionesBotones.remove();
-        accionesBotones = null;
-        addMsg('user', t); selectChatReservation('cancel', lang); return;
-      }
-      if (MODIFY_TRIGGERS.test(t)) {
-        addMsg('user', t);
-        // El mismo mensaje que dispara "modificar" ya puede traer la fecha/
-        // hora nueva: no se descarta ni se vuelve a preguntar lo que ya se
-        // dijo. [auditoría FASE 1]
-        var directUpdateW = CORE.buildModifyUpdate(t, cfg, activeReservation);
-        if (directUpdateW.__horaAmbigua) {
-          var ambDirectW = directUpdateW.__horaAmbigua; delete directUpdateW.__horaAmbigua;
-          preguntarModifyHoraAmbigua(ambDirectW, directUpdateW, lang);
-          return;
-        }
-        if (Object.keys(directUpdateW).length) { selectChatReservation('modify', lang, directUpdateW); return; }
-        handleReservationAction('modify', lang);
-        return;
-      }
-      if (looksNewW) { addMsg('user', t); handleDuplicateAttempt(lang); return; }
-    }
+    // [MIGRACIÓN 1 — intención por IA] La detección de intención con una
+    // reserva activa (cancelar/reagendar/nuevo intento de reservar) se
+    // movió más abajo: ahora depende de interpretation.intent, que llega de
+    // /api/client-chat, no de BOOKING_TRIGGERS/MODIFY_TRIGGERS/
+    // CANCEL_TRIGGERS/pareceReserva() evaluados aquí de forma síncrona. Ver
+    // el bloque único de despacho al final de esta función. [BUG-4/5 se
+    // preserva: seguir sin crear una segunda reserva vive en esa misma rama]
 
     // Se ofrecieron los botones Modificar/Cancelar/Mantener y el cliente
     // escribió otra cosa en vez de tocar uno: antes esto caía directo al chat
@@ -1437,65 +1418,37 @@ function resolverHora(n, minutos, sufijo, businessHours) {
       return;
     }
 
-    // Public cancellation requires the action token from an active reservation
-    // or the secure link received by email; contact/date cannot authorize it.
-    if (featureOn('cancellation') && isCancellationRequest(t)) {
-      addMsg('user', t);
-      addMsg('bot', lang === 'en'
-        ? 'To cancel securely, open the reservation link from your confirmation email.'
-        : 'Para cancelar de forma segura, abre el enlace de reserva de tu correo de confirmación.');
-      return;
-    }
-
-    // ── Booking intent detected: start flow ──────────────────────────────
-    var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg) : {};
-    // Se recuerda el servicio aunque este mensaje NO dispare el modo reserva
-    // (chat libre, tarjeta, catálogo): así "quiero reservar" más adelante no
-    // vuelve a preguntar un servicio ya mencionado. [Objetivo 4]
-    if (preExtraido.servicio) selectedService = preExtraido.servicio;
-    if (featureOn('reservations') && CORE.pareceReserva(t, preExtraido)) {
-      addMsg('user', t);
-      msgs.push({ role: 'user', content: t });
-      save();
-      bookingStep = 1;          // en modo reserva; DeepSeek conduce
-      bookingData = {};
-
-       var ambigua = preExtraido.__horaAmbigua;
-       var fueraDeHorarioInicial = preExtraido.__horaFueraDeHorario;
-       delete preExtraido.__horaAmbigua;
-       delete preExtraido.__horaFueraDeHorario;
-      Object.keys(preExtraido).forEach(function (k) { bookingData[k] = preExtraido[k]; });
-      // bookingData.servicio || selectedService: si este mensaje no vuelve a
-      // nombrar el servicio, se usa el que ya se había elegido antes. [Objetivo 4]
-      bookingData.servicio = CORE.resolveServicio(bookingData, selectedService);
-
-        var notasIni = CORE.extractNotasUsuario(t, cfg);
-       if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
-       recordFoodRequest(t, lang);
-
-        if (fueraDeHorarioInicial) { rechazarHoraFueraDeHorario(lang); return; }
-        if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
-       save();
-       askBookingTurn(lang);
-      return;
-    }
-
-    // ── Normal AI chat flow ──────────────────────────────────────────────
+    // ── [MIGRACIÓN 1 — intención por IA] Detección de intención inicial ──
+    // Único punto que decide, para un mensaje nuevo (bookingStep === 0, sin
+    // reserva ya en curso), si es booking/reschedule/cancellation/otro. La
+    // decisión ya no la toman BOOKING_TRIGGERS/MODIFY_TRIGGERS/
+    // CANCEL_TRIGGERS/CORE.pareceReserva() evaluados aquí en el navegador:
+    // viaja en interpretation.intent, calculado por el modelo en
+    // /api/client-chat con salida estructurada (lib/message-interpreter.js)
+    // en la MISMA llamada que ya se hacía para el chat libre — no se agrega
+    // una segunda petición al modelo para el caso de pregunta general.
+    //
+    // CORE.extractBooking() se conserva sin cambios: sigue siendo quien
+    // EXTRAE fecha/hora/servicio/etc. una vez que el intent ya se conoce.
+    // Esta migración solo reemplaza QUIÉN decide la intención, no la
+    // extracción de entidades (ver PASO 4 del plan de migración).
+    //
+    // Fail-closed (PASO 3): si el backend no devuelve una interpretación
+    // válida, se trata como intent "unknown" — nunca se asume booking/
+    // reschedule/cancellation sin confirmación estructurada del modelo.
+    addMsg('user', t);
     busy = true;
     inp.disabled = true;
     snd.disabled = true;
-
-    addMsg('user', text);
-    msgs.push({ role: 'user', content: text });
-    save();
     showTyping();
 
+    var requestMsgs = msgs.concat([{ role: 'user', content: t }]);
     fetch(API + '/api/client-chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(previewToken
-        ? { clientId: clientId, messages: msgs, language: cfg.language, previewToken: previewToken }
-        : { clientId: clientId, messages: msgs, language: cfg.language }),
+        ? { clientId: clientId, messages: requestMsgs, language: cfg.language, previewToken: previewToken }
+        : { clientId: clientId, messages: requestMsgs, language: cfg.language }),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -1504,7 +1457,87 @@ function resolverHora(n, minutos, sufijo, businessHours) {
           addMsg('bot', d.message || (cfg.language === 'en'
             ? 'This assistant is temporarily out of service. Please contact the business directly.'
             : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio.'));
-        } else if (d.text) {
+          return;
+        }
+
+        var interp = (d && d.interpretation) || null;
+        var intent = interp ? interp.intent : 'unknown';
+
+        // Con una reserva ya activa: cancelar, reagendar, o un nuevo intento
+        // de reservar (que no debe crear una segunda reserva). [BUG-4/5]
+        if (activeReservation && featureOn('reservations')) {
+          if (intent === 'cancellation') {
+            dupPending = false;
+            if (accionesBotones && accionesBotones.parentNode) accionesBotones.remove();
+            accionesBotones = null;
+            selectChatReservation('cancel', lang);
+            return;
+          }
+          if (intent === 'reschedule') {
+            // El mismo mensaje que trae la intención de reagendar ya puede
+            // traer la fecha/hora nueva: no se descarta ni se vuelve a
+            // preguntar lo que ya se dijo. [auditoría FASE 1]
+            var directUpdateW = CORE.buildModifyUpdate(t, cfg, activeReservation);
+            if (directUpdateW.__horaAmbigua) {
+              var ambDirectW = directUpdateW.__horaAmbigua; delete directUpdateW.__horaAmbigua;
+              preguntarModifyHoraAmbigua(ambDirectW, directUpdateW, lang);
+              return;
+            }
+            if (Object.keys(directUpdateW).length) { selectChatReservation('modify', lang, directUpdateW); return; }
+            handleReservationAction('modify', lang);
+            return;
+          }
+          if (intent === 'booking') { handleDuplicateAttempt(lang); return; }
+        }
+
+        // Sin reserva activa: cancelar solo por el enlace seguro del correo
+        // o el token de una reserva ya en sesión — contacto/fecha nunca
+        // autorizan una cancelación.
+        if (!activeReservation && featureOn('cancellation') && intent === 'cancellation') {
+          addMsg('bot', lang === 'en'
+            ? 'To cancel securely, open the reservation link from your confirmation email.'
+            : 'Para cancelar de forma segura, abre el enlace de reserva de tu correo de confirmación.');
+          return;
+        }
+
+        // Se recuerda el servicio aunque este mensaje NO inicie una reserva
+        // (chat libre, tarjeta, catálogo): así "quiero reservar" más
+        // adelante no vuelve a preguntar un servicio ya mencionado.
+        // [Objetivo 4]
+        var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg) : {};
+        if (preExtraido.servicio) selectedService = preExtraido.servicio;
+
+        if (!activeReservation && featureOn('reservations') && intent === 'booking') {
+          msgs.push({ role: 'user', content: t });
+          save();
+          bookingStep = 1;          // en modo reserva; el modelo conduce
+          bookingData = {};
+
+          var ambigua = preExtraido.__horaAmbigua;
+          var fueraDeHorarioInicial = preExtraido.__horaFueraDeHorario;
+          delete preExtraido.__horaAmbigua;
+          delete preExtraido.__horaFueraDeHorario;
+          Object.keys(preExtraido).forEach(function (k) { bookingData[k] = preExtraido[k]; });
+          // bookingData.servicio || selectedService: si este mensaje no vuelve a
+          // nombrar el servicio, se usa el que ya se había elegido antes. [Objetivo 4]
+          bookingData.servicio = CORE.resolveServicio(bookingData, selectedService);
+
+          var notasIni = CORE.extractNotasUsuario(t, cfg);
+          if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
+          recordFoodRequest(t, lang);
+
+          if (fueraDeHorarioInicial) { rechazarHoraFueraDeHorario(lang); return; }
+          if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
+          save();
+          askBookingTurn(lang);
+          return;
+        }
+
+        // Pregunta general / show_menu / show_gallery / unknown: se usa el
+        // texto de ESTA MISMA llamada — no se pide una segunda respuesta al
+        // modelo solo porque no era una reserva. [PASO 5 — una sola llamada]
+        msgs.push({ role: 'user', content: t });
+        if (d.text) {
           var showMenu    = /\[MOSTRAR_MENU\]/.test(d.text);
           var showGallery = /\[MOSTRAR_GALERIA\]/.test(d.text);
           var showServicePhotos = /\[MOSTRAR_SERVICIOS_CON_FOTOS\]/.test(d.text);

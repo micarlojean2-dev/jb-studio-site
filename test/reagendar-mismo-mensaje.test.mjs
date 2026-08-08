@@ -184,10 +184,13 @@ console.log('5) widget.js: mismo fix, sin divergencia (verificación estructural
   // (motor compartido, una sola copia -- ya verificado arriba con pruebas
   // reales, se repite aquí solo como candado de regresión rápido).
   assert.doesNotMatch(chatCoreSrc, /delete upd\.__horaAmbigua;/, 'chat-core.js: buildModifyUpdate ya no descarta __horaAmbigua');
-  // El bloque MODIFY_TRIGGERS de widget.js debe intentar el update directo
-  // antes de caer a handleReservationAction (mismo patrón que asistente.html).
-  assert.match(widgetSrc, /if \(MODIFY_TRIGGERS\.test\(t\)\) \{\s*addMsg\('user', t\);\s*\/\/[\s\S]*?var directUpdateW = CORE\.buildModifyUpdate\(t, cfg, activeReservation\);/,
-    'widget.js: el disparo de MODIFY_TRIGGERS intenta construir el update directo desde el mismo mensaje, antes de preguntar');
+  // MIGRACIÓN 1 (intención por IA): el disparo ya no es MODIFY_TRIGGERS.test(t)
+  // sino intent === 'reschedule' (interpretation.intent, calculado por el
+  // modelo en /api/client-chat) — pero la propiedad que importa se conserva
+  // igual: el mismo mensaje que trae la intención de reagendar intenta
+  // construir el update directo antes de caer a handleReservationAction.
+  assert.match(widgetSrc, /if \(intent === 'reschedule'\) \{\s*\/\/[\s\S]*?var directUpdateW = CORE\.buildModifyUpdate\(t, cfg, activeReservation\);/,
+    "widget.js: intent==='reschedule' intenta construir el update directo desde el mismo mensaje, antes de preguntar");
   console.log('  ✓ widget.js tiene el mismo fix (modifyHoraPendiente separado, modifyMode activado, sin descartar __horaAmbigua)');
 }
 

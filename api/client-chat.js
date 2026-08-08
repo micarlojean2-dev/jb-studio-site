@@ -3,6 +3,10 @@ import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { loadClientMedia } from '../lib/media.js';
 import { findServiceByLinkedItemId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
+import {
+  interpreterOutputConfig, deepseekResponseFormat, buildInterpreterInstructions,
+  emptyInterpretation, sanitizeInterpretation,
+} from '../lib/message-interpreter.js';
 
 initSentry();
 
@@ -473,7 +477,11 @@ ${isEnglish ? spaHeaderEn(day, date, time, tz) : spaHeaderEs(day, date, time, tz
 }
 
 // ── DeepSeek call (OpenAI-compatible) ──────────────────────────────────────
-async function callDeepSeek(messages, systemPrompt, maxTokens) {
+// `responseFormat` es opcional: solo lo manda el turno de interpretación
+// (ver runInterpretedChat). El resto de llamadas (chat normal, turno de
+// reserva en curso) no lo pasan y el body queda exactamente igual que antes
+// de esta migración.
+async function callDeepSeek(messages, systemPrompt, maxTokens, responseFormat, temperature) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error('DEEPSEEK_API_KEY not configured');
 
@@ -485,8 +493,41 @@ async function callDeepSeek(messages, systemPrompt, maxTokens) {
       ...messages.slice(-50),
     ],
     max_tokens: maxTokens || 300,
-    temperature: 0.7,
+    temperature: temperature !== undefined ? temperature : 0.7,
   };
+  if (responseFormat) {
+    body.response_format = responseFormat;
+    // deepseek-v4-flash (el modelo real, ver resolveDeepseekModel) razona
+    // internamente antes de responder y esos tokens de razonamiento SALEN
+    // del mismo max_tokens que la respuesta visible — comprobado en vivo:
+    // "mañana después del trabajo" gastó sus 500 tokens completos en
+    // razonamiento (reasoning_tokens:500, finish_reason:"length",
+    // content:"") tanto con temperature 0.7 como 0, dejando el JSON
+    // truncado y degradando a intent:"unknown" sin que hubiera ningún
+    // problema real de clasificación.
+    // reasoning_effort probado en vivo, las 3 opciones, mismo prompt, mismo
+    // max_tokens=500, batería de 32 mensajes (scripts/interpreter-battery.mjs):
+    //   (sin fijarlo, razonamiento normal): igual que el bug original —
+    //     varios casos agotan los 500 tokens SOLO en razonamiento
+    //     (reasoning_tokens:500, finish_reason:"length", content:"").
+    //   'minimal'/'low': NO es un punto medio estable — el consumo de
+    //     razonamiento salta de ~60 a 500 tokens de forma impredecible
+    //     entre mensajes simples sin relación alguna (7/32 truncamientos en
+    //     una corrida, peor que 'none').
+    //   'none': el más predecible con diferencia (consumo bajo y estable
+    //     en toda la batería) — su único fallo reproducible (3/3) es el
+    //     caso contextual más difícil ("no, manicura" corrigiendo el
+    //     servicio dentro de una reserva activa), donde responde en blanco
+    //     (20 tokens de solo espacios) en vez de JSON. Eso NO es un falso
+    //     positivo: sanitizeInterpretation() lo trata como JSON inválido y
+    //     degrada a intent:"unknown" (fail-closed, ver más abajo) más una
+    //     llamada de respaldo en texto plano — el cliente nunca se queda
+    //     sin respuesta, solo no arranca el flujo estructurado en ese turno
+    //     exacto. Entre "estable con un fallo raro que degrada seguro" y
+    //     "impredecible en casos simples", se eligió 'none'.
+    // [Corrección de inestabilidad de intent]
+    body.reasoning_effort = 'none';
+  }
 
   const baseUrl = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '');
   const upstream = await fetch(baseUrl + '/chat/completions', {
@@ -508,11 +549,22 @@ async function callDeepSeek(messages, systemPrompt, maxTokens) {
 }
 
 // ── Anthropic call ─────────────────────────────────────────────────────────
-async function callAnthropic(messages, systemPrompt, maxTokens) {
+// `outputConfig` es opcional: solo lo manda el turno de interpretación (ver
+// runInterpretedChat). Sin él, el body es idéntico al de antes de esta
+// migración — el turno de reserva en curso (askBookingTurn) nunca lo pasa.
+async function callAnthropic(messages, systemPrompt, maxTokens, outputConfig, temperature) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
 
   const model = getModel();
+  const body = {
+    model,
+    max_tokens: maxTokens || 300,
+    system: systemPrompt,
+    messages: messages.slice(-50),
+  };
+  if (outputConfig) body.output_config = outputConfig;
+  if (temperature !== undefined) body.temperature = temperature;
   const upstream = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -520,12 +572,7 @@ async function callAnthropic(messages, systemPrompt, maxTokens) {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
     },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens || 300,
-      system: systemPrompt,
-      messages: messages.slice(-50),
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!upstream.ok) {
@@ -692,10 +739,19 @@ CAPTURA DE NOTAS (silenciosa, no la menciones al cliente): si el cliente dice es
 
 IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, dile exactamente esta idea con tus palabras: "No puedo confirmar citas en este momento, pero puedo ayudarte con información del negocio." Si tienes teléfono o correo del negocio, ofrécelo para que se la agenden ahí. Sigue ayudando con servicios, precios, horarios y dudas.\n\nNUNCA des una razón técnica ni menciones sistemas, configuración, instalación, activación, datos que falten, pruebas, demos, ni que algo "estará listo pronto": eso es interno y al cliente no le importa. Nunca pidas datos para una cita ni digas que la has agendado.`;
     }
+    // La interpretación estructurada (solo intent, contrato mínimo de la
+    // ETAPA 1) se pide únicamente en el turno inicial, fuera de un flujo de
+    // reserva ya en curso: el prompt de askBookingTurn() (arriba) está muy
+    // ajustado y esta migración no lo toca. [MIGRACIÓN 1 — intención por IA, PASO 4]
     const bookingActive = !!(booking && typeof booking === 'object');
-    const text = await callProvider(provider, messages, systemPrompt, client, clientId, bookingActive);
+    const { text, interpretation } = await callProvider(
+      provider, messages, systemPrompt, client, clientId, bookingActive,
+      bookingActive ? null : { activeLanguage },
+    );
 
-    return res.status(200).json({ text, provider, model: getModel(), preview: previewOk });
+    return res.status(200).json(interpretation
+      ? { text, provider, model: getModel(), preview: previewOk, interpretation }
+      : { text, provider, model: getModel(), preview: previewOk });
 
   } catch (err) {
     console.error('[api/client-chat]', err.message);
@@ -734,13 +790,48 @@ const GALLERY_INTENT = /(foto|im[aá]gen|galer[ií]a|\bver\s+(?:el\s+)?(?:lugar|
 // dish word slips in.
 const CLOSING_INTENT = /\b(eso\s+(?:es|era)\s+todo|nada\s+m[aá]s|ya\s+no|no\s+quiero|no\s+gracias|listo|perfecto|gracias|hasta\s+luego|adi[oó]s|chao|bye|thanks?|thank\s+you|that\s+(?:is|s)\s+all|nothing\s+else|no\s+more|s[ií],?\s+confirm|confirmo|confirmar)\b/i;
 
-async function callProvider(provider, messages, systemPrompt, client, clientId, bookingActive) {
+// Medido en vivo contra DeepSeek (deepseek-v4-flash, el proveedor real de
+// este proyecto), dos corridas limpias e independientes de la batería de 29
+// mensajes en scripts/interpreter-battery.mjs (ES+EN, incluye casos "LARGO"
+// pensados para forzar la respuesta más verbosa posible — catálogo/horario
+// completo): 0/29 fallbacks en ambas corridas; longitud máxima real de
+// "text" observada: 407 y 266 caracteres (~120 y ~80 tokens). El contrato
+// mínimo de esta etapa ({intent, text}, sin el esqueleto de entities que
+// antes pesaba ~75% del JSON) ya no necesita 1800 — 500 deja ~4x de margen
+// sobre el peor caso real observado. [MIGRACIÓN 1, ETAPA 1]
+const INTERPRETER_MAX_TOKENS = 500;
+
+// El turno de interpretación clasifica intent — no es el turno conversacional
+// que redacta la respuesta libre. temperature:0.7 (la del chat normal, ver
+// callDeepSeek) es apropiada para redactar, pero para clasificar el mismo
+// mensaje+contexto debe producir el mismo intent siempre: 0 es lo más
+// determinista que acepta la API de DeepSeek (no rechaza 0 — no hizo falta
+// subir a 0.1). Esto NO toca la temperatura del chat conversacional normal
+// ni la del turno de reserva en curso (askBookingTurn): ambos siguen en 0.7.
+// [Corrección de inestabilidad de intent]
+const INTERPRETER_TEMPERATURE = 0;
+
+// `structured` es opcional: solo lo manda el turno inicial (fuera de un
+// flujo de reserva ya en curso — ver handler()). Cuando está presente, pide
+// al modelo un único objeto JSON con {intent, text} (lib/message-interpreter.js,
+// contrato mínimo de la ETAPA 1 — sin entities/intentConfidence: extractBooking()
+// sigue siendo el único extractor de entidades, y nada en producción lee un
+// campo que esta etapa no necesita) EN LA MISMA llamada, para no pagar una
+// segunda llamada al modelo solo para interpretar. Si el JSON no cumple el
+// esquema, se degrada a intent:"unknown" y se hace UNA llamada de respaldo
+// en texto plano — nunca se inventa una interpretación ni se deja al
+// cliente sin respuesta. [MIGRACIÓN 1 — intención por IA]
+async function callProvider(provider, messages, systemPrompt, client, clientId, bookingActive, structured) {
   // 420 truncated real replies mid-sentence, including mid-marker (the model
   // writes [MOSTRAR_MENU] itself per the prompt), leaving raw "[MOSTR" visible
   // to the customer. [BUG-TRUNCATED-MARKER]
+  const interpreterPrompt = structured ? systemPrompt + buildInterpreterInstructions(structured.activeLanguage) : systemPrompt;
+  // INTERPRETER_MAX_TOKENS: ver medición empírica junto a su declaración,
+  // más abajo en este archivo (MIGRACIÓN 1, ETAPA 1 — ajustado tras retirar
+  // el esqueleto de entities del contrato).
   const data = provider === 'deepseek'
-    ? await callDeepSeek(messages, systemPrompt, 600)
-    : await callAnthropic(messages, systemPrompt, 600);
+    ? await callDeepSeek(messages, interpreterPrompt, structured ? INTERPRETER_MAX_TOKENS : 600, structured ? deepseekResponseFormat() : undefined, structured ? INTERPRETER_TEMPERATURE : undefined)
+    : await callAnthropic(messages, interpreterPrompt, structured ? INTERPRETER_MAX_TOKENS : 600, structured ? interpreterOutputConfig() : undefined, structured ? INTERPRETER_TEMPERATURE : undefined);
 
   let text = '';
   if (provider === 'deepseek') {
@@ -756,6 +847,26 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
   const estimatedCost = (inputTokens / 1000) * costPer1kInput + (outputTokens / 1000) * costPer1kOutput;
 
   trackUsage(clientId, inputTokens, outputTokens, estimatedCost);
+
+  let interpretation = null;
+  if (structured) {
+    try {
+      const parsed = JSON.parse(text);
+      interpretation = sanitizeInterpretation(parsed);
+      if (!interpretation) throw new Error('interpretation failed schema validation');
+      text = typeof parsed.text === 'string' ? parsed.text : '';
+    } catch (err) {
+      console.error('[api/client-chat] interpreter fallback:', err.message);
+      captureApiException(err, { clientId, feature: 'chat_interpretation', route: '/api/client-chat' });
+      // Fail-closed: nunca se inventa una interpretación. Una sola llamada de
+      // respaldo en texto plano para no dejar al cliente sin respuesta.
+      const fallback = provider === 'deepseek'
+        ? await callDeepSeek(messages, systemPrompt, 600)
+        : await callAnthropic(messages, systemPrompt, 600);
+      text = provider === 'deepseek' ? (fallback.choices?.[0]?.message?.content || '') : (fallback.content?.[0]?.text || '');
+      interpretation = emptyInterpretation();
+    }
+  }
 
   // Only health-related requests need an allergen disclaimer. Ordinary kitchen
   // preferences are recorded with the reservation and never get that warning.
@@ -789,7 +900,7 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
     if (showGallery) text = text + '\n[MOSTRAR_GALERIA]';
   }
 
-  return text;
+  return { text, interpretation };
 }
 
 // Pure, testable menu-visibility rule. The marker is driven only by what the
@@ -818,4 +929,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia };
+export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE };
