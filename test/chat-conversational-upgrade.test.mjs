@@ -55,7 +55,10 @@ console.log('\n2. Selector de idioma — backend acepta el idioma elegido, no de
   ok(clientChat.includes('function hasLanguageChoice(client)'), 'api/client-chat.js: existe hasLanguageChoice(client)');
   ok(!/hasLanguageChoice\(client\)\s*\{\s*return[^}]*templateId/.test(clientChat), 'la función real ya no exige templateId dentro del cuerpo');
   ok(clientChat.includes('requestedLanguage === \'en\' || requestedLanguage === \'es\'') , 'languageForMessages() prioriza el idioma explícito del frontend');
-  ok(clientChat.includes('const { clientId, messages, previewToken, booking, language } = req.body'), 'el handler lee req.body.language');
+  // [auditoría de reservas] la desestructuración ganó "reservationContext"
+  // (estado real post-reserva, ver reservationTruthBlock) — sigue leyendo
+  // "language" igual que antes, solo cambió qué más se lee en la misma línea.
+  ok(clientChat.includes('const { clientId, messages, previewToken, booking, language, reservationContext } = req.body'), 'el handler lee req.body.language');
   ok(clientChat.includes('languageForMessages(client, messages, language)'), 'el idioma explícito se pasa a languageForMessages()');
 }
 

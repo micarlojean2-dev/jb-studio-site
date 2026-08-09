@@ -27,6 +27,7 @@ import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { __test as chatApiTest } from '../api/client-chat.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const chatCoreSrc = readFileSync(join(root, 'chat-core.js'), 'utf8');
@@ -215,7 +216,7 @@ function ultimosMensajesBot(dom, n) {
 // respuesta simulada del modelo, en el orden dado -- así cada prueba
 // controla EXACTAMENTE qué "diría la IA" para su mensaje, sin reimplementar
 // un NLU de juguete.
-async function buildDom({ interpretations = [], presetSessionStorage, lang } = {}) {
+async function buildDom({ interpretations = [], presetSessionStorage, lang, reservationResult } = {}) {
   const dom = new JSDOM(HTML_SKELETON, { runScripts: 'outside-only', url: 'https://jbstudio.app/asistente/spa-e2' });
   const { window } = dom;
   if (lang) window.sessionStorage.setItem('jba_spa-e2_language', lang);
@@ -245,6 +246,13 @@ async function buildDom({ interpretations = [], presetSessionStorage, lang } = {
       const body = JSON.parse(options.body);
       reservationCalls.push(body);
       if (body.action === 'validate') return { ok: true, json: async () => ({ ok: true }) };
+      // reservationResult permite simular éxito con email real (sent true/
+      // false) o un fallo de backend (ok:false / lanzar), para probar que la
+      // IA solo recibe el estado que el backend REALMENTE devolvió — nunca
+      // se inventa nada. Por defecto, el mismo éxito simple que ya usaban
+      // los casos B1-B14 (sin tocarlos).
+      const result = typeof reservationResult === 'function' ? reservationResult(body) : reservationResult;
+      if (result) return { ok: true, json: async () => result };
       return { ok: true, json: async () => ({ ok: true, reservationId: 'r-e2', actionToken: 'tok-e2', status: 'confirmada' }) };
     }
     throw new Error('fetch inesperado: ' + s);
@@ -257,6 +265,15 @@ async function buildDom({ interpretations = [], presetSessionStorage, lang } = {
 
 function interp(intent, entitiesPartial, text) {
   return { text: text || 'Entendido.', interpretation: { intent, entities: { ...emptyEntities(), ...entitiesPartial } } };
+}
+
+// validarDisponibilidadTemprana() (asistente.html) manda su propio POST a
+// /api/reservations con action:'validate' como chequeo de disponibilidad de
+// solo lectura -- no crea nada y es legítimo que ocurra en cualquier turno de
+// askBookingTurn(). Los tests de la auditoría de reservas necesitan contar
+// SOLO intentos reales de creación (sin "action"), nunca esos pings.
+function realBookingAttempts(reservationCalls) {
+  return reservationCalls.filter((c) => !c.action);
 }
 
 console.log('\nB) Flujo real (asistente.html) con /api/client-chat mockeado');
@@ -537,7 +554,7 @@ console.log('\nB13 (EN) ambiguous time — "at 4" nunca se guarda como definitiv
 
 console.log('\nB14 bookingRequirements()/resumen/confirmación por botón — sin cambios de comportamiento');
 {
-  const { dom } = await buildDom({
+  const { dom, reservationCalls } = await buildDom({
     lang: 'es',
     presetSessionStorage: {
       'jba_spa-e2_booking': {
@@ -553,9 +570,163 @@ console.log('\nB14 bookingRequirements()/resumen/confirmación por botón — si
     'con todos los campos requeridos ya completos, se muestra el resumen (bookingRequirements sigue funcionando)');
   ok(/Sí, confirmar cita/.test(ultimosMensajesBot(dom, 1)), 'la confirmación sigue ofreciéndose SOLO como botón, nunca por texto libre');
   // Escribir "sí" en texto libre NO debe confirmar la reserva (mismo candado que antes de la ETAPA 2).
+  // [auditoría de reservas — BUG-CONFIRMACION-TEXTO] Antes esta aserción solo
+  // miraba el TEXTO mostrado, que podía "pasar" aunque submitBooking() sí se
+  // hubiera llamado (el mock de /api/reservations nunca se revisaba). Ahora
+  // se comprueba la ACCIÓN real: cero llamadas al backend de reservas.
   await escribir(dom, 'sí');
   ok(!/Reserva creada|reservationId/i.test(ultimosMensajesBot(dom, 1)), 'un "sí" escrito NUNCA confirma la reserva por su cuenta — se requiere el botón');
+  ok(realBookingAttempts(reservationCalls).length === 0, 'un "sí" escrito NO llama a /api/reservations (verificación de la ACCIÓN, no solo del texto)');
 }
 
-console.log(failures ? `\n❌ ${failures} verificación(es) fallaron` : '\n✅ ETAPA 2 (entities): unidad + extremo a extremo verificados, ES/EN, sin llamadas al modelo real');
+// ============================================================================
+// C) AUDITORÍA DE RESERVAS — dos bugs críticos corregidos:
+//    1) solo el botón "✅ Sí, confirmar cita" puede llamar submitBooking();
+//    2) DeepSeek nunca puede afirmar el resultado de una reserva sin estado
+//       real (CORE.buildReservationContext + reservationContext en el body).
+// ============================================================================
+console.log('\nC) Auditoría de reservas — solo el botón confirma + estado real, no narrativa de IA');
+
+console.log('\nC-unidad) CORE.buildReservationContext() — proyección mínima, nunca inventa');
+{
+  const winC = {};
+  new Function('window', chatCoreSrc)(winC);
+  const CORE = winC.JBChatCore;
+  ok(CORE.buildReservationContext(null) === null, 'sin activeReservation -> null');
+  ok(CORE.buildReservationContext({}) === null, 'activeReservation sin estado -> null (nunca asume "confirmada")');
+  const ctx = CORE.buildReservationContext({ estado: 'confirmada', servicio: 'Manicura', fecha: 'viernes', hora: '4:00 PM', emailSent: true });
+  assert.deepEqual(ctx, { status: 'confirmada', service: 'Manicura', date: 'viernes', time: '4:00 PM', emailSent: true }, 'proyecta exactamente status/service/date/time/emailSent');
+  ok(CORE.buildReservationContext({ estado: 'confirmada' }).emailSent === false, 'sin dato de email -> emailSent:false (nunca asume que se envió)');
+}
+
+console.log('\nC-unidad) api/client-chat.js — sanitizeReservationContext()/reservationTruthBlock() (fail-closed, sin duplicar la regla)');
+{
+  ok(chatApiTest.sanitizeReservationContext(null) === null, 'null -> null');
+  ok(chatApiTest.sanitizeReservationContext('confirmada') === null, 'tipo inesperado (string suelto) -> null, fail-closed');
+  ok(chatApiTest.sanitizeReservationContext({}) === null, 'sin "status" -> null');
+  const clean = chatApiTest.sanitizeReservationContext({ status: 'confirmada', service: 'Manicura', date: 'viernes', time: '4:00 PM', emailSent: true, extra: 'x'.repeat(999) });
+  assert.deepEqual(clean, { status: 'confirmada', service: 'Manicura', date: 'viernes', time: '4:00 PM', emailSent: true }, 'sanea forma exacta, descarta claves no declaradas');
+  const sinCtx = chatApiTest.reservationTruthBlock(true, null);
+  ok(/never say a reservation.*was created, confirmed, submitted, or sent/i.test(sinCtx), 'EN sin contexto: regla explícita de no inventar');
+  ok(/cannot confirm that from here/i.test(sinCtx), 'EN sin contexto: instruye a decir que no puede confirmarlo');
+  const conCtx = chatApiTest.reservationTruthBlock(true, { status: 'confirmada', service: 'Manicura', date: 'viernes', time: '4:00 PM', emailSent: false });
+  ok(/status "confirmada"/.test(conCtx) && /Confirmation email sent: no/.test(conCtx), 'EN con contexto: incluye el estado real y el envío de correo real (false)');
+  const esSinCtx = chatApiTest.reservationTruthBlock(false, null);
+  ok(/nunca digas que una reserva o cita fue creada, confirmada, enviada/i.test(esSinCtx), 'ES sin contexto: misma regla en español');
+}
+
+const PRESET_COMPLETO_REVIEW = {
+  bookingStep: 1,
+  bookingData: { servicio: 'Manicura', nombre: 'Ana', __nombreConfirmado: true, fecha: 'viernes', hora: '4:00 PM', telefono: '2067421261', email: 'ana@example.com', specialRequests: '' },
+  bookingPending: null, bookingReview: true, awaitingConfirmation: true, horaPendiente: null, language: 'es', selectedService: 'Manicura',
+};
+
+function getConfirmButton(dom) {
+  // asistente.html usa la clase "a-quick-btn" (widget.js, no evaluado en este
+  // arnés, usaría "jbw-quick-btn") — se aceptan ambas por si el helper se
+  // reutiliza más adelante.
+  const btn = [...dom.window.document.querySelectorAll('.a-quick-btn, .jbw-quick-btn')].find((b) => /confirmar cita|confirm it/i.test(b.textContent));
+  assert.ok(btn, 'no se encontró el botón "✅ Sí, confirmar cita" en el DOM');
+  return btn;
+}
+
+console.log('\nC1 (BUG-CONFIRMACION-TEXTO) — con el resumen visible, ningún texto libre crea la reserva ni llega al modelo');
+{
+  const { dom, reservationCalls, clientChatCalls } = await buildDom({
+    lang: 'es',
+    presetSessionStorage: { 'jba_spa-e2_booking': PRESET_COMPLETO_REVIEW },
+  });
+  for (const t of ['sí', 'ok', 'confirm', 'yes', 'looks good']) {
+    await escribir(dom, t);
+  }
+  ok(realBookingAttempts(reservationCalls).length === 0, `ninguno de "sí/ok/confirm/yes/looks good" llamó a /api/reservations (fueron ${realBookingAttempts(reservationCalls).length})`);
+  ok(clientChatCalls.length === 0, 'con el resumen visible, ese texto ni siquiera llega a /api/client-chat — la decisión es 100% determinista');
+}
+
+console.log('\nC2 — "did you confirm?" con el resumen visible: NO afirma éxito, reafirma el botón real');
+{
+  const { dom, reservationCalls } = await buildDom({
+    lang: 'es',
+    presetSessionStorage: { 'jba_spa-e2_booking': PRESET_COMPLETO_REVIEW },
+  });
+  await escribir(dom, 'did you confirm?');
+  ok(realBookingAttempts(reservationCalls).length === 0, '"did you confirm?" no llama a /api/reservations');
+  ok(!/confirmed|confirmada|enviad|sent over/i.test(ultimosMensajesBot(dom, 1)), 'no afirma que la reserva fue confirmada/enviada');
+  ok(/Sí, confirmar cita/.test(ultimosMensajesBot(dom, 1)), 'vuelve a mostrar el resumen con el botón real (CASO A de la auditoría)');
+}
+
+console.log('\nC3 — el botón real SÍ crea la reserva, y un doble click no duplica (idempotencia frontend existente)');
+{
+  const { dom, reservationCalls } = await buildDom({
+    lang: 'es',
+    presetSessionStorage: { 'jba_spa-e2_booking': { ...PRESET_COMPLETO_REVIEW, bookingReview: false, awaitingConfirmation: false } },
+    interpretations: [interp('booking', {})],
+  });
+  await escribir(dom, 'eso es todo');   // completa el flujo -> showBookingSummary() real, botones reales en el DOM
+  const btn = getConfirmButton(dom);
+  btn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  btn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));   // doble click antes de que resuelva el fetch
+  await new Promise((r) => setTimeout(r, 40));
+  ok(realBookingAttempts(reservationCalls).length === 1, `el botón (con doble click) llama exactamente 1 vez a /api/reservations (fueron ${realBookingAttempts(reservationCalls).length})`);
+  ok(/quedó confirmada/i.test(ultimosMensajesBot(dom, 1)), 'CASO B: tras éxito real, el mensaje de éxito viene del backend (mensajeReservaGuardada), no de la IA');
+}
+
+console.log('\nC4 (CASO B de la auditoría) — tras reserva real, la siguiente pregunta manda el estado REAL a /api/client-chat');
+{
+  const { dom, clientChatCalls } = await buildDom({
+    lang: 'es',
+    presetSessionStorage: { 'jba_spa-e2_booking': { ...PRESET_COMPLETO_REVIEW, bookingReview: false, awaitingConfirmation: false } },
+    interpretations: [interp('booking', {}), interp('general_question', {}, 'Sí, tu cita quedó confirmada.')],
+    reservationResult: { ok: true, reservationId: 'r-caso-b', actionToken: 'tok-b', status: 'confirmada', email: { customer: { sent: true } } },
+  });
+  await escribir(dom, 'eso es todo');
+  getConfirmButton(dom).dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  await escribir(dom, '¿ya quedó reservada?');
+  const ultimaLlamada = clientChatCalls[clientChatCalls.length - 1];
+  let coincide = true;
+  try {
+    assert.deepEqual(ultimaLlamada.reservationContext, { status: 'confirmada', service: 'Manicura', date: 'viernes', time: '4:00 PM', emailSent: true });
+  } catch (e) { coincide = false; }
+  ok(coincide, 'la pregunta de seguimiento manda el estado REAL devuelto por el backend (status/servicio/fecha/hora/emailSent), no una suposición del frontend');
+}
+
+console.log('\nC5 (CASO C de la auditoría) — si /api/reservations falla, NUNCA se manda un estado de éxito inventado');
+{
+  const { dom, reservationCalls, clientChatCalls } = await buildDom({
+    lang: 'es',
+    presetSessionStorage: { 'jba_spa-e2_booking': { ...PRESET_COMPLETO_REVIEW, bookingReview: false, awaitingConfirmation: false } },
+    interpretations: [interp('booking', {}), interp('general_question', {}, 'Está bien, avísame si necesitas algo más.')],
+    reservationResult: { ok: false, motivo: 'fuera_de_horario', mensaje: 'Ese horario ya no está disponible.' },
+  });
+  await escribir(dom, 'eso es todo');
+  getConfirmButton(dom).dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  ok(realBookingAttempts(reservationCalls).length === 1, 'el intento sí llegó a /api/reservations');
+  ok(!/quedó confirmada/i.test(ultimosMensajesBot(dom, 1)), 'el fallo real NUNCA se muestra como éxito');
+  await escribir(dom, 'did it book?');
+  const ultimaLlamada = clientChatCalls[clientChatCalls.length - 1];
+  ok(ultimaLlamada.reservationContext === null || ultimaLlamada.reservationContext === undefined,
+    'tras un fallo de backend, NO se manda ningún reservationContext de éxito — nada que inventar');
+}
+
+console.log('\nC6 (CASO D de la auditoría) — reserva confirmada pero el correo del cliente falló: el estado real lo dice');
+{
+  const { dom, clientChatCalls } = await buildDom({
+    lang: 'es',
+    presetSessionStorage: { 'jba_spa-e2_booking': { ...PRESET_COMPLETO_REVIEW, bookingReview: false, awaitingConfirmation: false } },
+    interpretations: [interp('booking', {}), interp('general_question', {}, 'Tu cita sigue confirmada; no pudimos enviar el correo.')],
+    reservationResult: { ok: true, reservationId: 'r-caso-d', actionToken: 'tok-d', status: 'confirmada', email: { customer: { sent: false } } },
+  });
+  await escribir(dom, 'eso es todo');
+  getConfirmButton(dom).dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  ok(/No pudimos enviar el correo/i.test(ultimosMensajesBot(dom, 1)), 'el mensaje de éxito del backend ya admite el fallo real de email');
+  await escribir(dom, '¿me confirmaron la cita?');
+  const ultimaLlamada = clientChatCalls[clientChatCalls.length - 1];
+  ok(ultimaLlamada.reservationContext && ultimaLlamada.reservationContext.status === 'confirmada', 'el estado de la reserva sigue siendo "confirmada"');
+  ok(ultimaLlamada.reservationContext && ultimaLlamada.reservationContext.emailSent === false, 'emailSent viaja como false real — la IA nunca podrá afirmar que el correo se envió');
+}
+
+console.log(failures ? `\n❌ ${failures} verificación(es) fallaron` : '\n✅ ETAPA 2 (entities) + auditoría de reservas: unidad + extremo a extremo verificados, ES/EN, sin llamadas al modelo real');
 process.exit(failures ? 1 : 0);

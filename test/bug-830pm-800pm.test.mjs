@@ -144,6 +144,15 @@ async function escribir(dom, texto) {
 function ultimosMensajesBot(dom, n) {
   return [...dom.window.document.querySelectorAll('#a-msgs > *')].map(el => el.textContent).slice(-n).join(' | ');
 }
+// [auditoría de reservas — BUG-CONFIRMACION-TEXTO] la reserva ya NO se puede
+// confirmar escribiendo "sí, confirmo"/"yes, confirm" -- solo el botón real
+// "✅ Sí, confirmar cita" la crea. Este helper simula ese click real.
+async function clickConfirmarBoton(dom) {
+  const btn = [...dom.window.document.querySelectorAll('.a-quick-btn')].find((b) => /confirmar cita|confirm it/i.test(b.textContent));
+  assert.ok(btn, 'no se encontró el botón "✅ Sí, confirmar cita" en el DOM');
+  btn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 100));
+}
 
 // ETAPA 2: la extracción de fecha/hora dentro del flujo (bookingStep>0) y la
 // detección de intent:'reschedule' ya NO son síncronas/locales -- vienen de
@@ -222,7 +231,7 @@ console.log('1) RESERVA NUEVA (ES) — "Quiero una cita mañana a las 8:30 PM"')
   await escribir(dom, 'Quiero una cita mañana a las 8:30 PM');
   // 2. bookingData.hora -- se confirma vía el resumen mostrado (bookingReview activo).
   ok(/8:30\s*PM/.test(ultimosMensajesBot(dom, 2)), `el resumen mostrado incluye "8:30 PM" (fue: "${ultimosMensajesBot(dom, 2)}")`);
-  await escribir(dom, 'sí, confirmo');
+  await clickConfirmarBoton(dom);
 
   // 3. body enviado + 4. reservation.hora/horaISO en Redis (backend real).
   const stored = redisReservations('spa-830-es');
@@ -260,7 +269,7 @@ console.log('\n2) RESERVA NUEVA (EN) — "Can I book tomorrow at 8:30 PM?"');
 
   await escribir(dom, 'Can I book tomorrow at 8:30 PM?');
   ok(/8:30\s*PM/.test(ultimosMensajesBot(dom, 2)), `el resumen (EN) incluye "8:30 PM" (fue: "${ultimosMensajesBot(dom, 2)}")`);
-  await escribir(dom, 'yes, confirm');
+  await clickConfirmarBoton(dom);
 
   const stored = redisReservations('spa-830-en');
   ok(stored.length === 1, `se guardó exactamente 1 reserva (hubo ${stored.length})`);

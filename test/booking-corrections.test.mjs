@@ -39,7 +39,13 @@ ok(CORE.extractBooking('quiero reservar Masaje Relajante mañana a las 2 pm', me
 for (const [name, source] of [['asistente', assistant], ['widget', widget]]) {
   ok(source.includes('function pedirCorreccion(campo, lang)'), `${name} pide exclusivamente el campo corregido`);
   ok(source.includes("delete bookingData[campo];\n    bookingStep = 1;\n    bookingPending = campo;"), `${name} borra el valor anterior y deja el campo pendiente`);
-  ok(source.includes('else if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);'), `${name} permite corregir desde el resumen`);
+  // [auditoría de reservas — BUG-CONFIRMACION-TEXTO] Antes había una rama
+  // previa ("if (CORE.esConfirmacion(t, lang)) submitBooking();") que
+  // confirmaba la reserva por texto libre, así que esta quedaba como "else
+  // if". Esa rama se eliminó (solo el botón puede confirmar) y esta pasó a
+  // ser el primer "if" de la comprobación.
+  ok(source.includes('if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);\n        else showBookingSummary();'), `${name} permite corregir desde el resumen`);
+  ok(!source.includes('if (CORE.esConfirmacion(t, lang)) submitBooking();'), `${name} ya no confirma la reserva por texto libre (BUG-CONFIRMACION-TEXTO corregido)`);
   // ETAPA 2: la detección de corrección ya no ocurre sobre `traidos` de
   // CORE.extractBooking() (regex, síncrono) sino sobre `mergeResult.traidos`
   // de CORE.mergeBookingEntities() (a partir de interpretation.entities de

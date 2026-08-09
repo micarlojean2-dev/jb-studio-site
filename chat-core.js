@@ -895,6 +895,23 @@ window.JBChatCore = (function () {
     return { ambigua: ambigua, fueraDeHorario: fueraDeHorario, traidos: keys };
   }
 
+  // Proyección mínima de activeReservation para mandar a /api/client-chat como
+  // "reservationContext" — el ÚNICO estado real que la IA puede citar sobre
+  // una reserva ya existente. Nunca se construye un estado nuevo: si no hay
+  // activeReservation (nunca se creó, o el intento falló), devuelve null y el
+  // prompt sabe que no puede afirmar que existe ninguna. [auditoría de
+  // reservas — DeepSeek no puede inventar el resultado de una acción]
+  function buildReservationContext(activeReservation) {
+    if (!activeReservation || !activeReservation.estado) return null;
+    return {
+      status: activeReservation.estado,
+      service: activeReservation.servicio || '',
+      date: activeReservation.fecha || '',
+      time: activeReservation.hora || '',
+      emailSent: !!activeReservation.emailSent,
+    };
+  }
+
   function limpiarMarkdown(t) {
       return t
         .replace(/```[a-z]*\n?/gi, '')          // vallas de código
@@ -1426,6 +1443,7 @@ window.JBChatCore = (function () {
     extractBooking: extractBooking,
     sanitizeBookingEntities: sanitizeBookingEntities,
     mergeBookingEntities: mergeBookingEntities,
+    buildReservationContext: buildReservationContext,
     resolverHora: resolverHora,
     horasAbiertas: horasAbiertas,
     horaDentroDeHorario: horaDentroDeHorario,

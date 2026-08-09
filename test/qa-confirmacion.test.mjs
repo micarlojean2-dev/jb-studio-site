@@ -73,7 +73,14 @@ console.log('H8. El modo de confirmación se conserva al recargar');
 for (const [name, source] of [['asistente', assistant], ['widget', widget]]) {
   ok(source.includes('awaitingConfirmation: bookingReview'), `${name} persiste awaitingConfirmation`);
   ok(source.includes('bookingReview = true;   // solo el botón') && source.includes('bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva\n    save();'), `${name} guarda el resumen mostrado`);
-  ok(source.includes('if (CORE.esConfirmacion(t, lang)) submitBooking();'), `${name} confirma por texto sin llegar al modelo`);
+  // [BUG-CONFIRMACION-TEXTO, corregido en la auditoría de reservas] esta
+  // línea SÍ existía antes y contradecía el comentario de arriba: un "sí"/
+  // "ok"/"confirm" escrito llamaba a submitBooking() directamente, sin pasar
+  // por el botón. Ahora debe estar ausente, y la rama bookingReview solo debe
+  // ofrecer corrección o volver a mostrar el resumen.
+  ok(!source.includes('if (CORE.esConfirmacion(t, lang)) submitBooking();'), `${name} YA NO confirma la reserva por texto libre`);
+  ok(source.includes("if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);\n        else showBookingSummary();\n        return;\n      }"),
+    `${name}: con el resumen visible, solo corrección o re-mostrar resumen — submitBooking() ya no es alcanzable desde texto libre`);
   // Objetivo 1: el idioma ya no se "bloquea" detectándolo del primer texto
   // (lockLanguage/detectarIdioma) — se elige explícitamente con el selector
   // (botones 🇪🇸/🇺🇸) y nunca se vuelve a detectar después. Verificamos que

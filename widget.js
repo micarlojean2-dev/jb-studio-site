@@ -954,7 +954,7 @@
 
     busy = true; inp.disabled = true; snd.disabled = true;
     showTyping();
-    var body = { clientId: clientId, messages: msgs, language: cfg.language, booking: { captured: bookingCaptured(), faltan: faltanAntes } };
+    var body = { clientId: clientId, messages: msgs, language: cfg.language, booking: { captured: bookingCaptured(), faltan: faltanAntes }, reservationContext: CORE.buildReservationContext(activeReservation) };
     if (previewToken) body.previewToken = previewToken;
     fetch(API + '/api/client-chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -1151,6 +1151,10 @@
             personas: bookingData.partySize || bookingData.personas || '',
             servicio: bookingData.servicio || '', specialRequests: bookingData.specialRequests || '',
             estado: d.status || 'confirmada', confirmedAt: Date.now(), language: lang,
+            // Estado real del correo (nunca inferido): lo que /api/client-chat
+            // reenvía a la IA como reservationContext.emailSent para que
+            // nunca afirme que se envió un correo que en realidad falló.
+            emailSent: !!(d.email && d.email.customer && d.email.customer.sent === true),
           };
           saveReserva();
           addMsg('bot', d.duplicate ? CORE.reservaTextos(lang).duplicateActive : CORE.mensajeReservaGuardada(cfg, d, lang));
@@ -1379,14 +1383,15 @@
           : 'Reserva cancelada. ¿Hay algo más en lo que pueda ayudarte?');
         return;
       }
-      // La reserva SOLO se crea con el botón "✅ Sí, confirmar cita": un "sí"
-      // escrito nunca debe confirmarla por su cuenta (puede ser una respuesta
-      // apresurada sin haber revisado bien el resumen). Se pide que use el
-      // botón en vez de dar la reserva por hecha. [BUG-CONFIRMACION-TEXTO]
+      // La reserva SOLO se crea con el botón "✅ Sí, confirmar cita": ni un "sí"
+      // ni un "ok"/"confirm" escrito confirma por su cuenta (auditoría de
+      // reservas: antes SÍ llamaba a submitBooking() aquí, contradiciendo este
+      // mismo comentario — CORE.esConfirmacion() ya no decide nada en esta
+      // rama). Solo una corrección reconocida se atiende; cualquier otra cosa
+      // vuelve a mostrar el resumen con su botón. [BUG-CONFIRMACION-TEXTO]
       if (bookingReview || (function () { try { return JSON.parse(sessionStorage.getItem(BOOKING_SESS) || '{}').awaitingConfirmation === true; } catch (e) { return false; } })()) {
         addMsg('user', t);
-        if (CORE.esConfirmacion(t, lang)) submitBooking();
-        else if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);
+        if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);
         else showBookingSummary();
         return;
       }
@@ -1457,8 +1462,8 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(previewToken
-        ? { clientId: clientId, messages: requestMsgs, language: cfg.language, previewToken: previewToken }
-        : { clientId: clientId, messages: requestMsgs, language: cfg.language }),
+        ? { clientId: clientId, messages: requestMsgs, language: cfg.language, previewToken: previewToken, reservationContext: CORE.buildReservationContext(activeReservation) }
+        : { clientId: clientId, messages: requestMsgs, language: cfg.language, reservationContext: CORE.buildReservationContext(activeReservation) }),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {

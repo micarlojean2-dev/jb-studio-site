@@ -378,6 +378,47 @@ async function englishBasePromptFor(templateId) {
   }
 }
 
+// ── Estado real de reserva (auditoría de reservas — DeepSeek no puede
+// inventar el resultado de una acción) ──────────────────────────────────────
+// Saneamiento de FORMA únicamente, igual criterio que sanitizeInterpretation()
+// en lib/message-interpreter.js: nunca se confía en lo que mande el
+// navegador para decidir nada (esto solo afecta TEXTO, nunca una acción), pero
+// tampoco se deja pasar un tipo inesperado al prompt. Sin "status" no hay
+// contexto real que dar — se trata como si no existiera ninguna reserva.
+function sanitizeReservationContext(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const status = typeof raw.status === 'string' ? raw.status.trim().slice(0, 40) : '';
+  if (!status) return null;
+  return {
+    status,
+    service: typeof raw.service === 'string' ? raw.service.slice(0, 200) : '',
+    date:    typeof raw.date === 'string' ? raw.date.slice(0, 60) : '',
+    time:    typeof raw.time === 'string' ? raw.time.slice(0, 30) : '',
+    emailSent: raw.emailSent === true,
+  };
+}
+
+// Única fuente de la regla "no inventes el resultado de una reserva" — se
+// agrega SIEMPRE al prompt (turno inicial, chat general, y turno de reserva
+// en curso), no solo dentro del bloque `if (booking)`: ese bloque condicional
+// era exactamente el hueco que permitía a DeepSeek improvisar un desenlace
+// falso ("tu solicitud fue enviada...") en cuanto la conversación salía del
+// flujo activo de captura de datos. [auditoría de reservas — falso éxito]
+function reservationTruthBlock(isEnglish, ctx) {
+  if (isEnglish) {
+    const rule = 'RESERVATION STATUS: never say a reservation/appointment was created, confirmed, submitted, or sent, never say you notified the business/team about it, and never say a confirmation email was sent — unless the real status below says so. This is never something to guess or infer from the conversation.';
+    if (ctx) {
+      return `\n${rule} Real status from the system (not from you): status "${ctx.status}"${ctx.service ? `, service "${ctx.service}"` : ''}${ctx.date ? `, date "${ctx.date}"` : ''}${ctx.time ? `, time "${ctx.time}"` : ''}. Confirmation email sent: ${ctx.emailSent ? 'yes' : 'no'}. You may share this plainly if asked; never contradict it or add details it does not include.\n`;
+    }
+    return `\n${rule} There is no confirmed reservation on record right now. If asked whether one went through, say you cannot confirm that from here — point to the "Yes, confirm" button on the summary, or suggest contacting the business directly.\n`;
+  }
+  const rule = 'ESTADO DE LA RESERVA: nunca digas que una reserva o cita fue creada, confirmada, enviada, ni que avisaste al negocio/equipo sobre ella, ni que se envió un correo de confirmación — salvo que el estado real de abajo lo diga. Esto nunca se adivina ni se infiere de la conversación.';
+  if (ctx) {
+    return `\n${rule} Estado real del sistema (no tuyo): estado "${ctx.status}"${ctx.service ? `, servicio "${ctx.service}"` : ''}${ctx.date ? `, fecha "${ctx.date}"` : ''}${ctx.time ? `, hora "${ctx.time}"` : ''}. Correo de confirmación enviado: ${ctx.emailSent ? 'sí' : 'no'}. Puedes compartirlo con naturalidad si preguntan; nunca lo contradigas ni agregues datos que no incluye.\n`;
+  }
+  return `\n${rule} No hay ninguna reserva confirmada registrada ahora mismo. Si preguntan si se concretó, di que no puedes confirmarlo desde aquí — señala el botón "Sí, confirmar" del resumen, o sugiere contactar al negocio directamente.\n`;
+}
+
 async function buildSystemPrompt(basePrompt, client, media, activeLanguage) {
   const tz   = tzOf(client);
   const now  = new Date();
@@ -613,7 +654,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
 
-  const { clientId, messages, previewToken, booking, language } = req.body || {};
+  const { clientId, messages, previewToken, booking, language, reservationContext } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -671,6 +712,12 @@ export default async function handler(req, res) {
     // nada. Se le dice aquí, no reescribiendo el prompt guardado.
     const media = await confirmedMedia(clientId, client);
     let systemPrompt = await buildSystemPrompt(client.prompt, client, media, activeLanguage);
+    // Regla única de estado real — se agrega SIEMPRE, no solo dentro del
+    // flujo de reserva activa (ver reservationTruthBlock más arriba): esto es
+    // lo que cierra el hueco de la ETAPA 2 donde una pregunta de seguimiento
+    // fuera del flujo de captura quedaba sin ninguna instrucción sobre el
+    // resultado real de una reserva. [auditoría de reservas — falso éxito]
+    systemPrompt += reservationTruthBlock(isEnglish, sanitizeReservationContext(reservationContext));
 
     // Modo reserva: el frontend manda el estado estructurado (lo capturado y
     // lo que falta) y el modelo genera la respuesta conversacional. Así la
@@ -704,8 +751,7 @@ How to respond:
 - CRITICAL: the "Data still missing" list is the only source of truth about what was saved — not what you think you understood. If the first missing item still appears there, it has NOT been saved yet, no matter what the customer wrote or what you replied before: keep asking for it, do not assume it is done or move to the next one. If the customer's phrasing for that item is ambiguous or you do not recognize it (for example an unclear relative date), do not rephrase it as if already confirmed: ask them to state it more precisely (an exact date, a day of the week, a time with am/pm). [BUG-FECHA-RELATIVA]
 - FORBIDDEN to say "we have everything ready" or "here's the summary" while the list above still has any pending item: that is only true when the list says "none".
 - Once nothing is missing, say so in a short, warm sentence (in the language indicated above) announcing that you are showing the summary to confirm, WITHOUT listing the data, and do not confirm it yourself.
-- NEVER say the appointment was booked or confirmed. NEVER make up open time slots or availability: the business reviews that when confirming.
-- FORBIDDEN to claim any of these (they have not happened yet and you do not control them): "we already notified the team/business", "we notified the business", "your appointment is confirmed", "the email was sent", "we sent you the confirmation", "the reservation was created/saved". The system sends those notices on its own and will confirm it to you; you do not.
+- NEVER say the appointment was booked or confirmed. NEVER make up open time slots or availability: the business reviews that when confirming. (The RESERVATION STATUS rule above already covers what you may or may not claim about a reservation's outcome — follow that, not your own guess.)
 - Short sentence, no markdown.
 
 NOTE-TAKING (silent, do not mention it to the customer): if the customer spontaneously mentions a preference, notice, or important request for their appointment —for example allergies, "I prefer a specific person", "I'm bringing someone", needs parking, it's a gift, cannot do a certain position, does not want music, wants a private room, "let me know if I'm running late"— add AT THE END of your reply, on its own line, an EXACT marker in this form: [NOTA: the customer's phrase in their own words]. Strict rules: only what the customer explicitly said; never invent or infer anything; one note per marker (several notes = several markers); if the customer said nothing important, do NOT write any marker; never explain or mention the marker.` : `
@@ -727,8 +773,7 @@ Cómo responder:
 - CRÍTICO: la lista de "Datos que aún faltan" es la única verdad sobre qué se guardó — no lo que tú creas haber entendido. Si el primer dato que falta sigue apareciendo ahí, TODAVÍA NO se guardó, sin importar lo que el cliente haya escrito o lo que tú le hayas respondido antes: sigue pidiéndolo, no lo des por hecho ni sigas con el siguiente. Si la frase del cliente para ese dato es ambigua o no la reconoces (por ejemplo una fecha relativa poco clara), no la reformules como si ya estuviera confirmada: pide que la exprese de forma más concreta (una fecha exacta, un día de la semana, una hora con am/pm). [BUG-FECHA-RELATIVA]
 - PROHIBIDO decir "ya tenemos todo listo" o "te muestro el resumen" mientras la lista de arriba todavía tenga algún dato pendiente: eso solo es cierto cuando la lista dice "ninguno".
 - Si ya no falta nada, dilo con una frase corta y cálida (en el idioma indicado arriba) anunciando que le muestras el resumen para confirmar, SIN listar los datos, y no lo confirmes tú.
-- NUNCA digas que la cita quedó agendada o confirmada. NUNCA inventes horarios libres ni disponibilidad: eso lo revisa el negocio al confirmar.
-- PROHIBIDO afirmar cualquiera de estas cosas (aún no han ocurrido y no las controlas): "ya notificamos al equipo/negocio", "avisamos al negocio", "tu cita está confirmada", "el correo fue enviado", "te enviamos la confirmación", "la reserva fue creada/guardada". El sistema envía esos avisos por su cuenta y te lo confirmará; tú no.
+- NUNCA digas que la cita quedó agendada o confirmada. NUNCA inventes horarios libres ni disponibilidad: eso lo revisa el negocio al confirmar. (La regla ESTADO DE LA RESERVA de arriba ya cubre qué puedes o no afirmar sobre el resultado de una reserva — sigue esa, no una suposición tuya.)
 - Frase breve, sin markdown.
 
 CAPTURA DE NOTAS (silenciosa, no la menciones al cliente): si el cliente dice espontáneamente una preferencia, aviso o petición importante para su cita —por ejemplo alergias, "prefiero una persona en concreto", "voy acompañado/a", necesita estacionamiento, es un regalo, no puede cierta postura, no quiere música, quiere sala privada, "si me retraso avísame"— añade AL FINAL de tu respuesta, en su propia línea, un marcador EXACTO con esta forma: [NOTA: la frase del cliente con sus propias palabras]. Reglas estrictas: solo lo que el cliente dijo de forma explícita; nunca inventes ni deduzcas nada; una nota por marcador (varias notas = varios marcadores); si el cliente no dijo nada importante, NO escribas ningún marcador; nunca expliques ni menciones el marcador.`;
@@ -951,4 +996,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, BOOKING_TURN_MAX_TOKENS, BOOKING_TURN_TEMPERATURE };
+export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, BOOKING_TURN_MAX_TOKENS, BOOKING_TURN_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock };
