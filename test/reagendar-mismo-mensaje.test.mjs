@@ -58,6 +58,28 @@ function activeReservationFixture() {
   };
 }
 
+// ETAPA 2: el "MODIFY_TRIGGERS.test(t)" local que decidía intent==='reschedule'
+// se eliminó (widget.js/asistente.html ahora dependen de interpretation.intent
+// que llega de /api/client-chat). Esta es una simulación mínima y determinista
+// de esa interpretación para estas pruebas -- NO sustituye una batería real
+// contra el proveedor (eso vive en scripts/interpreter-battery.mjs): solo dice
+// qué devolvería el modelo para el mensaje exacto de cada caso, para poder
+// probar que EL CÓDIGO reacciona bien al contrato {intent, text, entities}.
+function emptyTestEntities() {
+  return { service: null, date: null, time: null, name: null, email: null, phone: null, people: null, notes: null };
+}
+function fakeInterpret(t) {
+  const lower = String(t || '').toLowerCase();
+  const sinAcentos = lower.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const entities = emptyTestEntities();
+  const dateMatch = lower.match(/mañana|el viernes|viernes/);
+  if (dateMatch) entities.date = dateMatch[0];
+  const timeMatch = lower.match(/\d{1,2}(:\d{2})?\s*(am|pm)?/);
+  if (timeMatch) entities.time = timeMatch[0].trim();
+  const looksLikeChange = /cambia|cambiar/.test(sinAcentos);
+  return { intent: looksLikeChange ? 'reschedule' : 'unknown', text: 'Entendido, dame un momento.', entities };
+}
+
 async function buildDom({ onReschedule } = {}) {
   const dom = new JSDOM(HTML_SKELETON, { runScripts: 'outside-only', url: 'https://jbstudio.app/asistente/spa-test' });
   const { window } = dom;
@@ -71,6 +93,11 @@ async function buildDom({ onReschedule } = {}) {
     const u = String(url);
     if (u.includes('/api/client-config')) {
       return { ok: true, json: async () => CLIENT_CONFIG };
+    }
+    if (u.includes('/api/client-chat') && options.method === 'POST') {
+      const body = JSON.parse(options.body);
+      const lastUser = [...body.messages].reverse().find((m) => m.role === 'user');
+      return { ok: true, json: async () => ({ text: 'Entendido.', interpretation: fakeInterpret(lastUser && lastUser.content) }) };
     }
     if (u.includes('/api/reservations') && options.method === 'POST') {
       const body = JSON.parse(options.body);
@@ -105,7 +132,11 @@ async function escribir(dom, texto) {
   const window = dom.window;
   $(dom, 'a-inp').value = texto;
   $(dom, 'a-snd').dispatchEvent(new window.Event('click', { bubbles: true }));
-  await new Promise(r => setTimeout(r, 20));
+  // ETAPA 2: un mensaje de reagendar ahora puede encadenar hasta 3 fetch
+  // secuenciales (interpretación -> listar reserva -> reschedule), cada uno
+  // con su propio .then() -- 20ms alcanzaba para 1 sola llamada, no para la
+  // cadena completa.
+  await new Promise(r => setTimeout(r, 60));
 }
 
 function ultimosMensajesBot(dom, n) {
@@ -189,8 +220,11 @@ console.log('5) widget.js: mismo fix, sin divergencia (verificación estructural
   // modelo en /api/client-chat) — pero la propiedad que importa se conserva
   // igual: el mismo mensaje que trae la intención de reagendar intenta
   // construir el update directo antes de caer a handleReservationAction.
-  assert.match(widgetSrc, /if \(intent === 'reschedule'\) \{\s*\/\/[\s\S]*?var directUpdateW = CORE\.buildModifyUpdate\(t, cfg, activeReservation\);/,
-    "widget.js: intent==='reschedule' intenta construir el update directo desde el mismo mensaje, antes de preguntar");
+  // ETAPA 2: el update ya no sale de CORE.buildModifyUpdate(t,...) (regex
+  // sobre texto libre) sino de CORE.buildModifyUpdateFromEntities(interp.entities,...)
+  // -- misma interpretación ya pedida para decidir `intent`, sin llamada extra.
+  assert.match(widgetSrc, /if \(intent === 'reschedule'\) \{\s*\/\/[\s\S]*?var directUpdateW = CORE\.buildModifyUpdateFromEntities\(interp\.entities, cfg, activeReservation, t\);/,
+    "widget.js: intent==='reschedule' intenta construir el update directo desde interp.entities, antes de preguntar");
   console.log('  ✓ widget.js tiene el mismo fix (modifyHoraPendiente separado, modifyMode activado, sin descartar __horaAmbigua)');
 }
 

@@ -40,7 +40,13 @@ for (const [name, source] of [['asistente', assistant], ['widget', widget]]) {
   ok(source.includes('function pedirCorreccion(campo, lang)'), `${name} pide exclusivamente el campo corregido`);
   ok(source.includes("delete bookingData[campo];\n    bookingStep = 1;\n    bookingPending = campo;"), `${name} borra el valor anterior y deja el campo pendiente`);
   ok(source.includes('else if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);'), `${name} permite corregir desde el resumen`);
-  ok(source.includes('if (campoCorreccion && traidos.indexOf(campoCorreccion) === -1)'), `${name} mantiene el botón de modificar y las correcciones sin valor`);
+  // ETAPA 2: la detección de corrección ya no ocurre sobre `traidos` de
+  // CORE.extractBooking() (regex, síncrono) sino sobre `mergeResult.traidos`
+  // de CORE.mergeBookingEntities() (a partir de interpretation.entities de
+  // la IA, dentro de askBookingTurn) — el nombre de la variable cambió, la
+  // garantía de comportamiento ("¿el campo que mencionó la corrección
+  // realmente llegó con valor nuevo?") es idéntica.
+  ok(source.includes('if (campoCorreccionDetectado && mergeResult.traidos.indexOf(campoCorreccionDetectado) === -1)'), `${name} mantiene el botón de modificar y las correcciones sin valor`);
 }
 
 console.log(`✅ Correcciones de reserva verificadas (${checks} checks)`);

@@ -103,7 +103,11 @@ console.log('\n5. Memoria de selectedService');
     ok(source.includes('var selectedService'), `${name}: existe el estado selectedService`);
     ok(source.includes('if (preExtraido.servicio) selectedService = preExtraido.servicio;'), `${name}: se fija al mencionarlo en chat libre`);
     ok(source.includes('bookingData.servicio = CORE.resolveServicio(bookingData, selectedService);'), `${name}: bookingData.servicio = bookingData.servicio || selectedService al iniciar`);
-    ok(source.includes('if (yaVisto.servicio) selectedService = yaVisto.servicio;'), `${name}: un cambio explícito dentro del flujo también se recuerda`);
+    // ETAPA 2: el servicio "recién visto" dentro del flujo activo ya no sale
+    // de `yaVisto` (CORE.extractBooking(), regex) sino de `sanitized`
+    // (CORE.sanitizeBookingEntities() sobre interpretation.entities de la
+    // IA, dentro de askBookingTurn) — mismo comportamiento, nueva fuente.
+    ok(source.includes('if (sanitized.servicio) selectedService = sanitized.servicio;'), `${name}: un cambio explícito dentro del flujo también se recuerda`);
     ok(/selectedService = '';[\s\S]{0,40}\/\/ cancelar el flujo olvida el servicio recordado|selectedService = '';\s*\/\/ cancelar/.test(source), `${name}: cancelar el flujo olvida el servicio`);
     ok(/selectedService = '';/.test(source.slice(source.indexOf('reservationId: d.reservationId'))), `${name}: terminar la reserva con éxito olvida el servicio`);
     ok(source.includes('selectedService: selectedService'), `${name}: se persiste en sessionStorage junto al estado de reserva`);

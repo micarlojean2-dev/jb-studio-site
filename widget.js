@@ -210,11 +210,15 @@
     if (activeReservation) sessionStorage.setItem(RESERVA_SESS, JSON.stringify(activeReservation));
     else sessionStorage.removeItem(RESERVA_SESS);
   } catch (e) {} }
-  // MODIFY_TRIGGERS/CANCEL_TRIGGERS/BOOKING_TRIGGERS se eliminaron en la
-  // MIGRACIÓN 1 (intención por IA): sin callers en este archivo tras mover la
-  // detección de booking/reschedule/cancellation a interpretation.intent
-  // (ver send()). CORE.MODIFY_TRIGGERS sigue existiendo en chat-core.js sin
-  // cambios — asistente.html todavía lo usa.
+  // MODIFY_TRIGGERS/CANCEL_TRIGGERS/BOOKING_TRIGGERS (locales de este
+  // archivo) se eliminaron en la MIGRACIÓN 1, ETAPA 1: sin callers tras
+  // mover la detección de booking/reschedule/cancellation a
+  // interpretation.intent (ver send()). En la ETAPA 2, asistente.html
+  // recibió la misma migración y CORE.pareceReserva()/CORE.MODIFY_TRIGGERS
+  // (chat-core.js) también se eliminaron por quedar sin ningún caller real
+  // en ninguna de las dos superficies (ver informe de la ETAPA 2).
+  // CORE.BOOKING_TRIGGERS SÍ se conserva: la usa extractNotasUsuario() para
+  // un propósito distinto, no relacionado con la intención inicial.
 
   try { msgs = JSON.parse(sessionStorage.getItem(SESS) || '[]'); } catch (e) { msgs = []; }
   var BOOKING_SESS = SESS + '_booking';
@@ -741,67 +745,14 @@
     CORE.irAlFondo(msgsEl, true);
   }
 
-  // ── Submit completed booking to /api/reservations ────────────────────────
-// Extrae datos de reserva de un mensaje libre. Solo captura lo inequívoco:
-// ante la duda no rellena, para que el flujo pregunte. Un campo inventado se
-// convierte en una cita a la hora equivocada.
-var FECHA_RE = new RegExp(
-  '(pasado\\s+ma(ñ|n)ana|ma(ñ|n)ana|hoy|' +
-  '(este|el|pr(ó|o)ximo)\\s+(lunes|martes|mi(é|e)rcoles|jueves|viernes|s(á|a)bado|domingo)|' +
-  '(lunes|martes|mi(é|e)rcoles|jueves|viernes|s(á|a)bado|domingo)|' +
-  '\\d{1,2}\\s+de\\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)|' +
-  '\\d{1,2}[\\/\\-]\\d{1,2}(?:[\\/\\-]\\d{2,4})?|' +
-  '\\d{4}-\\d{2}-\\d{2})', 'i');
-
-// "3pm", "15:00", "3:30 pm", "a las 4". No inventamos AM/PM: si no lo dicen,
-// se guarda la hora tal cual y el resumen la enseña antes de confirmar.
-var HORA_RE = /(?:a\s+las\s+)?\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b/i;
-var HORA_CTX = /(a\s+las|hrs?|horas?|:\d{2}|\ba\.?m\.?\b|\bp\.?m\.?\b)/i;
-
-var PERSONAS_RE = /(?:para|somos|seríamos|serian|ser[ií]amos)\s+(\d{1,3}|un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b|\b(\d{1,3}|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\s+personas?\b/i;
-var NUM_PAL = { un:1, uno:1, una:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6, siete:7, ocho:8, nueve:9, diez:10 };
-
-var EMAIL_RE2 = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
-var TEL_RE = /(\+?\d[\d\s().-]{6,}\d)/;
-
-// "las 4" puede ser las 04:00 o las 16:00. Se decide con el horario real del
-// negocio: si solo una de las dos cae dentro, esa es. Si ambas o ninguna
-// encajan, se pregunta en vez de adivinar.
-function horasAbiertas(businessHours) {
-  var set = {};
-  if (!businessHours) return null;
-  var vacio = true;
-  Object.keys(businessHours).forEach(function (d) {
-    var day = businessHours[d];
-    if (!day || day.enabled === false || day.unknown) return;
-    (day.ranges || []).forEach(function (r) {
-      var a = parseInt(String(r.start || '').split(':')[0], 10);
-      var b = parseInt(String(r.end || '').split(':')[0], 10);
-      if (isNaN(a) || isNaN(b)) return;
-      for (var h = a; h <= b; h++) { set[h] = true; vacio = false; }
-    });
-  });
-  return vacio ? null : set;
-}
-
-// Devuelve { hora } resuelta, { ambigua: n } si hay que preguntar, o null.
-function resolverHora(n, minutos, sufijo, businessHours) {
-  var mm = minutos ? ':' + minutos : ':00';
-  if (sufijo) {                                   // ya lo dijo la persona
-    var s = sufijo.toUpperCase().replace(/\./g, '');
-    return { hora: n + mm + ' ' + s };
-  }
-  if (n >= 13 && n <= 23) return { hora: n + mm };  // formato 24h, sin duda
-  if (n === 0) return { hora: '12' + mm + ' AM' };
-  if (n === 12) return { hora: '12' + mm + ' PM' };
-
-  var abiertas = horasAbiertas(businessHours);
-  if (!abiertas) return { ambigua: n, mm: mm };     // sin horario: preguntar
-  var am = !!abiertas[n], pm = !!abiertas[n + 12];
-  if (pm && !am) return { hora: n + mm + ' PM' };
-  if (am && !pm) return { hora: n + mm + ' AM' };
-  return { ambigua: n, mm: mm };                    // ambas o ninguna: preguntar
-}
+  // ETAPA 2 — limpieza: este bloque (FECHA_RE/HORA_RE/HORA_CTX/PERSONAS_RE/
+  // NUM_PAL/EMAIL_RE2/TEL_RE/horasAbiertas()/resolverHora() locales de este
+  // archivo) quedaba huérfano desde ANTES de esta migración — la detección
+  // real siempre pasó por CORE.extractBooking() (chat-core.js), y ninguno de
+  // estos identificadores tenía un solo caller real (confirmado por grep en
+  // la auditoría ETAPA 2). La versión buena de resolverHora() (la que sí
+  // consultaba businessHours) se fusionó en chat-core.js, que es la que de
+  // verdad se usa — ver su definición allí.
 
   // El modelo emite marcadores internos ([MOSTRAR_MENU], [RESERVA_CONFIRMADA],
   // [LEAD_MINIMO]…). Antes solo se quitaba [MOSTRAR_MENU] y el resto se
@@ -952,30 +903,58 @@ function resolverHora(n, minutos, sufijo, businessHours) {
     return true;
   }
 
-  // Cada turno de la reserva lo redacta DeepSeek con el estado estructurado.
-  // El frontend sigue siendo dueño del estado y la validación; el modelo nunca
-  // confirma ni inventa disponibilidad.
-  function askBookingTurn(lang) {
-    if (validarDisponibilidadTemprana(lang)) return;
-    var faltan = bookingFaltan();
+  // Si con el bookingData ACTUAL ya se puede responder sin red (resumen
+  // completo, pregunta de petición especial, confirmación de nombre corto),
+  // lo hace y devuelve true. Si no, devuelve false y el llamador debe seguir
+  // con la llamada a la IA. Se usa DOS veces dentro de askBookingTurn(): antes
+  // de llamar a la red (evita una llamada innecesaria cuando ya se sabe la
+  // respuesta local, igual que antes de la ETAPA 2) y después de aplicar las
+  // entities de este turno (para el caso en que la IA acaba de completar el
+  // último dato que faltaba).
+  function tryLocalBookingShortcut(lang, faltan) {
     var completo = faltan.length === 0;
     bookingPending = completo ? null : faltan[0];
     // The model never speaks for a complete booking; only the POST decides it.
-    if (completo) { showBookingSummary(); return; }
+    if (completo) { showBookingSummary(); return true; }
     if (bookingPending === 'specialRequests') {
       addMsg('bot', CORE.specialRequestsQuestion(cfg.templateId, lang));
-      return;
+      save();
+      return true;
     }
     // Nombre de una sola palabra ya capturado: se pregunta de forma natural
     // en vez de dejar que el modelo vuelva a pedir "tu nombre" desde cero.
     // [Objetivo 5]
     if (bookingPending === 'nombre' && bookingData.nombre && CORE.esNombreUnaPalabra(bookingData.nombre)) {
       addMsg('bot', CORE.nombreConfirmacionMensaje(bookingData.nombre, lang));
-      return;
+      save();
+      return true;
     }
+    return false;
+  }
+
+  // Cada turno de la reserva lo redacta DeepSeek con el estado estructurado.
+  // El frontend sigue siendo dueño del estado y la validación; el modelo nunca
+  // confirma ni inventa disponibilidad.
+  //
+  // ETAPA 2: esta MISMA llamada, que ya existía solo para redactar la
+  // siguiente pregunta, ahora TAMBIÉN devuelve interpretation.entities — la
+  // IA interpreta servicio/fecha/hora/nombre/email/teléfono/personas/notas
+  // de la conversación (incluido el mensaje que se acaba de enviar, ya en
+  // `msgs`), y CORE.sanitizeBookingEntities()/mergeBookingEntities() son
+  // quienes deciden qué se acepta — la IA nunca escribe bookingData
+  // directamente. `correctionSourceText` (opcional) es el texto crudo del
+  // mensaje que disparó este turno, usado SOLO para el mecanismo de
+  // corrección/respuesta-desnuda ya existente (CORE.campoCorreccion,
+  // BARE_OK) — no se usa para decidir si se llama a la red.
+  function askBookingTurn(lang, correctionSourceText) {
+    if (validarDisponibilidadTemprana(lang)) return;
+    var faltanAntes = bookingFaltan();
+    if (tryLocalBookingShortcut(lang, faltanAntes)) return;
+    var pendienteAntes = faltanAntes[0] || null;
+
     busy = true; inp.disabled = true; snd.disabled = true;
     showTyping();
-    var body = { clientId: clientId, messages: msgs, language: cfg.language, booking: { captured: bookingCaptured(), faltan: faltan } };
+    var body = { clientId: clientId, messages: msgs, language: cfg.language, booking: { captured: bookingCaptured(), faltan: faltanAntes } };
     if (previewToken) body.previewToken = previewToken;
     fetch(API + '/api/client-chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -983,14 +962,72 @@ function resolverHora(n, minutos, sufijo, businessHours) {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         hideTyping();
+        var interp = (d && d.interpretation) || null;
+        var entities = interp ? interp.entities : null;
+        var t = correctionSourceText || '';
+
+        if (entities) {
+          var sanitized = CORE.sanitizeBookingEntities(entities, cfg, cfg.businessHours, cfg.language);
+          var mergeResult = CORE.mergeBookingEntities(bookingData, sanitized, cfg.businessHours);
+          // Cambio explícito de servicio dentro del flujo: se recuerda para
+          // la próxima reserva también. [Objetivo 4]
+          if (sanitized.servicio) selectedService = sanitized.servicio;
+
+          // Preferencias que el cliente dice en su propio mensaje ("prefiero
+          // una habitación silenciosa"): DOS fuentes ahora, sin duplicar —
+          // el respaldo regex de siempre (extractNotasUsuario, sin tocar)
+          // MÁS lo que la IA extrajo como "notes"; fusionarNotas() ya
+          // deduplica si ambas capturan lo mismo.
+          var notasU = CORE.extractNotasUsuario(t, cfg);
+          if (notasU.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasU);
+          if (sanitized.notes) bookingData.notes = CORE.fusionarNotas(bookingData.notes, [sanitized.notes]);
+          recordFoodRequest(t, lang);
+
+          // Antes se exigía "nada se extrajo en este mensaje" para aceptar el
+          // texto libre como respuesta al dato pendiente. Si el cliente
+          // repetía un dato YA capturado en la misma frase donde contestaba
+          // lo que se le pedía, esa repetición SÍ se detectaba, así que la
+          // respuesta real quedaba descartada. Ahora solo importa si el dato
+          // pendiente EN SÍ sigue sin capturarse. [BUG-MEMORIA-REPETIDA]
+          var pendienteSinCapturar = pendienteAntes && mergeResult.traidos.indexOf(pendienteAntes) === -1;
+          var campoCorreccionDetectado = CORE.campoCorreccion(t);
+          if (campoCorreccionDetectado && mergeResult.traidos.indexOf(campoCorreccionDetectado) === -1) {
+            pedirCorreccion(campoCorreccionDetectado, lang);
+            return;
+          } else if (pendienteSinCapturar && CORRECCION_RE.test(t)) {
+            // Sin campo mencionado, "prefiero"/"mejor" es la respuesta al campo pendiente, no una corrección vacía. [BUG-CORRECCION-PENDIENTE]
+            if (BARE_OK[pendienteAntes] && !bookingData[pendienteAntes] && CORE.valorValido(pendienteAntes, t)) {
+              bookingData[pendienteAntes] = pendienteAntes === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
+            }
+          } else if (pendienteSinCapturar && BARE_OK[pendienteAntes] &&
+                     !bookingData[pendienteAntes] && CORE.valorValido(pendienteAntes, t)) {
+            bookingData[pendienteAntes] = pendienteAntes === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
+          }
+
+          if (mergeResult.fueraDeHorario) { rechazarHoraFueraDeHorario(lang); return; }
+          if (mergeResult.ambigua) { preguntarHoraAmbigua(mergeResult.ambigua, lang); return; }
+        }
+
+        save();
+
+        // Con bookingData ya actualizado por las entities de este turno, se
+        // recalcula qué falta AHORA (determinista, igual que siempre). Si
+        // este mensaje acaba de completar la reserva o llevó al siguiente
+        // campo a un atajo local, no hace falta usar el texto de la IA.
+        var faltanAhora = bookingFaltan();
+        if (tryLocalBookingShortcut(lang, faltanAhora)) return;
+
+        // Caso normal: se usa el texto conversacional de ESTA MISMA llamada
+        // — no se pide una segunda respuesta al modelo. [PASO 5 — una sola
+        // llamada, ETAPA 1, extendido a este turno en la ETAPA 2]
         var raw = (d && d.text) || '';
-        // Notas: el modelo marca lo importante con [NOTA: ...] en esta misma
-        // respuesta. Se acumula en bookingData.notes y se quita del texto (y del
-        // historial) para que ni el cliente ni el modelo vuelvan a verlo.
+        // Notas: el modelo también puede marcar algo con [NOTA: ...] en el
+        // texto libre (respaldo anterior a "entities.notes" — se conserva
+        // por si la IA lo usa en vez del campo estructurado).
         var nx = CORE.extractNotas(raw);
         if (nx.notas.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, nx.notas);
         var txt = raw ? CORE.limpiarMarcadores(nx.limpio) : '';
-        if (!txt) txt = (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + (lang === 'en' ? (BOOKING_FIELD_LABEL_EN[faltan[0]] || faltan[0]) : faltan[0]) + '?';
+        if (!txt) txt = (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + (lang === 'en' ? (BOOKING_FIELD_LABEL_EN[faltanAhora[0]] || faltanAhora[0]) : faltanAhora[0]) + '?';
         addMsg('bot', txt);
         // Se persiste el texto ya saneado (lo mismo que se mostró): así ni el
         // cliente ni DeepSeek vuelven a ver marcadores al recargar el historial.
@@ -1357,11 +1394,15 @@ function resolverHora(n, minutos, sufijo, businessHours) {
       addMsg('user', t);
       msgs.push({ role: 'user', content: t });
 
-      // Nombre de una sola palabra en espera de confirmación: decidido por
-      // CORE.confirmarNombreUnaPalabra() (compartida con asistente.html) para
-      // que nunca se anexe como apellido un correo/teléfono/fecha/hora/
-      // servicio/negación ya reconocido en este mismo mensaje. [auditoría —
-      // nombre corrupto]
+      // Nombre de una sola palabra en espera de confirmación: caso local,
+      // deterministo y acotado — se mantiene con CORE.extractBooking() a
+      // propósito (excepción explícita de la ETAPA 2, ver informe) en vez de
+      // esperar una llamada a la IA solo para decidir si el siguiente
+      // mensaje es un apellido o un dato distinto ya reconocible por marcador
+      // literal. CORE.confirmarNombreUnaPalabra() (compartida con
+      // asistente.html) evita anexar como apellido un correo/teléfono/fecha/
+      // hora/servicio/negación ya reconocido en este mismo mensaje.
+      // [auditoría — nombre corrupto]
       if (bookingPending === 'nombre' && bookingData.nombre && !bookingData.__nombreConfirmado) {
         var extraCampos = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
         bookingData = CORE.confirmarNombreUnaPalabra(bookingData, t, extraCampos, lang);
@@ -1372,49 +1413,15 @@ function resolverHora(n, minutos, sufijo, businessHours) {
 
       if (resolverHoraPendiente(t, lang)) return;
 
-      var yaVisto = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
-       var amb = yaVisto.__horaAmbigua; if (amb) delete yaVisto.__horaAmbigua;
-       var fueraDeHorario = yaVisto.__horaFueraDeHorario; if (fueraDeHorario) delete yaVisto.__horaFueraDeHorario;
-       var traidos = Object.keys(yaVisto);
-       traidos.forEach(function (k) { bookingData[k] = yaVisto[k]; });
-       // Cambio explícito de servicio dentro del flujo: se recuerda para la
-       // próxima reserva también. [Objetivo 4]
-       if (yaVisto.servicio) selectedService = yaVisto.servicio;
-       var campoCorreccion = CORE.campoCorreccion(t);
-
-      // Preferencias que el cliente dice en su propio mensaje ("prefiero una
-      // habitación silenciosa"), sin depender de que DeepSeek emita [NOTA:].
-        var notasU = CORE.extractNotasUsuario(t, cfg);
-       if (notasU.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasU);
-       recordFoodRequest(t, lang);
-
-      // Antes se exigía "nada se extrajo en este mensaje" (!traidos.length)
-      // para aceptar el texto libre como respuesta al dato pendiente. Si el
-      // cliente repetía un dato YA capturado en la misma frase donde
-      // contestaba lo que se le pedía ("mi correo es X, como ya te dije, y no
-      // tengo ninguna petición especial"), esa repetición SÍ se detectaba
-      // (traidos.length > 0 por el correo), así que la respuesta real
-      // quedaba descartada y el asistente repetía la misma pregunta sin fin
-       // — el cliente sentía que "no lo escuchaba". Ahora solo importa si el
-       // dato pendiente EN SÍ sigue sin capturarse. [BUG-MEMORIA-REPETIDA]
-       var pendienteSinCapturar = bookingPending && traidos.indexOf(bookingPending) === -1;
-       if (campoCorreccion && traidos.indexOf(campoCorreccion) === -1) {
-         pedirCorreccion(campoCorreccion, lang);
-         return;
-       } else if (pendienteSinCapturar && CORRECCION_RE.test(t)) {
-         // Sin campo mencionado, "prefiero"/"mejor" es la respuesta al campo pendiente, no una corrección vacía. [BUG-CORRECCION-PENDIENTE]
-         if (BARE_OK[bookingPending] && !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
-           bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
-         }
-      } else if (pendienteSinCapturar && BARE_OK[bookingPending] &&
-                 !bookingData[bookingPending] && CORE.valorValido(bookingPending, t)) {
-         bookingData[bookingPending] = bookingPending === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
-      }
-
-       if (fueraDeHorario) { rechazarHoraFueraDeHorario(lang); return; }
-       if (amb) { preguntarHoraAmbigua(amb, lang); return; }
-       save();
-       askBookingTurn(lang);
+      // ETAPA 2: la extracción de servicio/fecha/hora/nombre/email/teléfono/
+      // personas/notas de ESTE mensaje ya NO la hace CORE.extractBooking()
+      // (regex) — la hace la IA en la misma llamada que askBookingTurn() ya
+      // hacía para redactar la siguiente pregunta (ver askBookingTurn más
+      // abajo, que ahora también sanea y aplica interpretation.entities).
+      // Aquí solo queda lo 100% local/determinista: cancelar, resumen,
+      // confirmación de nombre corto y la respuesta a una hora ambigua.
+      save();
+      askBookingTurn(lang, t);
       return;
     }
 
@@ -1428,10 +1435,13 @@ function resolverHora(n, minutos, sufijo, businessHours) {
     // en la MISMA llamada que ya se hacía para el chat libre — no se agrega
     // una segunda petición al modelo para el caso de pregunta general.
     //
-    // CORE.extractBooking() se conserva sin cambios: sigue siendo quien
-    // EXTRAE fecha/hora/servicio/etc. una vez que el intent ya se conoce.
-    // Esta migración solo reemplaza QUIÉN decide la intención, no la
-    // extracción de entidades (ver PASO 4 del plan de migración).
+    // ETAPA 2: interpretation.entities (misma llamada) reemplaza a
+    // CORE.extractBooking() como fuente de servicio/fecha/hora/nombre/email/
+    // teléfono/personas/notas — CORE.sanitizeBookingEntities() es quien
+    // decide qué se acepta antes de tocar bookingData (ver más abajo).
+    // CORE.extractBooking() sigue existiendo solo para 2 casos locales
+    // acotados (nombre de una sola palabra, modo "Modificar" explícito) —
+    // ver informe de la ETAPA 2 para la justificación de cada uno.
     //
     // Fail-closed (PASO 3): si el backend no devuelve una interpretación
     // válida, se trata como intent "unknown" — nunca se asume booking/
@@ -1477,7 +1487,12 @@ function resolverHora(n, minutos, sufijo, businessHours) {
             // El mismo mensaje que trae la intención de reagendar ya puede
             // traer la fecha/hora nueva: no se descarta ni se vuelve a
             // preguntar lo que ya se dijo. [auditoría FASE 1]
-            var directUpdateW = CORE.buildModifyUpdate(t, cfg, activeReservation);
+            //
+            // ETAPA 2: entities de esta MISMA interpretación (no
+            // CORE.extractBooking() sobre texto libre) — ya se pidió la
+            // interpretación estructurada para decidir `intent`, así que
+            // reutilizarla aquí no cuesta una llamada de red adicional.
+            var directUpdateW = CORE.buildModifyUpdateFromEntities(interp.entities, cfg, activeReservation, t);
             if (directUpdateW.__horaAmbigua) {
               var ambDirectW = directUpdateW.__horaAmbigua; delete directUpdateW.__horaAmbigua;
               preguntarModifyHoraAmbigua(ambDirectW, directUpdateW, lang);
@@ -1504,7 +1519,15 @@ function resolverHora(n, minutos, sufijo, businessHours) {
         // (chat libre, tarjeta, catálogo): así "quiero reservar" más
         // adelante no vuelve a preguntar un servicio ya mencionado.
         // [Objetivo 4]
-        var preExtraido = featureOn('reservations') ? CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg) : {};
+        //
+        // ETAPA 2: preExtraido ya no viene de CORE.extractBooking() (regex)
+        // — viene de interpretation.entities, la MISMA interpretación de la
+        // IA que ya se pidió en esta llamada para decidir `intent` (una sola
+        // llamada, sin red adicional). CORE.sanitizeBookingEntities() es
+        // quien decide qué se acepta.
+        var preExtraido = featureOn('reservations') && interp
+          ? CORE.sanitizeBookingEntities(interp.entities, cfg, cfg.businessHours, cfg.language)
+          : {};
         if (preExtraido.servicio) selectedService = preExtraido.servicio;
 
         if (!activeReservation && featureOn('reservations') && intent === 'booking') {
@@ -1513,21 +1536,18 @@ function resolverHora(n, minutos, sufijo, businessHours) {
           bookingStep = 1;          // en modo reserva; el modelo conduce
           bookingData = {};
 
-          var ambigua = preExtraido.__horaAmbigua;
-          var fueraDeHorarioInicial = preExtraido.__horaFueraDeHorario;
-          delete preExtraido.__horaAmbigua;
-          delete preExtraido.__horaFueraDeHorario;
-          Object.keys(preExtraido).forEach(function (k) { bookingData[k] = preExtraido[k]; });
+          var mergeInicial = CORE.mergeBookingEntities(bookingData, preExtraido, cfg.businessHours);
           // bookingData.servicio || selectedService: si este mensaje no vuelve a
           // nombrar el servicio, se usa el que ya se había elegido antes. [Objetivo 4]
           bookingData.servicio = CORE.resolveServicio(bookingData, selectedService);
 
           var notasIni = CORE.extractNotasUsuario(t, cfg);
           if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
+          if (preExtraido.notes) bookingData.notes = CORE.fusionarNotas(bookingData.notes, [preExtraido.notes]);
           recordFoodRequest(t, lang);
 
-          if (fueraDeHorarioInicial) { rechazarHoraFueraDeHorario(lang); return; }
-          if (ambigua) { preguntarHoraAmbigua(ambigua, lang); return; }
+          if (mergeInicial.fueraDeHorario) { rechazarHoraFueraDeHorario(lang); return; }
+          if (mergeInicial.ambigua) { preguntarHoraAmbigua(mergeInicial.ambigua, lang); return; }
           save();
           askBookingTurn(lang);
           return;

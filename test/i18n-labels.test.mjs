@@ -52,12 +52,9 @@ check(C.extractBooking('el viernes', menu, {}, 'es', { templateId: 'restaurant' 
 
 console.log(`i18n-labels.test.mjs: ${count} checks passed`);
 
-// Regression: MODIFY_TRIGGERS must match inflected forms — the old \bmodific\b
-// failed on "modificar"/"reprogramar" (letter→letter, no boundary). [BUG-MODIFY]
-const MT = C.MODIFY_TRIGGERS;
-for (const t of ['quiero modificar mi reserva', 'modificar', 'reprogramar la cita', 'cambiar la hora', 'cámbiame la fecha', 'I want to modify it', 'reschedule please', 'move my booking'])
-  check(MT.test(t) === true, `MODIFY_TRIGGERS matches: ${t}`);
-for (const t of ['quiero reservar una mesa', 'hola', 'gracias'])
-  check(MT.test(t) === false, `MODIFY_TRIGGERS does not match: ${t}`);
-
-console.log('modify-triggers: checks passed');
+// MODIFY_TRIGGERS (y su regresión del \bmodific\b, [BUG-MODIFY]) se eliminó
+// en la ETAPA 2 (chat-core.js): decidir "reschedule" por regex quedó sin
+// ningún caller real tras migrar TAMBIÉN asistente.html a
+// interpretation.intent (antes, ETAPA 1, solo widget.js lo tenía). La
+// clasificación de esa intención ahora la hace la IA en TODOS los casos —
+// ver test/message-interpreter.test.mjs y test/reagendar-mismo-mensaje.test.mjs.

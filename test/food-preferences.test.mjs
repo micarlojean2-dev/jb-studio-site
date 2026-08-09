@@ -59,7 +59,10 @@ check(CORE.foodPreferencesToSpecialRequests(food('without cheese'), 'en') === 'N
 check(CORE.extractBooking('cambiar hamburguesa por pizza', menu, null, 'es', restaurant).servicio === 'Pizza', 'last dish named wins');
 const englishBooking = CORE.extractBooking('I want Classic Burger for 2 people on August 5 at 1 PM. My name is QA English', [{ nombre: 'Classic Burger' }], null, 'en', restaurant);
 check(englishBooking.servicio === 'Classic Burger' && englishBooking.personas === '2' && englishBooking.hora === '1:00 PM' && englishBooking.nombre === 'QA English', 'English booking fields are extracted');
-check(CORE.pareceReserva('I want to reserve a table', {}), 'English reserve intent starts booking');
+// CORE.pareceReserva() se eliminó en la ETAPA 2 (chat-core.js): quedó sin
+// ningún caller real en widget.js ni asistente.html tras migrar la
+// detección de intención inicial de AMBAS superficies a
+// interpretation.intent (antes, solo widget.js lo tenía desde la ETAPA 1).
 check(CORE.summaryFields(restaurant).includes('servicio'), 'restaurant summary includes dish');
 
 for (const text of ['Soy alérgico al queso', 'Tengo intolerancia a la lactosa', 'Soy celíaco', 'Cross contamination', "I'm allergic to dairy", "I'm lactose intolerant", 'I have celiac disease', "I'm allergic to peanuts"]) {

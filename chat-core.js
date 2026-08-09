@@ -172,17 +172,15 @@ window.JBChatCore = (function () {
 
   var MARCADOR_RE = /\[[A-Z_]{3,}\]/g;
 
+  // ETAPA 2 — limpieza: MODIFY_TRIGGERS e INTENT_RE quedaban huérfanos tras
+  // migrar TAMBIÉN asistente.html a interpretation.intent (ver informe) —
+  // 0 callers reales confirmados por grep, se eliminaron junto con
+  // pareceReserva() (más abajo, su único consumidor real de INTENT_RE).
+  // BOOKING_TRIGGERS SÍ se conserva: sigue siendo usada por
+  // extractNotasUsuario() más abajo, para un propósito distinto y no
+  // relacionado con detectar intención inicial (evitar que "necesito
+  // reservar" se cuele como una "nota" del cliente).
   var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserve|reservation|book(?:ing)?|table|reserva|hora libre|turno|quiero una cita/i;
-
-  // Intención de modificar una reserva activa. Coincidencia por raíz, SIN \b
-  // final: en modo ASCII de JS, `\bmodific\b` no casa "modificar" (c→a no es
-  // frontera), así que "quiero modificar" no entraba en modo modificar. [BUG-MODIFY]
-  var MODIFY_TRIGGERS = /(modific|modify|c[aá]mbi|reprogram|reagenda|mover|mueve|otra hora|otro d[ií]a|otra fecha|change|reschedul|move)/i;
-
-  // Spanish-only before: "I want a manicure on Sunday" named a real service
-  // and date but never matched, so pareceReserva() fell through to free chat
-  // instead of the structured booking flow. [BUG-INTENT-EN]
-  var INTENT_RE = /\b(quiero|quisiera|necesito|me\s+gustar[ií]a|puedo|ap[uú]ntame|ag[eé]ndame|d[ae]me|i\s+want|i\s?'?d\s+like|i\s+need|can\s+i|book\s+me)\b/i;
 
   var CORRECCION_RE = /(me\s+equivoqu[eé]|cambiar|corregir|est[aá]\s+mal|incorrect[oa]|(?:lo\s+)?puse\s+mal|mejor|en realidad|prefiero)/i;
 
@@ -385,6 +383,30 @@ window.JBChatCore = (function () {
     return update;
   }
 
+  // ETAPA 2 — misma forma que buildModifyUpdate() (fecha/hora/servicio/
+  // partySize/__horaAmbigua), pero a partir de interpretation.entities de la
+  // IA en vez de CORE.extractBooking() sobre texto libre. Se usa SOLO cuando
+  // el mensaje que trae intent:"reschedule" viene de la interpretación
+  // estructurada (ver widget.js/asistente.html) — el modo "✏️ Modificar"
+  // explícito sigue con buildModifyUpdate()/extractBooking() sin cambios: es
+  // un flujo hoy 100% local (sin llamada de red hasta el submit final) y
+  // pedirle una interpretación de la IA solo para esto añadiría una llamada
+  // de red nueva a un flujo que hoy es instantáneo, sin ganar nada a cambio
+  // (ver informe de la ETAPA 2).
+  function buildModifyUpdateFromEntities(entities, cfg, activeReservation, rawText) {
+    var lang = cfg && cfg.language === 'en' ? 'en' : 'es';
+    var sanitized = sanitizeBookingEntities(entities, cfg, cfg.businessHours, cfg.language);
+    var food = applyFoodPreferences(activeReservation && activeReservation.foodPreferences, rawText || '', cfg);
+    var update = {};
+    if (sanitized.fecha) update.fecha = sanitized.fecha;
+    if (sanitized.hora) update.hora = sanitized.hora;
+    if (sanitized.__horaAmbigua) update.__horaAmbigua = sanitized.__horaAmbigua;
+    if (sanitized.personas) update.partySize = sanitized.personas;
+    if (sanitized.servicio) update.servicio = sanitized.servicio;
+    if (food) { update.foodPreferences = food; update.specialRequests = foodPreferencesToSpecialRequests(food, lang); }
+    return update;
+  }
+
   // Todos los textos de las acciones de reserva, en el idioma del negocio. El
   // modelo no participa: estos textos son fijos y bilingües. [i18n determinista]
   function reservaTextos(lang) {
@@ -515,6 +537,23 @@ window.JBChatCore = (function () {
     return vacio ? null : set;
   }
 
+  // Devuelve { hora } resuelta, { ambigua: n, mm } si hay que preguntar, o
+  // null.
+  //
+  // NOTA (auditoría ETAPA 2, NO aplicada esta ronda): widget.js y
+  // asistente.html tienen cada uno su propia copia de esta función,
+  // MÁS LISTA que esta (consulta businessHours: si solo una de las dos
+  // franjas, AM o PM, cae dentro del horario del negocio, se resuelve
+  // sola) — pero esa copia no tiene NINGÚN caller (código muerto,
+  // confirmado por grep). Se intentó fusionar esa lógica aquí, pero
+  // test/qa-horas.test.mjs demostró que eso CAMBIA comportamiento real ya
+  // protegido por test para negocios reales ("a las 5"/"a las 11"/"a las 2"
+  // dejarían de pedir AM/PM si esas horas caen solo en una franja de su
+  // horario) — un cambio de comportamiento no pedido en esta ronda. Se
+  // revirtió: esta función sigue igual que antes de la ETAPA 2. Las copias
+  // muertas de widget.js/asistente.html sí se eliminaron (0 callers reales,
+  // eso no cambia comportamiento de nadie) — ver limpieza ETAPA 2 en el
+  // informe para la decisión completa.
   function resolverHora(n, minutos, sufijo, businessHours) {
     var mm = minutos ? ':' + minutos : ':00';
     if (sufijo) {                                   // ya lo dijo la persona
@@ -730,6 +769,132 @@ window.JBChatCore = (function () {
     return out;
   }
 
+  // ── ETAPA 2 — entities de la IA → bookingData ─────────────────────────────
+  // Frontera de autoridad: interpretation.entities (lib/message-interpreter.js,
+  // api/client-chat.js) es SOLO lo que la IA transcribió del mensaje — nunca
+  // se confía en ello tal cual. Esta es la ÚNICA función que decide qué se
+  // acepta, y reutiliza EXACTAMENTE los mismos validadores deterministas que
+  // ya usaba extractBooking() (EMAIL_RE2, TEL_RE/valorValido, extraerFecha(),
+  // resolverHora(), el catálogo real) — no se inventa ninguna regla nueva.
+  // Devuelve un objeto con las MISMAS claves que bookingData ya usa
+  // (servicio/fecha/hora/nombre/email/telefono/personas/notes), incluyendo
+  // SOLO los campos que de verdad pasaron validación; lo demás se omite —
+  // igual que extractBooking() nunca inventaba un campo que no encontraba.
+  // Una hora ambigua no se descarta: viaja como __horaAmbigua, igual que
+  // siempre, para que el llamador reutilice la pregunta "¿mañana o tarde?"
+  // que ya existía.
+  function sanitizeBookingEntities(entities, cfg, businessHours, lang) {
+    var e = (entities && typeof entities === 'object') ? entities : {};
+    var out = {};
+
+    // servicio: coincidencia EXACTA (insensible a mayúsculas) contra el
+    // catálogo real. La IA ya ve la lista exacta de nombres en el prompt, así
+    // que a diferencia de extractBooking() no hace falta un matching difuso
+    // por substring/primera palabra: si no coincide exacto, se descarta —
+    // nunca se inventa ni se adivina un servicio "parecido".
+    if (typeof e.service === 'string' && e.service.trim() && Array.isArray(cfg && cfg.menu)) {
+      var wanted = e.service.trim().toLowerCase();
+      var found = null;
+      cfg.menu.forEach(function (m) {
+        if (!found && m && m.nombre && String(m.nombre).toLowerCase() === wanted) found = m.nombre;
+      });
+      if (found) out.servicio = found;
+    }
+
+    // fecha: se re-valida con extraerFecha(), la MISMA función que ya
+    // validaba una fecha encontrada en texto libre — ahora valida la
+    // transcripción de la IA en vez de buscarla ella misma dentro de la
+    // frase completa del cliente.
+    if (typeof e.date === 'string' && e.date.trim()) {
+      var fechaValida = extraerFecha(e.date, lang);
+      if (fechaValida) out.fecha = fechaValida;
+    }
+
+    // hora: se re-valida con resolverHora() — la MISMA función que ya
+    // decidía si una hora es ambigua. La IA nunca decide AM/PM (se le prohíbe
+    // explícitamente en el prompt) — si resulta ambigua, viaja la señal
+    // __horaAmbigua para la pregunta ya existente.
+    //
+    // OJO: aquí NO se reutiliza HORA_RE (la de arriba, usada por
+    // extractBooking()). Esa regex escanea una FRASE COMPLETA donde un
+    // número suelto es ambiguo con "personas" — por eso exige "a las"/"at" o
+    // un sufijo am/pm explícito para aceptar un número suelto como hora
+    // (si no, "somos 4" podría leerse como una hora). Aquí ese riesgo no
+    // existe: la IA ya separó "time" de "people" en campos distintos, así
+    // que un candidato YA AISLADO como "4" (tal como pide el prompt cuando
+    // el cliente no dijo AM/PM) debe reconocerse como una hora posiblemente
+    // ambigua, no descartarse en silencio. [bug encontrado en pruebas de la
+    // ETAPA 2: con HORA_RE, "4" aislado no matcheaba ninguna rama y la hora
+    // se perdía sin pedir aclaración]
+    if (typeof e.time === 'string' && e.time.trim()) {
+      var hMatch = e.time.trim().match(/^(?:a\s+las\s+|at\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?$/i);
+      if (hMatch) {
+        var hh = parseInt(hMatch[1], 10);
+        if (hh >= 0 && hh <= 23) {
+          var horaR = resolverHora(hh, hMatch[2], hMatch[3], businessHours);
+          if (horaR && horaR.hora) out.hora = horaR.hora;
+          else if (horaR && horaR.ambigua) out.__horaAmbigua = { n: horaR.ambigua, mm: horaR.mm };
+        }
+      }
+    }
+
+    // nombre: reutiliza valorValido('nombre', …) — el mismo validador que ya
+    // rechazaba preguntas, confirmaciones y formato inválido.
+    if (typeof e.name === 'string' && e.name.trim() && valorValido('nombre', e.name.trim())) {
+      out.nombre = e.name.trim();
+    }
+
+    // email: reutiliza EMAIL_RE2 — el mismo regex de FORMATO de siempre.
+    // Antes encontraba el candidato buscándolo en texto libre; ahora valida
+    // el candidato que ya trae la IA. La validación de formato NUNCA fue de
+    // la IA y sigue sin serlo.
+    if (typeof e.email === 'string' && EMAIL_RE2.test(e.email.trim())) {
+      out.email = e.email.trim();
+    }
+
+    // teléfono: reutiliza el mismo umbral de valorValido('telefono', …)
+    // (≥7 dígitos) que ya exigía extractBooking().
+    if (typeof e.phone === 'string' && valorValido('telefono', e.phone.trim())) {
+      out.telefono = e.phone.trim();
+    }
+
+    // personas: mismo rango 1-200 que extractBooking() ya exigía.
+    if (Number.isInteger(e.people) && e.people >= 1 && e.people <= 200) {
+      out.personas = String(e.people);
+    }
+
+    // notas: texto libre, limpiado con limpiarFraseNota() — la MISMA función
+    // que ya limpiaba una nota detectada en texto libre (quita datos
+    // estructurados colados por accidente, muletillas de arranque).
+    if (typeof e.notes === 'string' && e.notes.trim()) {
+      var notaLimpia = limpiarFraseNota(e.notes);
+      if (notaLimpia.length >= 3) out.notes = notaLimpia;
+    }
+
+    return out;
+  }
+
+  // Aplica a bookingData SOLO las claves que sanitizeBookingEntities() validó
+  // en ESTE mensaje — nunca toca ni borra un campo que este mensaje no trajo.
+  // Centraliza el merge que antes vivía repetido (con el mismo patrón) en
+  // widget.js y asistente.html, para que ambos se comporten idénticos.
+  // No muta businessHours ni cfg; sí muta bookingData (mismo contrato que ya
+  // tenía el merge manual anterior).
+  function mergeBookingEntities(bookingData, sanitized, businessHours) {
+    var ambigua = sanitized.__horaAmbigua || null;
+    var fueraDeHorario = false;
+    var keys = Object.keys(sanitized).filter(function (k) { return k !== '__horaAmbigua'; });
+    if (sanitized.hora && horaDentroDeHorario(sanitized.hora, businessHours) === false) {
+      fueraDeHorario = true;
+      keys = keys.filter(function (k) { return k !== 'hora'; });
+    }
+    // "notes" NUNCA se sobrescribe aquí: se acumula (fusionarNotas), nunca se
+    // reemplaza. El llamador es quien decide cómo fusionarla —
+    // mergeBookingEntities solo copia el resto de campos tal cual.
+    keys.forEach(function (k) { if (k !== 'notes') bookingData[k] = sanitized[k]; });
+    return { ambigua: ambigua, fueraDeHorario: fueraDeHorario, traidos: keys };
+  }
+
   function limpiarMarkdown(t) {
       return t
         .replace(/```[a-z]*\n?/gi, '')          // vallas de código
@@ -916,12 +1081,6 @@ window.JBChatCore = (function () {
          return /^[A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ' -]{0,79}$/.test(s);
       }
       return true;
-    }
-
-  function pareceReserva(t, extraido) {
-      if (BOOKING_TRIGGERS.test(t)) return true;
-      if (!INTENT_RE.test(t)) return false;
-      return !!(extraido.servicio && (extraido.fecha || extraido.hora));
     }
 
   function isPopular(item) {
@@ -1257,14 +1416,16 @@ window.JBChatCore = (function () {
     reservaResumen: reservaResumen,
     duplicateAttemptState: duplicateAttemptState,
     buildModifyUpdate: buildModifyUpdate,
+    buildModifyUpdateFromEntities: buildModifyUpdateFromEntities,
     reservaTextos: reservaTextos,
     motivoDisponibilidadMensaje: motivoDisponibilidadMensaje,
     emailActionContextoMensaje: emailActionContextoMensaje,
     CORRECCION_RE: CORRECCION_RE,
-    MODIFY_TRIGGERS: MODIFY_TRIGGERS,
     CAMPO_MENCIONADO: CAMPO_MENCIONADO,
     campoCorreccion: campoCorreccion,
     extractBooking: extractBooking,
+    sanitizeBookingEntities: sanitizeBookingEntities,
+    mergeBookingEntities: mergeBookingEntities,
     resolverHora: resolverHora,
     horasAbiertas: horasAbiertas,
     horaDentroDeHorario: horaDentroDeHorario,
@@ -1277,7 +1438,6 @@ window.JBChatCore = (function () {
     applyFoodPreferences: applyFoodPreferences,
     foodPreferencesToSpecialRequests: foodPreferencesToSpecialRequests,
     valorValido: valorValido,
-    pareceReserva: pareceReserva,
     isPopular: isPopular,
     galleryHeading: galleryHeading,
     bookServiceLabel: bookServiceLabel,

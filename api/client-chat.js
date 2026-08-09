@@ -739,14 +739,18 @@ CAPTURA DE NOTAS (silenciosa, no la menciones al cliente): si el cliente dice es
 
 IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, dile exactamente esta idea con tus palabras: "No puedo confirmar citas en este momento, pero puedo ayudarte con información del negocio." Si tienes teléfono o correo del negocio, ofrécelo para que se la agenden ahí. Sigue ayudando con servicios, precios, horarios y dudas.\n\nNUNCA des una razón técnica ni menciones sistemas, configuración, instalación, activación, datos que falten, pruebas, demos, ni que algo "estará listo pronto": eso es interno y al cliente no le importa. Nunca pidas datos para una cita ni digas que la has agendado.`;
     }
-    // La interpretación estructurada (solo intent, contrato mínimo de la
-    // ETAPA 1) se pide únicamente en el turno inicial, fuera de un flujo de
-    // reserva ya en curso: el prompt de askBookingTurn() (arriba) está muy
-    // ajustado y esta migración no lo toca. [MIGRACIÓN 1 — intención por IA, PASO 4]
+    // ETAPA 2: la interpretación estructurada ({intent, text, entities}) se
+    // pide en TODO turno, también dentro de un flujo de reserva ya en curso
+    // (antes, ETAPA 1, solo se pedía en el turno inicial) — es la única forma
+    // de que la IA reemplace la extracción por regex de CORE.extractBooking()
+    // también mientras se está completando una reserva. El prompt de
+    // askBookingTurn() (arriba) no cambia su contenido, solo gana el mismo
+    // envoltorio de salida estructurada que ya tenía el turno inicial.
+    // [MIGRACIÓN 1 — ETAPA 2]
     const bookingActive = !!(booking && typeof booking === 'object');
     const { text, interpretation } = await callProvider(
       provider, messages, systemPrompt, client, clientId, bookingActive,
-      bookingActive ? null : { activeLanguage },
+      { activeLanguage, bookingActive },
     );
 
     return res.status(200).json(interpretation
@@ -791,47 +795,65 @@ const GALLERY_INTENT = /(foto|im[aá]gen|galer[ií]a|\bver\s+(?:el\s+)?(?:lugar|
 const CLOSING_INTENT = /\b(eso\s+(?:es|era)\s+todo|nada\s+m[aá]s|ya\s+no|no\s+quiero|no\s+gracias|listo|perfecto|gracias|hasta\s+luego|adi[oó]s|chao|bye|thanks?|thank\s+you|that\s+(?:is|s)\s+all|nothing\s+else|no\s+more|s[ií],?\s+confirm|confirmo|confirmar)\b/i;
 
 // Medido en vivo contra DeepSeek (deepseek-v4-flash, el proveedor real de
-// este proyecto), dos corridas limpias e independientes de la batería de 29
-// mensajes en scripts/interpreter-battery.mjs (ES+EN, incluye casos "LARGO"
-// pensados para forzar la respuesta más verbosa posible — catálogo/horario
-// completo): 0/29 fallbacks en ambas corridas; longitud máxima real de
-// "text" observada: 407 y 266 caracteres (~120 y ~80 tokens). El contrato
-// mínimo de esta etapa ({intent, text}, sin el esqueleto de entities que
-// antes pesaba ~75% del JSON) ya no necesita 1800 — 500 deja ~4x de margen
-// sobre el peor caso real observado. [MIGRACIÓN 1, ETAPA 1]
+// este proyecto), batería de calibración ETAPA 2 (scripts/etapa2-calibration.mjs,
+// 12 mensajes ES/EN con entities reales, incluye el ejemplo largo "quiero
+// manicura el viernes a las 4, soy Ana"): 0 truncamientos, consumo máximo
+// observado ~180 tokens con reasoning_effort:'none'. Se deja margen amplio
+// sobre ese máximo real — el esqueleto de entities (8 campos, mayoría null)
+// pesa mucho menos que el antiguo esqueleto de la primera versión de ETAPA 1
+// (aquel se descartó por completo; este es la forma final, medida). [ETAPA 2]
 const INTERPRETER_MAX_TOKENS = 500;
+
+// El turno de reserva en curso (askBookingTurn) ahora TAMBIÉN pide salida
+// estructurada (ETAPA 2: entities), pero su texto conversacional puede ser
+// algo más largo que una clasificación simple — medido en vivo, el máximo
+// real observado fue similar al del turno inicial (~150-200 tokens); se
+// mantiene el mismo límite que INTERPRETER_MAX_TOKENS en vez de crear una
+// segunda constante que solo diferiría por un margen de seguridad idéntico.
+// Si en producción reaparecen truncamientos en este turno específico, subir
+// SOLO este valor con la misma disciplina empírica de la ETAPA 1 (nunca a
+// ciegas). [ETAPA 2]
+const BOOKING_TURN_MAX_TOKENS = INTERPRETER_MAX_TOKENS;
 
 // El turno de interpretación clasifica intent — no es el turno conversacional
 // que redacta la respuesta libre. temperature:0.7 (la del chat normal, ver
 // callDeepSeek) es apropiada para redactar, pero para clasificar el mismo
 // mensaje+contexto debe producir el mismo intent siempre: 0 es lo más
 // determinista que acepta la API de DeepSeek (no rechaza 0 — no hizo falta
-// subir a 0.1). Esto NO toca la temperatura del chat conversacional normal
-// ni la del turno de reserva en curso (askBookingTurn): ambos siguen en 0.7.
-// [Corrección de inestabilidad de intent]
+// subir a 0.1). [Corrección de inestabilidad de intent, ETAPA 1]
+//
+// ETAPA 2: el turno de reserva en curso (bookingActive) NO usa esta
+// temperatura baja — sigue en 0.7 (BOOKING_TURN_TEMPERATURE), la misma que
+// siempre tuvo askBookingTurn(). Motivo: ese turno es principalmente
+// CONVERSACIÓN (variedad natural de respuesta), no clasificación; la
+// fiabilidad de las entities no depende de la temperatura del modelo —
+// depende de sanitizeBookingEntities() en chat-core.js, que nunca confía en
+// el valor de la IA sin revalidarlo. Bajar la temperatura aquí arriesgaría
+// respuestas repetitivas/robóticas sin ninguna ganancia real de fiabilidad
+// (ya demostrado en ETAPA 1: la temperatura no fue la causa real de la
+// inestabilidad, reasoning_effort sí lo fue).
 const INTERPRETER_TEMPERATURE = 0;
+const BOOKING_TURN_TEMPERATURE = 0.7;
 
-// `structured` es opcional: solo lo manda el turno inicial (fuera de un
-// flujo de reserva ya en curso — ver handler()). Cuando está presente, pide
-// al modelo un único objeto JSON con {intent, text} (lib/message-interpreter.js,
-// contrato mínimo de la ETAPA 1 — sin entities/intentConfidence: extractBooking()
-// sigue siendo el único extractor de entidades, y nada en producción lee un
-// campo que esta etapa no necesita) EN LA MISMA llamada, para no pagar una
-// segunda llamada al modelo solo para interpretar. Si el JSON no cumple el
-// esquema, se degrada a intent:"unknown" y se hace UNA llamada de respaldo
-// en texto plano — nunca se inventa una interpretación ni se deja al
-// cliente sin respuesta. [MIGRACIÓN 1 — intención por IA]
+// `structured` ahora se manda SIEMPRE (ETAPA 2 — antes, ETAPA 1, solo en el
+// turno inicial). Pide al modelo un único objeto JSON con
+// {intent, text, entities} (lib/message-interpreter.js) EN LA MISMA llamada,
+// para no pagar una segunda llamada al modelo. Si el JSON no cumple el
+// esquema, se degrada a intent:"unknown"+entities vacías y se hace UNA
+// llamada de respaldo en texto plano — nunca se inventa una interpretación
+// ni se deja al cliente sin respuesta. `structured.bookingActive` decide
+// solo temperature/max_tokens (ver constantes arriba); el esquema y el
+// saneamiento son siempre los mismos. [MIGRACIÓN 1 — ETAPA 2]
 async function callProvider(provider, messages, systemPrompt, client, clientId, bookingActive, structured) {
   // 420 truncated real replies mid-sentence, including mid-marker (the model
   // writes [MOSTRAR_MENU] itself per the prompt), leaving raw "[MOSTR" visible
   // to the customer. [BUG-TRUNCATED-MARKER]
   const interpreterPrompt = structured ? systemPrompt + buildInterpreterInstructions(structured.activeLanguage) : systemPrompt;
-  // INTERPRETER_MAX_TOKENS: ver medición empírica junto a su declaración,
-  // más abajo en este archivo (MIGRACIÓN 1, ETAPA 1 — ajustado tras retirar
-  // el esqueleto de entities del contrato).
+  const maxTokens = structured ? (structured.bookingActive ? BOOKING_TURN_MAX_TOKENS : INTERPRETER_MAX_TOKENS) : 600;
+  const temperature = structured ? (structured.bookingActive ? BOOKING_TURN_TEMPERATURE : INTERPRETER_TEMPERATURE) : undefined;
   const data = provider === 'deepseek'
-    ? await callDeepSeek(messages, interpreterPrompt, structured ? INTERPRETER_MAX_TOKENS : 600, structured ? deepseekResponseFormat() : undefined, structured ? INTERPRETER_TEMPERATURE : undefined)
-    : await callAnthropic(messages, interpreterPrompt, structured ? INTERPRETER_MAX_TOKENS : 600, structured ? interpreterOutputConfig() : undefined, structured ? INTERPRETER_TEMPERATURE : undefined);
+    ? await callDeepSeek(messages, interpreterPrompt, maxTokens, structured ? deepseekResponseFormat() : undefined, temperature)
+    : await callAnthropic(messages, interpreterPrompt, maxTokens, structured ? interpreterOutputConfig() : undefined, temperature);
 
   let text = '';
   if (provider === 'deepseek') {
@@ -929,4 +951,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE };
+export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, BOOKING_TURN_MAX_TOKENS, BOOKING_TURN_TEMPERATURE };

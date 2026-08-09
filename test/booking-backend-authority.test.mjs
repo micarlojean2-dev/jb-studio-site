@@ -25,7 +25,11 @@ const open = validarReserva(restaurant, '2026-07-21', '12:00', 'Hamburguesa Clá
 assert.equal(open.ok, true, 'un horario válido debe permitirse para un único POST');
 
 for (const [name, source] of [['widget', widget], ['asistente', assistant]]) {
-  assert.match(source, /if \(completo\) \{ showBookingSummary\(\); return; \}/,
+  // ETAPA 2: la comprobación vive en tryLocalBookingShortcut() (compartida
+  // por las dos llamadas de askBookingTurn, antes y después de aplicar
+  // entities) — el patrón cambia de forma pero la garantía es la misma:
+  // completo === true nunca consulta ni muestra texto del modelo.
+  assert.match(source, /if \(completo\) \{ showBookingSummary\(\); return true; \}/,
     `${name}: no debe consultar ni mostrar texto del modelo al completar datos`);
   assert.match(source, /Revisando disponibilidad…/,
     `${name}: debe mostrar un estado neutral mientras espera el POST`);

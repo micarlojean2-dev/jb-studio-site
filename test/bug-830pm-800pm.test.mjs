@@ -135,12 +135,36 @@ async function escribir(dom, texto) {
   $(dom, 'a-snd').dispatchEvent(new window.Event('click', { bubbles: true }));
   // El fetch mockeado invoca el handler REAL de api/reservations.js, que
   // encadena varios await (redis.get/set, sendReservationEmails, cola de
-  // avisos): más lento que un mock plano, 20ms no siempre alcanza a que
-  // termine toda la cadena antes de inspeccionar el DOM.
-  await new Promise(r => setTimeout(r, 60));
+  // avisos): más lento que un mock plano. ETAPA 2 además antepone la
+  // llamada de interpretación (y, en el flujo de reagendar por intent, un
+  // "listar" antes del reagendado real) -- hasta 3 fetch secuenciales por
+  // mensaje, así que 20-60ms ya no alcanza siempre.
+  await new Promise(r => setTimeout(r, 100));
 }
 function ultimosMensajesBot(dom, n) {
   return [...dom.window.document.querySelectorAll('#a-msgs > *')].map(el => el.textContent).slice(-n).join(' | ');
+}
+
+// ETAPA 2: la extracción de fecha/hora dentro del flujo (bookingStep>0) y la
+// detección de intent:'reschedule' ya NO son síncronas/locales -- vienen de
+// interpretation en la respuesta de /api/client-chat. Esta es una simulación
+// mínima y determinista de esa interpretación para este rastreo end-to-end
+// (el foco de esta prueba es que 8:30 PM nunca se redondee/pierda en las 5
+// capas -- no re-probar la calidad del modelo real, eso vive en
+// scripts/interpreter-battery.mjs).
+function emptyTestEntities() {
+  return { service: null, date: null, time: null, name: null, email: null, phone: null, people: null, notes: null };
+}
+function fakeInterpret(t) {
+  const lower = String(t || '').toLowerCase();
+  const sinAcentos = lower.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const entities = emptyTestEntities();
+  const dateMatch = sinAcentos.match(/manana|tomorrow|viernes|friday/);
+  if (dateMatch) entities.date = dateMatch[0];
+  const timeMatch = lower.match(/\d{1,2}:\d{2}\s*(am|pm)/);
+  if (timeMatch) entities.time = timeMatch[0].trim();
+  const looksLikeChange = /cambia|cambiar|change/.test(sinAcentos);
+  return { intent: looksLikeChange ? 'reschedule' : 'booking', text: 'Entendido, dame un momento.', entities };
 }
 
 async function buildDom({ url, client, lang, presetSessionStorage } = {}) {
@@ -153,6 +177,11 @@ async function buildDom({ url, client, lang, presetSessionStorage } = {}) {
     const s = String(u);
     if (s.includes('/api/client-config')) {
       return { ok: true, json: async () => CLIENT_CONFIG_FIELDS(client) };
+    }
+    if (s.includes('/api/client-chat') && options.method === 'POST') {
+      const body = JSON.parse(options.body);
+      const lastUser = [...body.messages].reverse().find((m) => m.role === 'user');
+      return { ok: true, json: async () => ({ text: 'Entendido.', interpretation: fakeInterpret(lastUser && lastUser.content) }) };
     }
     if (s.includes('/api/reservations') && options.method === 'POST') {
       const body = JSON.parse(options.body);
