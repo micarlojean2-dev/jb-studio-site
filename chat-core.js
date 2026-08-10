@@ -815,6 +815,36 @@ window.JBChatCore = (function () {
   // Una hora ambigua no se descarta: viaja como __horaAmbigua, igual que
   // siempre, para que el llamador reutilice la pregunta "¿mañana o tarde?"
   // que ya existía.
+
+  // Respaldo determinista de servicio (mismo mecanismo que extraerFecha()/
+  // extraerHoraFallback() de arriba, ahora para "service"): se usa SOLO
+  // cuando entities.service llega en null. Reutiliza EXACTAMENTE la misma
+  // lógica de coincidencia que ya usaba extractBooking() contra el catálogo
+  // real (cfg.menu) — substring completo gana; si no hay coincidencia
+  // exacta, la primera palabra del nombre es candidata débil; nunca se
+  // activa si el mensaje es una pregunta de precio (PRICE_QUESTION_RE) —
+  // para no confundir "¿cuánto cuesta el facial?" con una elección real.
+  function extraerServicioFallback(texto, menu) {
+    var t = String(texto || '');
+    if (!Array.isArray(menu) || PRICE_QUESTION_RE.test(t)) return '';
+    var low = t.toLowerCase();
+    var exacto = null, exactoIndex = -1, porPalabra = null;
+    menu.forEach(function (m) {
+      if (!m || !m.nombre) return;
+      var n = String(m.nombre).toLowerCase();
+      if (low.indexOf(n) !== -1) {
+        var matchIndex = low.lastIndexOf(n);
+        if (!exacto || matchIndex > exactoIndex || (matchIndex === exactoIndex && n.length > exacto.toLowerCase().length)) { exacto = m.nombre; exactoIndex = matchIndex; }
+        return;
+      }
+      var head = n.split(/\s+/)[0].replace(/[^a-záéíóúñ]/gi, '');
+      if (head.length >= 4 && new RegExp('\\b' + head, 'i').test(low)) {
+        if (!porPalabra) porPalabra = m.nombre;
+      }
+    });
+    return exacto || porPalabra || '';
+  }
+
   function sanitizeBookingEntities(entities, cfg, businessHours, lang, rawText) {
     var e = (entities && typeof entities === 'object') ? entities : {};
     var out = {};
@@ -832,6 +862,12 @@ window.JBChatCore = (function () {
         if (!found && m && m.nombre && String(m.nombre).toLowerCase() === wanted) found = m.nombre;
       });
       if (found) out.servicio = found;
+    } else if (raw && Array.isArray(cfg && cfg.menu)) {
+      // Respaldo determinista: la IA devolvió null para "service" en este
+      // turno — se intenta reconocer el servicio directamente en el mensaje
+      // del cliente contra el catálogo real. [Respaldo determinista servicio]
+      var servicioFallback = extraerServicioFallback(raw, cfg.menu);
+      if (servicioFallback) out.servicio = servicioFallback;
     }
 
     // fecha: se re-valida con extraerFecha(), la MISMA función que ya
