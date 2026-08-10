@@ -37,7 +37,12 @@ function maybeCleanup() {
 }
 
 // ── Provider config ────────────────────────────────────────────────────────
-function getProvider() {
+function getProvider(req) {
+  const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
+  const isTestBypass = testBypassSecret !== '' && req?.headers?.['x-test-bypass'] === testBypassSecret;
+  if (isTestBypass && req?.headers?.['x-test-provider']) {
+    return String(req.headers['x-test-provider']).toLowerCase();
+  }
   return (process.env.CLIENT_CHAT_PROVIDER || 'anthropic').toLowerCase();
 }
 
@@ -51,9 +56,13 @@ export function resolveDeepseekModel(configured) {
   return configured;
 }
 
-function getModel() {
-  if (getProvider() === 'deepseek') {
+function getModel(req) {
+  const provider = getProvider(req);
+  if (provider === 'deepseek') {
     return resolveDeepseekModel(process.env.DEEPSEEK_MODEL);
+  }
+  if (provider === 'openai') {
+    return process.env.OPENAI_MODEL || 'gpt-4o-mini';
   }
   return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
 }
@@ -592,6 +601,44 @@ async function callDeepSeek(messages, systemPrompt, maxTokens, responseFormat, t
   return await upstream.json();
 }
 
+// ── OpenAI call (GPT-4o-mini) ──────────────────────────────────────────────
+async function callOpenAI(messages, systemPrompt, maxTokens, responseFormat, temperature) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OPENAI_API_KEY not configured');
+
+  const model = getModel();
+  const body = {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      ...messages.slice(-50),
+    ],
+    max_tokens: maxTokens || 300,
+    temperature: temperature !== undefined ? temperature : 0.7,
+  };
+  if (responseFormat) {
+    body.response_format = responseFormat;
+  }
+
+  const baseUrl = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const upstream = await fetch(baseUrl + '/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!upstream.ok) {
+    const errBody = await upstream.text().catch(() => '');
+    console.error(`[api/client-chat] OpenAI ${upstream.status}: ${errBody}`);
+    throw new Error(`OpenAI API error: ${upstream.status}`);
+  }
+
+  return await upstream.json();
+}
+
 // ── Anthropic call ─────────────────────────────────────────────────────────
 // `outputConfig` es opcional: solo lo manda el turno de interpretación (ver
 // runInterpretedChat). Sin él, el body es idéntico al de antes de esta
@@ -710,7 +757,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const provider = getProvider();
+    const provider = getProvider(req);
     // El prompt del cliente dice que sabe tomar reservas. Si al negocio le
     // falta configuración, el servidor las rechaza — y sin este aviso el
     // modelo arranca igualmente el flujo y le pide los datos a alguien para
@@ -804,12 +851,12 @@ IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, d
     );
 
     return res.status(200).json(interpretation
-      ? { text, provider, model: getModel(), preview: previewOk, interpretation }
-      : { text, provider, model: getModel(), preview: previewOk });
+      ? { text, provider, model: getModel(req), preview: previewOk, interpretation }
+      : { text, provider, model: getModel(req), preview: previewOk });
 
-  } catch (err) {
-    console.error('[api/client-chat]', err.message);
-    captureApiException(err, { clientId, feature: 'chat', route: '/api/client-chat' });
+  } catch (error) {
+    console.error('[api/client-chat]', error.message);
+    captureApiException(error, { clientId, feature: 'chat', route: '/api/client-chat' });
     return res.status(500).json({ error: 'Service error' });
   }
 }
@@ -903,10 +950,12 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
   const temperature = structured ? (structured.bookingActive ? BOOKING_TURN_TEMPERATURE : INTERPRETER_TEMPERATURE) : undefined;
   const data = provider === 'deepseek'
     ? await callDeepSeek(messages, interpreterPrompt, maxTokens, structured ? deepseekResponseFormat() : undefined, temperature)
+    : provider === 'openai'
+    ? await callOpenAI(messages, interpreterPrompt, maxTokens, structured ? deepseekResponseFormat() : undefined, temperature)
     : await callAnthropic(messages, interpreterPrompt, maxTokens, structured ? interpreterOutputConfig() : undefined, temperature);
 
   let text = '';
-  if (provider === 'deepseek') {
+  if (provider === 'deepseek' || provider === 'openai') {
     text = data.choices?.[0]?.message?.content || '';
   } else {
     text = data.content?.[0]?.text || '';
@@ -914,8 +963,8 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
 
   const inputTokens = data.usage?.input_tokens || data.usage?.prompt_tokens || 0;
   const outputTokens = data.usage?.output_tokens || data.usage?.completion_tokens || 0;
-  const costPer1kInput = provider === 'deepseek' ? 0.00014 : 0.00080;
-  const costPer1kOutput = provider === 'deepseek' ? 0.00028 : 0.00400;
+  const costPer1kInput = provider === 'deepseek' ? 0.00014 : provider === 'openai' ? 0.00015 : 0.00080;
+  const costPer1kOutput = provider === 'deepseek' ? 0.00028 : provider === 'openai' ? 0.00060 : 0.00400;
   const estimatedCost = (inputTokens / 1000) * costPer1kInput + (outputTokens / 1000) * costPer1kOutput;
 
   trackUsage(clientId, inputTokens, outputTokens, estimatedCost);
@@ -930,12 +979,12 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
     } catch (err) {
       console.error('[api/client-chat] interpreter fallback:', err.message);
       captureApiException(err, { clientId, feature: 'chat_interpretation', route: '/api/client-chat' });
-      // Fail-closed: nunca se inventa una interpretación. Una sola llamada de
-      // respaldo en texto plano para no dejar al cliente sin respuesta.
-      const fallback = provider === 'deepseek'
-        ? await callDeepSeek(messages, systemPrompt, 600)
+      // Fail-closed: llamada de respaldo en texto plano.
+      const isOaiLike = provider === 'deepseek' || provider === 'openai';
+      const fallback = provider === 'deepseek' ? await callDeepSeek(messages, systemPrompt, 600)
+        : provider === 'openai' ? await callOpenAI(messages, systemPrompt, 600)
         : await callAnthropic(messages, systemPrompt, 600);
-      text = provider === 'deepseek' ? (fallback.choices?.[0]?.message?.content || '') : (fallback.content?.[0]?.text || '');
+      text = isOaiLike ? (fallback.choices?.[0]?.message?.content || '') : (fallback.content?.[0]?.text || '');
       interpretation = emptyInterpretation();
     }
   }

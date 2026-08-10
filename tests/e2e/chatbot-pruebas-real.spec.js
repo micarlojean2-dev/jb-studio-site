@@ -144,9 +144,11 @@ test.beforeEach(async ({ page }) => {
   resetReportOnce();
   if (TEST_BYPASS_SECRET) {
     await page.route('**/api/client-chat', (route) => {
-      route.continue({
-        headers: { ...route.request().headers(), 'x-test-bypass': TEST_BYPASS_SECRET },
-      });
+      const headers = { ...route.request().headers(), 'x-test-bypass': TEST_BYPASS_SECRET };
+      if (process.env.CLIENT_CHAT_PROVIDER) {
+        headers['x-test-provider'] = process.env.CLIENT_CHAT_PROVIDER;
+      }
+      route.continue({ headers });
     });
   }
   page.on('response', (res) => {
