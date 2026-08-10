@@ -718,14 +718,14 @@
         card.className = 'jbw-gallery-card';
         var image = document.createElement('img');
         image.src = entry.url;
-        image.alt = entry.item && entry.item.nombre ? entry.item.nombre : (cfg.language === 'en' ? 'Spa gallery' : 'Galería del Spa');
+        image.alt = entry.item && entry.item.nombre ? entry.item.nombre : CORE.galleryHeading(cfg.language);
         image.loading = 'lazy';
         card.appendChild(image);
         var copy = document.createElement('div');
         copy.className = 'jbw-gallery-copy';
         var name = document.createElement('div');
         name.className = 'jbw-gallery-name';
-        name.textContent = entry.item && entry.item.nombre ? entry.item.nombre : (cfg.language === 'en' ? 'Spa gallery' : 'Galería del Spa');
+        name.textContent = entry.item && entry.item.nombre ? entry.item.nombre : CORE.galleryHeading(cfg.language);
         copy.appendChild(name);
         var meta = [entry.item && entry.item.precio, entry.item && entry.item.duracion].filter(Boolean).join(' · ');
         if (meta) { var details = document.createElement('div'); details.className = 'jbw-gallery-meta'; details.textContent = meta; copy.appendChild(details); }
