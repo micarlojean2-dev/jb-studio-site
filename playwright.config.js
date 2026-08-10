@@ -29,10 +29,18 @@ module.exports = defineConfig({
       testMatch: /api-contract\.spec\.js/,
       use: { ...devices['Desktop Chrome'] },
     },
-    { name: 'desktop-chromium', testIgnore: /api-contract\.spec\.js/, use: { ...devices['Desktop Chrome'] } },
-    { name: 'desktop-firefox',  testIgnore: /api-contract\.spec\.js/, use: { ...devices['Desktop Firefox'] } },
-    { name: 'desktop-webkit',   testIgnore: /api-contract\.spec\.js/, use: { ...devices['Desktop Safari'] } },
-    { name: 'mobile-android',   testIgnore: /api-contract\.spec\.js/, use: { ...devices['Pixel 5'] } },
-    { name: 'mobile-ios',       testIgnore: /api-contract\.spec\.js/, use: { ...devices['iPhone 13'] } },
+    // chatbot-pruebas escribe su reporte (REPORTE_PRUEBAS.md) en serie desde
+    // Node — correrlo también en los otros 5 proyectos en paralelo pisaría
+    // ese mismo archivo entre navegadores. Un solo proyecto, un solo navegador.
+    {
+      name: 'chatbot-pruebas',
+      testMatch: /chatbot-pruebas\.spec\.js/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    { name: 'desktop-chromium', testIgnore: /api-contract\.spec\.js|chatbot-pruebas\.spec\.js/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'desktop-firefox',  testIgnore: /api-contract\.spec\.js|chatbot-pruebas\.spec\.js/, use: { ...devices['Desktop Firefox'] } },
+    { name: 'desktop-webkit',   testIgnore: /api-contract\.spec\.js|chatbot-pruebas\.spec\.js/, use: { ...devices['Desktop Safari'] } },
+    { name: 'mobile-android',   testIgnore: /api-contract\.spec\.js|chatbot-pruebas\.spec\.js/, use: { ...devices['Pixel 5'] } },
+    { name: 'mobile-ios',       testIgnore: /api-contract\.spec\.js|chatbot-pruebas\.spec\.js/, use: { ...devices['iPhone 13'] } },
   ],
 });

@@ -403,6 +403,10 @@
   // catálogo. Al iniciar una reserva sirve de respaldo si el mensaje que la
   // dispara no vuelve a nombrar el servicio. [Objetivo 4]
   var selectedService = '';
+  // [BUG-DATO-PERDIDO-ANTES-DE-BOOKING, auditoría de reservas] mismo
+  // problema que selectedService pero para el resto de campos — ver
+  // comentario extenso en widget.js, idéntico aquí.
+  var preBookingMemory = {};
   // Campo que DeepSeek está pidiendo ahora: permite guardar una respuesta
   // escueta ("Mike") en el sitio correcto. Solo para campos de texto libre.
   var bookingPending = null;
@@ -442,7 +446,7 @@
     activeReservation = null;
     msgs = [];
     bookingStep = 0; bookingData = {}; bookingPending = null;
-    bookingReview = false; selectedService = ''; horaPendiente = null;
+    bookingReview = false; selectedService = ''; preBookingMemory = {}; horaPendiente = null;
     try {
       sessionStorage.removeItem(SESS);
       sessionStorage.removeItem(BOOKING_SESS);
@@ -946,10 +950,16 @@
   // comporten igual, aunque cada una mantiene su propia copia por cómo está
   // organizado hoy este archivo (sin módulo compartido de DOM).
   function tryLocalBookingShortcut(lang, faltan) {
+    // [BUG-SPECIALREQUESTS-LOOP, auditoría de reservas] ver comentario
+    // extenso en widget.js — sin este flag, la respuesta del cliente a esta
+    // pregunta nunca se procesaba: la llamada "antes de la red" siempre
+    // volvía a mostrar la misma pregunta enlatada antes de intentar
+    // interpretarla, y cortaba el turno con `return true`.
+    var yaEsperabaPeticionEspecial = bookingPending === 'specialRequests';
     var completo = faltan.length === 0;
     bookingPending = completo ? null : faltan[0];
     if (completo) { showBookingSummary(); return true; }
-    if (bookingPending === 'specialRequests') {
+    if (bookingPending === 'specialRequests' && !yaEsperabaPeticionEspecial) {
       addMsg('bot', CORE.specialRequestsQuestion(cfg.templateId, lang));
       save();
       return true;
@@ -1172,7 +1182,7 @@
           if (d.duplicate) offerReservationActions(lang);
           // Reserva terminada con éxito: se olvida el servicio recordado.
           // [Objetivo 4]
-          bookingStep = 0; bookingData = {}; bookingPending = null; dupAttempts = 0; selectedService = '';
+          bookingStep = 0; bookingData = {}; bookingPending = null; dupAttempts = 0; selectedService = ''; preBookingMemory = {};
           save();
           return;
         }
@@ -1433,12 +1443,24 @@
 
     if (bookingStep > 0) {
       if (/^(cancelar|cancel|salir|exit)$/i.test(t)) {
-        bookingStep = 0; bookingData = {}; bookingReview = false;
+        // [BUG-CANCELAR-SIN-SAVE, auditoría de reservas] esta rama reseteaba
+        // el estado en memoria pero nunca llamaba a save() — a diferencia de
+        // cualquier otro punto del flujo que toca bookingStep/bookingData.
+        // save() (más abajo) es quien borra BOOKING_SESS de sessionStorage
+        // cuando bookingStep vuelve a 0; sin la llamada, un refresh justo
+        // después de cancelar resucitaba la reserva "cancelada" tal cual
+        // estaba antes. bookingPending también se resetea aquí (igual que ya
+        // se hace tras una reserva confirmada con éxito, ver más abajo) para
+        // que no quede un valor obsoleto de esta reserva cancelada
+        // interfiriendo con el atajo local de la próxima reserva.
+        bookingStep = 0; bookingData = {}; bookingReview = false; bookingPending = null;
         selectedService = '';   // cancelar el flujo olvida el servicio recordado [Objetivo 4]
+        preBookingMemory = {};
         if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
         resumenBotones = null;
         addMsg('user', t);
         addMsg('bot', lang === 'en' ? 'Reservation cancelled. Is there anything else I can help with?' : 'Reserva cancelada. ¿Hay algo más en lo que pueda ayudarte?');
+        save();
         return;
       }
       // La reserva SOLO se crea con el botón "✅ Sí, confirmar cita": ni un "sí"
@@ -1565,6 +1587,14 @@
           ? CORE.sanitizeBookingEntities(interp.entities, cfg, cfg.businessHours, cfg.language)
           : {};
         if (preExtraido.servicio) selectedService = preExtraido.servicio;
+        // [BUG-DATO-PERDIDO-ANTES-DE-BOOKING] se acumula TODO lo que se haya
+        // extraído en chat libre (no solo el servicio) para no perderlo si
+        // la reserva arranca en un turno posterior. mergeBookingEntities ya
+        // filtra una hora fuera de horario, así que nunca se recuerda un
+        // dato inválido.
+        if (!activeReservation && featureOn('reservations') && intent !== 'booking') {
+          CORE.mergeBookingEntities(preBookingMemory, preExtraido, cfg.businessHours);
+        }
 
         if (!activeReservation && featureOn('reservations') && intent === 'booking') {
           msgs.push({ role: 'user', content: t });
@@ -1572,6 +1602,10 @@
           bookingStep = 1;          // en modo reserva; el modelo conduce
           bookingData = {};
 
+          // Primero lo recordado de turnos casuales previos, luego lo de
+          // ESTE mensaje encima (gana el dato más reciente si se repite).
+          CORE.mergeBookingEntities(bookingData, preBookingMemory, cfg.businessHours);
+          preBookingMemory = {};
           var mergeInicial = CORE.mergeBookingEntities(bookingData, preExtraido, cfg.businessHours);
           // bookingData.servicio || selectedService: si este mensaje no vuelve a
           // nombrar el servicio, se usa el que ya se había elegido antes. [Objetivo 4]

@@ -195,6 +195,15 @@
   // catálogo. Al iniciar una reserva sirve de respaldo si el mensaje que la
   // dispara no vuelve a nombrar el servicio. [Objetivo 4]
   var selectedService = '';
+  // [BUG-DATO-PERDIDO-ANTES-DE-BOOKING, auditoría de reservas] mismo
+  // problema que selectedService pero para el resto de campos: si el
+  // cliente da su nombre/teléfono/fecha/etc. en un mensaje casual ANTES de
+  // que el intent sea 'booking', sanitizeBookingEntities() sí lo extraía,
+  // pero nada lo recordaba — se perdía en cuanto ese turno terminaba, y el
+  // bot lo volvía a preguntar al iniciar la reserva de verdad. Se acumula
+  // aquí (mismo merge que ya usa bookingData) y se aplica en cuanto arranca
+  // una reserva nueva; se vacía en cuanto se consume o se cancela.
+  var preBookingMemory = {};
 
   // ── Active reservation state (misma lógica que asistente.html) ───────────
   var RESERVA_SESS = SESS + '_reserva';
@@ -912,11 +921,22 @@
   // entities de este turno (para el caso en que la IA acaba de completar el
   // último dato que faltaba).
   function tryLocalBookingShortcut(lang, faltan) {
+    // [BUG-SPECIALREQUESTS-LOOP, auditoría de reservas] bookingPending ya
+    // traía 'specialRequests' de la llamada ANTERIOR (la que mostró la
+    // pregunta) cuando el cliente responde. Sin este flag, la llamada
+    // "antes de la red" de más abajo volvía a mostrar la misma pregunta
+    // enlatada y cortaba el turno con `return true` ANTES de intentar
+    // interpretar la respuesta — la única lógica que sabe capturarla (el
+    // "BARE_OK" dentro del .then() de askBookingTurn) nunca se alcanzaba.
+    // Solo se anuncia la pregunta la PRIMERA vez que se entra a este campo;
+    // en la llamada "antes de la red" de una respuesta ya en curso, se dejar
+    // pasar el turno para que intente procesarla de verdad.
+    var yaEsperabaPeticionEspecial = bookingPending === 'specialRequests';
     var completo = faltan.length === 0;
     bookingPending = completo ? null : faltan[0];
     // The model never speaks for a complete booking; only the POST decides it.
     if (completo) { showBookingSummary(); return true; }
-    if (bookingPending === 'specialRequests') {
+    if (bookingPending === 'specialRequests' && !yaEsperabaPeticionEspecial) {
       addMsg('bot', CORE.specialRequestsQuestion(cfg.templateId, lang));
       save();
       return true;
@@ -1161,7 +1181,7 @@
           if (d.duplicate) offerReservationActions(lang);
           // Reserva terminada con éxito: se olvida el servicio recordado, la
           // próxima reserva empieza limpia. [Objetivo 4]
-          bookingStep = 0; bookingData = {}; bookingPending = null; dupAttempts = 0; selectedService = '';
+          bookingStep = 0; bookingData = {}; bookingPending = null; dupAttempts = 0; selectedService = ''; preBookingMemory = {};
           save();   // limpia BOOKING_SESS: sin esto una recarga reanudaría una reserva fantasma
           return;
         }
@@ -1371,16 +1391,29 @@
     // ── Active booking flow: collect next field ──────────────────────────
     if (bookingStep > 0) {
       if (/^(cancelar|cancel|salir|exit)$/i.test(t)) {
+        // [BUG-CANCELAR-SIN-SAVE, auditoría de reservas] esta rama reseteaba
+        // el estado en memoria pero nunca llamaba a save() — a diferencia de
+        // cualquier otro punto del flujo que toca bookingStep/bookingData.
+        // save() (más abajo) es quien borra BOOKING_SESS de sessionStorage
+        // cuando bookingStep vuelve a 0; sin la llamada, un refresh justo
+        // después de cancelar resucitaba la reserva "cancelada" tal cual
+        // estaba antes. bookingPending también se resetea aquí (igual que ya
+        // se hace tras una reserva confirmada con éxito, ver más abajo) para
+        // que no quede un valor obsoleto de esta reserva cancelada
+        // interfiriendo con el atajo local de la próxima reserva.
         bookingStep = 0;
         bookingData = {};
         bookingReview = false;
+        bookingPending = null;
         selectedService = '';   // cancelar el flujo olvida el servicio recordado [Objetivo 4]
+        preBookingMemory = {};
         if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
         resumenBotones = null;
         addMsg('user', t);
         addMsg('bot', lang === 'en'
           ? 'Reservation cancelled. Is there anything else I can help with?'
           : 'Reserva cancelada. ¿Hay algo más en lo que pueda ayudarte?');
+        save();
         return;
       }
       // La reserva SOLO se crea con el botón "✅ Sí, confirmar cita": ni un "sí"
@@ -1534,6 +1567,14 @@
           ? CORE.sanitizeBookingEntities(interp.entities, cfg, cfg.businessHours, cfg.language)
           : {};
         if (preExtraido.servicio) selectedService = preExtraido.servicio;
+        // [BUG-DATO-PERDIDO-ANTES-DE-BOOKING] se acumula TODO lo que se haya
+        // extraído en chat libre (no solo el servicio) para no perderlo si
+        // la reserva arranca en un turno posterior. mergeBookingEntities ya
+        // filtra una hora fuera de horario, así que nunca se recuerda un
+        // dato inválido.
+        if (!activeReservation && featureOn('reservations') && intent !== 'booking') {
+          CORE.mergeBookingEntities(preBookingMemory, preExtraido, cfg.businessHours);
+        }
 
         if (!activeReservation && featureOn('reservations') && intent === 'booking') {
           msgs.push({ role: 'user', content: t });
@@ -1541,6 +1582,10 @@
           bookingStep = 1;          // en modo reserva; el modelo conduce
           bookingData = {};
 
+          // Primero lo recordado de turnos casuales previos, luego lo de
+          // ESTE mensaje encima (gana el dato más reciente si se repite).
+          CORE.mergeBookingEntities(bookingData, preBookingMemory, cfg.businessHours);
+          preBookingMemory = {};
           var mergeInicial = CORE.mergeBookingEntities(bookingData, preExtraido, cfg.businessHours);
           // bookingData.servicio || selectedService: si este mensaje no vuelve a
           // nombrar el servicio, se usa el que ya se había elegido antes. [Objetivo 4]
