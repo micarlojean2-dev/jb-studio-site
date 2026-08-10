@@ -651,7 +651,9 @@ export default async function handler(req, res) {
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
   maybeCleanup();
-  if (!checkRateLimit(ip))
+  const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
+  const isTestBypass = testBypassSecret !== '' && req.headers['x-test-bypass'] === testBypassSecret;
+  if (!isTestBypass && !checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
 
   const { clientId, messages, previewToken, booking, language, reservationContext } = req.body || {};

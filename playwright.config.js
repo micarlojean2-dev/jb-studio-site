@@ -35,12 +35,22 @@ module.exports = defineConfig({
     {
       name: 'chatbot-pruebas',
       testMatch: /chatbot-pruebas\.spec\.js/,
+      testIgnore: /chatbot-pruebas-real\.spec\.js/,
       use: { ...devices['Desktop Chrome'] },
     },
-    { name: 'desktop-chromium', testIgnore: /api-contract\.spec\.js|chatbot-pruebas\.spec\.js/, use: { ...devices['Desktop Chrome'] } },
-    { name: 'desktop-firefox',  testIgnore: /api-contract\.spec\.js|chatbot-pruebas\.spec\.js/, use: { ...devices['Desktop Firefox'] } },
-    { name: 'desktop-webkit',   testIgnore: /api-contract\.spec\.js|chatbot-pruebas\.spec\.js/, use: { ...devices['Desktop Safari'] } },
-    { name: 'mobile-android',   testIgnore: /api-contract\.spec\.js|chatbot-pruebas\.spec\.js/, use: { ...devices['Pixel 5'] } },
-    { name: 'mobile-ios',       testIgnore: /api-contract\.spec\.js|chatbot-pruebas\.spec\.js/, use: { ...devices['iPhone 13'] } },
+    // chatbot-pruebas-real pega contra PRODUCCIÓN REAL con la IA real (sin
+    // mocks) — un solo proyecto/navegador por el mismo motivo de arriba, y
+    // además para no multiplicar x5 el gasto real de tokens si alguien
+    // corriera `npm run test:e2e` sin fijarse.
+    {
+      name: 'chatbot-pruebas-real',
+      testMatch: /chatbot-pruebas-real\.spec\.js/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    { name: 'desktop-chromium', testIgnore: /api-contract\.spec\.js|chatbot-pruebas(-real)?\.spec\.js/, use: { ...devices['Desktop Chrome'] } },
+    { name: 'desktop-firefox',  testIgnore: /api-contract\.spec\.js|chatbot-pruebas(-real)?\.spec\.js/, use: { ...devices['Desktop Firefox'] } },
+    { name: 'desktop-webkit',   testIgnore: /api-contract\.spec\.js|chatbot-pruebas(-real)?\.spec\.js/, use: { ...devices['Desktop Safari'] } },
+    { name: 'mobile-android',   testIgnore: /api-contract\.spec\.js|chatbot-pruebas(-real)?\.spec\.js/, use: { ...devices['Pixel 5'] } },
+    { name: 'mobile-ios',       testIgnore: /api-contract\.spec\.js|chatbot-pruebas(-real)?\.spec\.js/, use: { ...devices['iPhone 13'] } },
   ],
 });
