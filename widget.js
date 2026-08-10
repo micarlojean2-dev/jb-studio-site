@@ -987,7 +987,7 @@
         var t = correctionSourceText || '';
 
         if (entities) {
-          var sanitized = CORE.sanitizeBookingEntities(entities, cfg, cfg.businessHours, cfg.language);
+          var sanitized = CORE.sanitizeBookingEntities(entities, cfg, cfg.businessHours, cfg.language, t);
           var mergeResult = CORE.mergeBookingEntities(bookingData, sanitized, cfg.businessHours);
           // Cambio explícito de servicio dentro del flujo: se recuerda para
           // la próxima reserva también. [Objetivo 4]
@@ -1564,7 +1564,7 @@
         // llamada, sin red adicional). CORE.sanitizeBookingEntities() es
         // quien decide qué se acepta.
         var preExtraido = featureOn('reservations') && interp
-          ? CORE.sanitizeBookingEntities(interp.entities, cfg, cfg.businessHours, cfg.language)
+          ? CORE.sanitizeBookingEntities(interp.entities, cfg, cfg.businessHours, cfg.language, t)
           : {};
         if (preExtraido.servicio) selectedService = preExtraido.servicio;
         // [BUG-DATO-PERDIDO-ANTES-DE-BOOKING] se acumula TODO lo que se haya

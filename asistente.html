@@ -1000,7 +1000,7 @@
         var t = correctionSourceText || '';
 
         if (entities) {
-          var sanitized = CORE.sanitizeBookingEntities(entities, cfg, cfg.businessHours, cfg.language);
+          var sanitized = CORE.sanitizeBookingEntities(entities, cfg, cfg.businessHours, cfg.language, t);
           var mergeResult = CORE.mergeBookingEntities(bookingData, sanitized, cfg.businessHours);
           if (sanitized.servicio) selectedService = sanitized.servicio;
 
@@ -1584,7 +1584,7 @@
         // — viene de interpretation.entities, la MISMA interpretación de la
         // IA que ya se pidió en esta llamada para decidir `intent`.
         var preExtraido = featureOn('reservations') && interp
-          ? CORE.sanitizeBookingEntities(interp.entities, cfg, cfg.businessHours, cfg.language)
+          ? CORE.sanitizeBookingEntities(interp.entities, cfg, cfg.businessHours, cfg.language, t)
           : {};
         if (preExtraido.servicio) selectedService = preExtraido.servicio;
         // [BUG-DATO-PERDIDO-ANTES-DE-BOOKING] se acumula TODO lo que se haya

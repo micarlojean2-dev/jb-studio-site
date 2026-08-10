@@ -569,6 +569,38 @@ window.JBChatCore = (function () {
     return { ambigua: n, mm: mm };
   }
 
+  // ── Respaldo determinista de fecha/hora (sin IA) ────────────────────────────
+  // Se usa SOLO cuando la IA devuelve entities.date/entities.time en null para
+  // este turno (ver sanitizeBookingEntities más abajo) — nunca sustituye un
+  // dato que la IA sí transcribió. Corre sobre el MISMO mensaje del cliente ya
+  // enviado en esta llamada, sin red adicional. La fecha reutiliza
+  // extraerFecha() tal cual (ya cubre día de semana, relativos y fecha
+  // explícita: es la misma función que usaba extractBooking() antes de la
+  // Etapa 2). La hora reutiliza HORA_CTX/HORA_RE/resolverHora() igual que
+  // extractBooking(), más un patrón nuevo para horas dichas con palabras
+  // ("4 de la tarde") que extractBooking() nunca necesitó reconocer porque la
+  // IA ya cubría ese caso vía entities.time.
+  var HORA_PALABRA_RE = /\b(\d{1,2})(?::(\d{2}))?\s+de\s+la\s+(tarde|noche|ma(?:ñ|n)ana)\b/i;
+  var HORA_PALABRA_SUFIJO = { tarde: 'PM', noche: 'PM', 'mañana': 'AM', manana: 'AM' };
+
+  function extraerHoraFallback(texto, businessHours) {
+    var t = String(texto || '');
+    var porPalabra = t.match(HORA_PALABRA_RE);
+    if (porPalabra) {
+      var hh1 = parseInt(porPalabra[1], 10);
+      var sufijo = HORA_PALABRA_SUFIJO[porPalabra[3].toLowerCase()];
+      if (hh1 >= 1 && hh1 <= 12 && sufijo) return resolverHora(hh1, porPalabra[2], sufijo, businessHours);
+    }
+    if (HORA_CTX.test(t)) {
+      var h = t.match(HORA_RE);
+      if (h) {
+        var hh2 = parseInt(h[1] || h[4], 10);
+        if (hh2 >= 0 && hh2 <= 23) return resolverHora(hh2, h[2] || h[5], h[3] || h[6], businessHours);
+      }
+    }
+    return null;
+  }
+
   // Filtro temprano de UX: rechaza solo horas que quedan fuera de TODOS los
   // rangos configurados. Fecha, duración, intervalos y capacidad siguen siendo
   // responsabilidad exclusiva de validarReserva() en el servidor.
@@ -783,9 +815,10 @@ window.JBChatCore = (function () {
   // Una hora ambigua no se descarta: viaja como __horaAmbigua, igual que
   // siempre, para que el llamador reutilice la pregunta "¿mañana o tarde?"
   // que ya existía.
-  function sanitizeBookingEntities(entities, cfg, businessHours, lang) {
+  function sanitizeBookingEntities(entities, cfg, businessHours, lang, rawText) {
     var e = (entities && typeof entities === 'object') ? entities : {};
     var out = {};
+    var raw = String(rawText || '');
 
     // servicio: coincidencia EXACTA (insensible a mayúsculas) contra el
     // catálogo real. La IA ya ve la lista exacta de nombres en el prompt, así
@@ -808,6 +841,12 @@ window.JBChatCore = (function () {
     if (typeof e.date === 'string' && e.date.trim()) {
       var fechaValida = extraerFecha(e.date, lang);
       if (fechaValida) out.fecha = fechaValida;
+    } else if (raw) {
+      // Respaldo determinista: la IA devolvió null para "date" en este turno
+      // — se intenta reconocer la fecha directamente en el mensaje del
+      // cliente antes de darla por no dicha. [Respaldo determinista fecha/hora]
+      var fechaFallback = extraerFecha(raw, lang);
+      if (fechaFallback) out.fecha = fechaFallback;
     }
 
     // hora: se re-valida con resolverHora() — la MISMA función que ya
@@ -836,6 +875,14 @@ window.JBChatCore = (function () {
           else if (horaR && horaR.ambigua) out.__horaAmbigua = { n: horaR.ambigua, mm: horaR.mm };
         }
       }
+    } else if (raw) {
+      // Respaldo determinista: la IA devolvió null para "time" en este turno
+      // — se intenta reconocer la hora directamente en el mensaje del
+      // cliente (incluye "4 de la tarde", que la IA sí cubría pero
+      // extractBooking() nunca necesitó). [Respaldo determinista fecha/hora]
+      var horaFallback = extraerHoraFallback(raw, businessHours);
+      if (horaFallback && horaFallback.hora) out.hora = horaFallback.hora;
+      else if (horaFallback && horaFallback.ambigua) out.__horaAmbigua = { n: horaFallback.ambigua, mm: horaFallback.mm };
     }
 
     // nombre: reutiliza valorValido('nombre', …) — el mismo validador que ya
