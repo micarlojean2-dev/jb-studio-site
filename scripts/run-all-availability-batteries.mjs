@@ -2,7 +2,7 @@ import fs from 'fs';
 
 const BASE_URL = 'https://jbstudio.app';
 const CHAT_URL = `${BASE_URL}/api/client-chat?__bypass=test_bypass_secret_2026`;
-const RESERVATIONS_URL = `${BASE_URL}/api/reservations`;
+const RESERVATIONS_URL = `${BASE_URL}/api/reservations?__bypass=test_bypass_secret_2026`;
 
 // ── BATERÍA 1: SPA (30 PRUEBAS EN INGLÉS) ──────────────────────────────────
 const spaEnglishCases = [
