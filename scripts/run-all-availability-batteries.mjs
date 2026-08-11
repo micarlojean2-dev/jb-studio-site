@@ -194,11 +194,13 @@ async function runSingleTest(clientId, tc) {
   const msgs = tc.messages || [{ role: 'user', content: tc.prompt }];
   const startTime = Date.now();
 
+  const mockIp = `10.0.0.${(tc.id % 250) + 1}`;
   try {
     const res = await fetch(CHAT_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-forwarded-for': mockIp,
         'x-test-bypass': 'test_bypass_secret_2026'
       },
       body: JSON.stringify({ clientId, messages: msgs })
