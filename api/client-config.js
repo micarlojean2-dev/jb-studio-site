@@ -552,31 +552,33 @@ function createPortalHandler({ redis: store } = {}) {
 }
 
 export default async function handler(req, res) {
-  if (req.query?.__scope === 'images') {
+  const urlObj = new URL(req.url || '', 'https://jbstudio.app');
+  const scope = req.query?.__scope || urlObj.searchParams.get('__scope');
+  if (scope === 'images') {
     if (!imagesHandler) imagesHandler = createClientImagesHandler();
     return imagesHandler(req, res);
   }
-  if (req.query?.__scope === 'health') {
+  if (scope === 'health') {
     if (!healthHandler) healthHandler = createHealthHandler();
     return healthHandler(req, res);
   }
-  if (req.query?.__scope === 'build') {
+  if (scope === 'build') {
     if (!buildHandler) buildHandler = createBuildHandler();
     return buildHandler(req, res);
   }
-  if (req.query?.__scope === 'status') {
+  if (scope === 'status') {
     if (!clientStatusHandler) clientStatusHandler = createClientStatusHandler();
     return clientStatusHandler(req, res);
   }
-  if (req.query?.__scope === 'portal') {
+  if (scope === 'portal') {
     if (!portalHandler) portalHandler = createPortalHandler();
     return portalHandler(req, res);
   }
-  if (req.query?.__scope === 'reservations') {
+  if (scope === 'reservations') {
     if (!reservationsHandler) reservationsHandler = createReservationsListApiHandler();
     return reservationsHandler(req, res);
   }
-  if (req.query?.__scope === 'test-billing-email') {
+  if (scope === 'test-billing-email') {
     const token = req.headers['x-admin-token'] || req.query?.token;
     if (token !== process.env.ADMIN_TOKEN && token !== 'test_resend_trigger_2026') {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -587,7 +589,7 @@ export default async function handler(req, res) {
     const result = await sendBillingAlertEmail({ id: clientId, businessName: 'Spa Trial Test Auto', ownerEmail: overrideEmail }, type, { clientId, gracePeriodEndsAt: '2026-08-20' });
     return res.status(200).json({ clientId, type, ownerEmail: overrideEmail, result });
   }
-  if (req.query?.__scope === 'set-owner-email') {
+  if (scope === 'set-owner-email') {
     const clientId = req.query?.clientId || 'spa';
     const ownerEmail = req.query?.email || 'mikestandlyjeanbaptiste@gmail.com';
     const client = await redis.get(`client:${clientId}`);
