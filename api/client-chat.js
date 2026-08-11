@@ -7,6 +7,7 @@ import {
   interpreterOutputConfig, deepseekResponseFormat, buildInterpreterInstructions,
   emptyInterpretation, sanitizeInterpretation,
 } from '../lib/message-interpreter.js';
+import { obtenerHuecosDisponibles, parseFechaISO, nowEnZona } from './reservations.js';
 
 initSentry();
 
@@ -431,6 +432,42 @@ function reservationTruthBlock(isEnglish, ctx) {
   return `\n${rule} No hay ninguna reserva confirmada registrada ahora mismo. Si preguntan si se concretó, di que no puedes confirmarlo desde aquí — señala el botón "Sí, confirmar" del resumen, o sugiere contactar al negocio directamente.\n`;
 }
 
+async function availabilityContextBlock(client, clientId, messages, isEnglish) {
+  if (!client || !messages || !messages.length) return '';
+  const lastUserMsg = [...messages].reverse().find((m) => m && m.role === 'user')?.content || '';
+  if (!lastUserMsg) return '';
+
+  const isAvailabilityQuery = /(disponib|horario|hora|hueco|agenda|slot|open|available|free|qu[eé]\s+hora|what\s+time)/i.test(lastUserMsg);
+  if (!isAvailabilityQuery) return '';
+
+  const now = nowEnZona(client.timezone);
+  const fechaISO = parseFechaISO(lastUserMsg, now);
+  if (!fechaISO) return '';
+
+  let keys, items;
+  try {
+    keys = await redis.keys(`reservations:${clientId}:*`);
+    items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+  } catch (err) {
+    items = [];
+  }
+
+  const huecos = obtenerHuecosDisponibles(client, fechaISO, undefined, items);
+
+  if (huecos && huecos.length > 0) {
+    const muestra = huecos.length > 10
+      ? huecos.slice(0, 10).join(', ') + (isEnglish ? ' and more' : ' entre otros')
+      : huecos.join(', ');
+    return isEnglish
+      ? `\nREAL-TIME AVAILABILITY SLOTS FOR ${fechaISO}:\nAvailable time slots: ${muestra}.\nINSTRUCTION: The customer asked what times are available for this date. List these real available time slots warmly and ask which one they prefer.\n`
+      : `\nDISPONIBILIDAD REAL EN TIEMPO REAL PARA EL DÍA ${fechaISO}:\nHorarios libres disponibles: ${muestra}.\nINSTRUCCIÓN: El cliente preguntó qué horas hay disponibles para esta fecha. Menciónale de forma cálida y clara estos horarios reales disponibles y pregúntale cuál prefiere.\n`;
+  } else {
+    return isEnglish
+      ? `\nREAL-TIME AVAILABILITY SLOTS FOR ${fechaISO}:\nNo available time slots for this date (fully booked or closed).\nINSTRUCTION: The customer asked what times are available for this date. Inform them warmly that there are no open slots for this date and invite them to check another day.\n`
+      : `\nDISPONIBILIDAD REAL EN TIEMPO REAL PARA EL DÍA ${fechaISO}:\nNo hay horarios libres disponibles para esa fecha (completamente ocupado o cerrado).\nINSTRUCCIÓN: El cliente preguntó qué horas hay disponibles para esta fecha. Infórmale de forma cálida que no quedan horarios libres ese día e invítale a consultar otra fecha.\n`;
+  }
+}
+
 async function buildSystemPrompt(basePrompt, client, media, activeLanguage) {
   const tz   = tzOf(client);
   const now  = new Date();
@@ -770,6 +807,7 @@ export default async function handler(req, res) {
     // fuera del flujo de captura quedaba sin ninguna instrucción sobre el
     // resultado real de una reserva. [auditoría de reservas — falso éxito]
     systemPrompt += reservationTruthBlock(isEnglish, sanitizeReservationContext(reservationContext));
+    systemPrompt += await availabilityContextBlock(client, clientId, messages, isEnglish);
 
     // Modo reserva: el frontend manda el estado estructurado (lo capturado y
     // lo que falta) y el modelo genera la respuesta conversacional. Así la

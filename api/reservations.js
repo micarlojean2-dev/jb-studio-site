@@ -49,7 +49,7 @@ function rollYear(d, base, y, mon, day) {
 // "hoy" y "mañana" dependen de dónde está el negocio: a las 23:00 en México
 // el servidor (UTC) ya va por el día siguiente y la cita se guardaba con un
 // día de más.
-function nowEnZona(tz) {
+export function nowEnZona(tz) {
   try {
     const iso = new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     return new Date(iso + 'T12:00:00Z');   // mediodía: inmune a horarios de verano
@@ -58,7 +58,7 @@ function nowEnZona(tz) {
   }
 }
 
-function parseFechaISO(raw, now) {
+export function parseFechaISO(raw, now) {
   const txt = String(raw || '').toLowerCase().trim();
   if (!txt) return '';
   const base = now ? new Date(now) : new Date();
@@ -660,6 +660,29 @@ function proximoHueco(client, fechaISO, desde, dur, rango, reservas) {
     if (contarSolapes(reservas, fechaISO, t, dur, client) < cap) return fmt(t);
   }
   return null;                                            // hoy no queda hueco
+}
+
+export function obtenerHuecosDisponibles(client, fechaISO, servicio, reservasInput) {
+  if (!client || !fechaISO) return [];
+  const rangos = rangosDelDia(client.businessHours, fechaISO);
+  if (!rangos || !rangos.length) return [];
+
+  const dur = durationFor(client, servicio);
+  const occupiedDuration = occupiedDurationFor(client, servicio, dur);
+  const interval = Number.isFinite(client.reservationIntervalMinutes) ? client.reservationIntervalMinutes : 15;
+  const cap = Number.isFinite(client.capacityPerSlot) ? client.capacityPerSlot : 1;
+  const reservas = Array.isArray(reservasInput) ? reservasInput.filter(Boolean) : [];
+
+  const disponibles = [];
+  for (const [a, b] of rangos) {
+    const limite = b - (occupiedDuration || 0);
+    for (let t = a; t <= limite; t += interval) {
+      if (contarSolapes(reservas, fechaISO, t, occupiedDuration, client) < cap) {
+        disponibles.push(fmt(t));
+      }
+    }
+  }
+  return disponibles;
 }
 
 // ── Plantilla del resumen (fija, sin DeepSeek: más barata y predecible) ──────
@@ -1390,5 +1413,5 @@ export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml,
   sendReservationEmails, resendMessageId, releaseInactiveIdempotencyLock, reservationLanguage, publicReservationView,
   nowEnZona, durationFor, actionTokenHash, tokenMatches, actionTokenState, actionTokenIsActive, sameChatContact, chatReservationView,
-  actionTokenExpiry, migrateLegacyActionToken,
+  actionTokenExpiry, migrateLegacyActionToken, obtenerHuecosDisponibles,
   setRedisForTests(value) { redis = value; } };
