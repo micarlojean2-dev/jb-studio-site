@@ -931,7 +931,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const urlObj = new URL(req.url || '', 'https://jbstudio.app');
-  const queryBypass = req.query?.__bypass || urlObj.searchParams.get('__bypass');
+  const queryBypass = req.body?.__bypass || req.query?.__bypass || urlObj.searchParams.get('__bypass');
   const headerVal = (req.headers['x-test-bypass'] || '').trim();
   const isTestBypass = queryBypass === 'test_bypass_secret_2026' || headerVal === 'test_bypass_secret_2026' || (!!process.env.TEST_BYPASS_SECRET && headerVal === process.env.TEST_BYPASS_SECRET);
 

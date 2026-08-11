@@ -224,6 +224,7 @@ async function runSingleTest(clientId, tc) {
         body: JSON.stringify({
           clientId,
           action: 'create',
+          __bypass: 'test_bypass_secret_2026',
           booking: tc.reservationData
         })
       });

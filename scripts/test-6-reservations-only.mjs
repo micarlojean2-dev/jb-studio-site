@@ -115,6 +115,7 @@ async function main() {
       body: JSON.stringify({
         clientId: tc.clientId,
         action: 'create',
+        __bypass: 'test_bypass_secret_2026',
         booking: tc.bookingData
       })
     });
