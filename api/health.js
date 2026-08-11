@@ -1,5 +1,4 @@
 import { Redis } from '@upstash/redis';
-import { initSentry, captureApiException, Sentry } from '../lib/sentry.js';
 
 let redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL,
@@ -13,19 +12,6 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  if (req.method === 'GET' && req.query?.test_alert === 'true') {
-    const claimed = await redis.set('sentry:manual-alert-test', '1', { nx: true, ex: 3600 });
-    if (claimed) {
-      initSentry();
-      captureApiException(new Error('PRUEBA MANUAL - ignorar, no es un error real'), {
-        feature: 'manual_alert_test',
-        route: '/api/health',
-        extra: { test: true },
-      });
-      await Sentry.flush(2000);
-    }
   }
 
   let redisOk = false;
