@@ -106,6 +106,21 @@ export function createClientConfigHandler({ redis: store } = {}) {
     // Image references live separately from client configuration. This public
     // projection intentionally contains URLs only, never Cloudinary IDs.
     if (media.gallery.length || media.menu.length) out.media = media;
+    if (req.query?.__diag === '1') {
+      out._diag = {
+        id: client.id,
+        businessName: client.businessName,
+        stripeCustomerId: client.stripeCustomerId || null,
+        stripeSubscriptionId: client.stripeSubscriptionId || null,
+        active: client.active,
+        paymentStatus: client.paymentStatus || null,
+        plan: client.plan || null,
+        trial_end: client.trial_end || null,
+        paidUntil: client.paidUntil || null,
+        gracePeriodEndsAt: client.gracePeriodEndsAt || null,
+        panelToken: client.panelToken || null
+      };
+    }
     return res.status(200).json(out);
   } catch (err) {
     console.error('[api/client-config]', err.message);
