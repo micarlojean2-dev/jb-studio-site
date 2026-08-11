@@ -5,7 +5,6 @@ import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { loadClientMedia } from '../lib/media.js';
 import { findServiceByLinkedItemId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
-import { sendBillingAlertEmail } from '../lib/reservation-emails.js';
 
 initSentry();
 
@@ -575,23 +574,6 @@ export default async function handler(req, res) {
   if (req.query?.__scope === 'reservations') {
     if (!reservationsHandler) reservationsHandler = createReservationsListApiHandler();
     return reservationsHandler(req, res);
-  }
-  if (req.query?.__scope === 'test-billing-email') {
-    const clientId = req.query?.clientId || 'barberia-el-corte-fino';
-    const client = await redis.get(`client:${clientId}`);
-    if (!client) return res.status(404).json({ error: 'Client not found' });
-
-    const token = req.headers['x-admin-token'] || req.query?.token;
-    if (token !== client.panelToken && token !== process.env.ADMIN_TOKEN && token !== 'test_resend_trigger_2026') {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const type = req.query?.type || 'payment_failed';
-    if (req.query?.overrideEmail) {
-      client.ownerEmail = req.query.overrideEmail;
-    }
-    const result = await sendBillingAlertEmail(client, type, { clientId, gracePeriodEndsAt: '2026-08-20' });
-    return res.status(200).json({ clientId, type, ownerEmail: client.ownerEmail, result });
   }
   if (!productionHandler) productionHandler = createClientConfigHandler();
   return productionHandler(req, res);
