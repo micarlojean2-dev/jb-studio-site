@@ -587,6 +587,17 @@ export default async function handler(req, res) {
     const result = await sendBillingAlertEmail({ id: clientId, businessName: 'Spa Trial Test Auto', ownerEmail: overrideEmail }, type, { clientId, gracePeriodEndsAt: '2026-08-20' });
     return res.status(200).json({ clientId, type, ownerEmail: overrideEmail, result });
   }
+  if (req.query?.__scope === 'set-owner-email') {
+    const clientId = req.query?.clientId || 'spa';
+    const ownerEmail = req.query?.email || 'mikestandlyjeanbaptiste@gmail.com';
+    const client = await redis.get(`client:${clientId}`);
+    if (client) {
+      client.ownerEmail = ownerEmail;
+      await redis.set(`client:${clientId}`, client);
+      return res.status(200).json({ ok: true, clientId, ownerEmail });
+    }
+    return res.status(404).json({ error: 'Client not found' });
+  }
   if (!productionHandler) productionHandler = createClientConfigHandler();
   return productionHandler(req, res);
 }
