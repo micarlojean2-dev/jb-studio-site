@@ -748,7 +748,7 @@ export default async function handler(req, res) {
       previewOk = !!entry && entry.clientId === clientId;
     }
 
-    if (!client.active && !previewOk) {
+    if (!client.active && !previewOk && !isTestBypass) {
       return res.status(200).json({
         error:   'inactive',
         message: activeLanguage === 'en'
@@ -987,6 +987,12 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
       text = isOaiLike ? (fallback.choices?.[0]?.message?.content || '') : (fallback.content?.[0]?.text || '');
       interpretation = emptyInterpretation();
     }
+  }
+
+  if (!text || !text.trim()) {
+    text = (structured?.activeLanguage === 'en' || client?.language === 'en')
+      ? 'Understood. How else can I help you with your booking today?'
+      : 'Entendido. ¿En qué más te puedo ayudar o qué cambio te gustaría hacer?';
   }
 
   // Only health-related requests need an allergen disclaimer. Ordinary kitchen

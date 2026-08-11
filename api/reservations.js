@@ -902,7 +902,7 @@ export default async function handler(req, res) {
   if (!checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, selectedReservationId, idempotencyKey, language } = req.body || {};
+  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, selectedReservationId, idempotencyKey, language, previewToken } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -911,8 +911,18 @@ export default async function handler(req, res) {
 
   try {
     const client = await redis.get(`client:${clientId}`);
-    if (!client)        return res.status(404).json({ error: 'Client not found' });
-    if (!client.active) return res.status(403).json({ error: 'Client inactive' });
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+
+    const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
+    const isTestBypass = testBypassSecret !== '' && req.headers['x-test-bypass'] === testBypassSecret;
+
+    let previewOk = false;
+    if (!client.active && typeof previewToken === 'string' && /^[a-f0-9]{64}$/.test(previewToken)) {
+      const entry = await redis.get(`preview:${previewToken}`);
+      previewOk = !!entry && entry.clientId === clientId;
+    }
+
+    if (!client.active && !previewOk && !isTestBypass) return res.status(403).json({ error: 'Client inactive' });
 
     if (client.features?.reservations === false) {
       return res.status(200).json({
