@@ -225,15 +225,20 @@ async function runSingleTest(clientId, tc) {
           clientId,
           action: 'create',
           __bypass: 'test_bypass_secret_2026',
-          booking: tc.reservationData
+          ...tc.reservationData,
+          nombre: `${tc.reservationData.nombre} ${Date.now().toString().slice(-4)}`
         })
       });
       const rData = await rRes.json();
-      if (rData.ok && rData.reservation) {
+      const emailObj = rData.email || {};
+      const customerObj = emailObj.customer || {};
+      const ownerObj = emailObj.owners || {};
+
+      if (rData.ok && rData.reservationCreated) {
         emailVerification = {
-          clientEmailMessageId: rData.reservation.clientEmailMessageId || 'N/A (resend_mock/sent)',
-          ownerEmailMessageId: rData.reservation.ownerEmailMessageId || 'N/A (resend_mock/sent)',
-          emailSent: rData.reservation.emailSent === true
+          clientEmailMessageId: customerObj.messageId || 'N/A',
+          ownerEmailMessageId: (ownerObj.messageIds && ownerObj.messageIds[0]) || 'N/A',
+          emailSent: customerObj.sent === true
         };
       } else {
         pass = false;

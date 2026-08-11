@@ -92,6 +92,7 @@ const testCases = [
 async function main() {
   console.log('🚀 Ejecutando SOLO las 6 pruebas de reserva con envío real de correos...\n');
   const results = [];
+  const runTag = Date.now().toString().slice(-4);
 
   for (const tc of testCases) {
     console.log(`Testing ${tc.business} (${tc.testNum})...`);
@@ -116,12 +117,22 @@ async function main() {
         clientId: tc.clientId,
         action: 'create',
         __bypass: 'test_bypass_secret_2026',
-        booking: tc.bookingData
+        ...tc.bookingData,
+        nombre: `${tc.bookingData.nombre} ${runTag}`
       })
     });
 
     const resData = await resRes.json();
-    const reservation = resData.reservation || {};
+    const emailObj = resData.email || {};
+    const customerObj = emailObj.customer || {};
+    const ownerObj = emailObj.owners || {};
+
+    let emailVerification = {
+      reservationId: resData.reservationId || 'N/A',
+      clientEmailMessageId: customerObj.messageId || 'N/A',
+      ownerEmailMessageId: (ownerObj.messageIds && ownerObj.messageIds[0]) || 'N/A',
+      emailSent: customerObj.sent === true
+    };
 
     results.push({
       business: tc.business,
@@ -130,11 +141,8 @@ async function main() {
       chatOk: chatRes.ok && !chatData.error,
       chatText: chatData.text || '',
       reservationOk: resData.ok === true,
-      reservationId: reservation.id || 'N/A',
-      clientEmail: tc.bookingData.email,
-      clientEmailMessageId: reservation.clientEmailMessageId || 'N/A',
-      ownerEmailMessageId: reservation.ownerEmailMessageId || 'N/A',
-      emailSent: reservation.emailSent === true
+      ...emailVerification,
+      clientEmail: tc.bookingData.email
     });
 
     await new Promise(r => setTimeout(r, 1000));
