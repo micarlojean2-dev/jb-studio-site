@@ -590,7 +590,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ clientId, type, ownerEmail: overrideEmail, result });
   }
   if (scope === 'init-test-client') {
-    const clientId = req.query?.clientId || 'restaurante-e2e-intenso';
+    const clientId = req.query?.clientId || urlObj.searchParams.get('clientId') || urlObj.searchParams.get('id') || 'restaurante-e2e-intenso';
     let client = await redis.get(`client:${clientId}`);
     if (!client) {
       client = {
