@@ -600,36 +600,40 @@ export default async function handler(req, res) {
   }
   if (scope === 'init-test-client') {
     const clientId = req.query?.clientId || urlObj.searchParams.get('clientId') || urlObj.searchParams.get('id') || 'restaurante-e2e-intenso';
-    let client = await redis.get(`client:${clientId}`);
-    if (!client) {
-      client = {
-        id: clientId,
-        businessName: 'Restaurante E2E Intenso',
-        templateId: 'restaurant',
-        active: true,
-        plan: 'pro',
-        ownerEmail: 'mikestandlyjeanbaptiste@gmail.com',
-        language: 'es',
-        languages: ['es', 'en'],
-        timezone: 'America/Los_Angeles',
-        capacityPerSlot: 4,
-        reservationIntervalMinutes: 30,
-        businessHours: {
-          monday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-          tuesday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-          wednesday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-          thursday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-          friday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-          saturday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-          sunday: { enabled: false, unknown: false, ranges: [] }
-        },
-        menu: [
-          { id: 'svc_rest_1', nombre: 'Mesa para 2 personas', precio: '$0', descripcion: 'Mesa estándar en salón principal.', duracion: '90 min' },
-          { id: 'svc_rest_2', nombre: 'Mesa VIP Terraza', precio: '$25', descripcion: 'Reserva exclusiva en la terraza con vista.', duracion: '120 min' }
-        ]
-      };
-      await redis.set(`client:${clientId}`, client);
+    if (clientId !== 'restaurante-e2e-intenso') {
+      return res.status(403).json({ error: 'This test endpoint only supports restaurante-e2e-intenso' });
     }
+
+    const existing = await redis.get(`client:${clientId}`);
+    if (existing) return res.status(200).json({ ok: true, clientId, client: existing });
+
+    const client = {
+      id: clientId,
+      businessName: 'Restaurante E2E Intenso',
+      templateId: 'restaurant',
+      active: true,
+      plan: 'pro',
+      ownerEmail: 'mikestandlyjeanbaptiste@gmail.com',
+      language: 'es',
+      languages: ['es', 'en'],
+      timezone: 'America/Los_Angeles',
+      capacityPerSlot: 4,
+      reservationIntervalMinutes: 30,
+      businessHours: {
+        monday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
+        tuesday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
+        wednesday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
+        thursday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
+        friday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
+        saturday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
+        sunday: { enabled: false, unknown: false, ranges: [] }
+      },
+      menu: [
+        { id: 'svc_rest_1', nombre: 'Mesa para 2 personas', precio: '$0', descripcion: 'Mesa estándar en salón principal.', duracion: '90 min' },
+        { id: 'svc_rest_2', nombre: 'Mesa VIP Terraza', precio: '$25', descripcion: 'Reserva exclusiva en la terraza con vista.', duracion: '120 min' }
+      ]
+    };
+    await redis.set(`client:${clientId}`, client);
     return res.status(200).json({ ok: true, clientId, client });
   }
   if (scope === 'set-owner-email') {

@@ -3303,6 +3303,7 @@ LÍMITES ESTRICTOS:
               ? { label: 'En período de gracia', cls: 'st-yellow' }
               : { label: 'Pago fallido', cls: 'st-red' };
           case 'paid':    return { label: 'Pagado', cls: 'st-green' };
+          case 'trialing': return { label: 'En prueba', cls: 'st-yellow' };
           case 'pending': return { label: 'Esperando pago', cls: 'st-yellow' };
           default:        return { label: 'No pagado', cls: 'st-red' };
         }
