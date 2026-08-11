@@ -1,5 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { randomUUID } from 'node:crypto';
+import Stripe from 'stripe';
 import { sanitizeServiceList } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 import { isValidDurationMinutes } from '../lib/duration.js';
@@ -23,10 +24,11 @@ async function buildTemplatePrompt(businessData, template) {
   return _templatesMod.buildTemplatePrompt(businessData, template);
 }
 
-const redis = new Redis({
+let redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
+let stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock');
 
 function auth(req) {
   const t = req.headers['x-admin-token'] || req.query?.adminKey;
@@ -164,6 +166,11 @@ const STYLES = ['Moderno', 'Elegante', 'Amigable', 'Minimalista'];
 // monto guardado siempre se deriva del plan — nunca de lo que mande el
 // cliente — para que coincida exactamente con lo que Stripe va a cobrar.
 const PLAN_PRICES = { basic: 49, pro: 65 };
+function stripePriceIdFor(plan) {
+  return plan === 'basic' ? process.env.STRIPE_PRICE_BASIC
+    : plan === 'pro' ? process.env.STRIPE_PRICE_PRO
+    : null;
+}
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Fase 4.1 — mismas listas que usa el wizard nuevo en admin.html (idiomas,
@@ -473,7 +480,7 @@ export default async function handler(req, res) {
     const {
       id, businessName, ownerName, ownerEmail, plan, color, language, whatsapp, prompt, menu,
       secondaryColor, style, address, hours, businessType, services, features, templateId, templateVersion,
-      billingDay, trialEnabled, trialDays,
+      billingDay,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
       displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, bufferMinutes, reservationIntervalMinutes, holidays, notificationEmails, templateData,
       reservationDuration,
@@ -622,6 +629,11 @@ export default async function handler(req, res) {
       ? (featuresSafe.catalog ? servicesSafe.map(s => ({ id: s.id, nombre: s.nombre, precio: s.precio, descripcion: s.descripcion, imagen: s.imagen, duracion: s.duracion })) : [])
       : sanitizeMenu(menu);
 
+    const stripePriceId = stripePriceIdFor(planSafe);
+    if (!stripePriceId) {
+      return res.status(400).json({ error: `Client plan "${planSafe}" has no Stripe price configured` });
+    }
+
     try {
       // Never overwrite an existing client — the admin must always get a
       // fresh/suffixed id instead.
@@ -694,14 +706,11 @@ export default async function handler(req, res) {
         ...(phoneCountrySafe && phoneCountryCodeSafe ? { phoneCountry: phoneCountrySafe, phoneCountryCode: phoneCountryCodeSafe, phoneNumber: phoneNumberSafe } : {}),
         monthlyPrice: PLAN_PRICES[planSafe] || null,
         billingDay:   Number.isInteger(Number(billingDay)) && Number(billingDay) >= 1 && Number(billingDay) <= 28 ? Number(billingDay) : 1,
-        trialEnabled: !!trialEnabled,
-        trialDays:    Number.isInteger(Number(trialDays)) && Number(trialDays) >= 1 && Number(trialDays) <= 90 ? Number(trialDays) : 7,
-        // Server-authoritative — never trust these from the request body.
-        // Fase 4: el chatbot ya no queda activo al crearse — necesita el
-        // primer pago real. Solo el webhook de Stripe puede poner active:true
-        // o cambiar paymentStatus a partir de aquí (ver api/stripe-webhook.js).
-        active:                false,
-        paymentStatus:         'pending',
+        // Server-authoritative: every new client starts Stripe's 10-day trial.
+        trialEnabled: true,
+        trialDays:    10,
+        active:                true,
+        paymentStatus:         'trialing',
         paidUntil:             null,
         paymentFailed:         false,
         stripeCustomerId:      null,
@@ -732,6 +741,21 @@ export default async function handler(req, res) {
         assistantUrl:  `https://jbstudio.app/asistente/${id}`,
       };
 
+      const stripeCustomer = await stripe.customers.create({
+        name: client.businessName,
+        email: client.ownerEmail || undefined,
+        metadata: { clientId: id },
+      });
+      const stripeSubscription = await stripe.subscriptions.create({
+        customer: stripeCustomer.id,
+        items: [{ price: stripePriceId }],
+        trial_period_days: 10,
+        trial_settings: { end_behavior: { missing_payment_method: 'pause' } },
+        metadata: { clientId: id },
+      });
+
+      client.stripeCustomerId = stripeCustomer.id;
+      client.stripeSubscriptionId = stripeSubscription.id;
       await redis.set(`client:${id}`, client);
       return res.status(201).json(client);
     } catch (err) {
@@ -865,3 +889,8 @@ export default async function handler(req, res) {
 
   return res.status(405).json({ error: 'Method not allowed' });
 }
+
+export const __test = {
+  setRedisForTests(value) { redis = value; },
+  setStripeForTests(value) { stripe = value; },
+};

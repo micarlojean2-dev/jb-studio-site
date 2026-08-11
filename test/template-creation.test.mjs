@@ -80,7 +80,9 @@ globalThis.fetch = async (url, options = {}) => {
   const result = command === 'pipeline' ? args.map(entry => ({ result: execute(entry) })) : { result: execute(args) };
   return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json' } });
 };
-const { default: clientHandler } = await import('../api/clients.js');
+const { default: clientHandler, __test: clientTest } = await import('../api/clients.js');
+const { useClientStripeDouble } = await import('./client-stripe-double.mjs');
+useClientStripeDouble(clientTest);
 
 async function postClient(body) {
   let statusCode = 200;

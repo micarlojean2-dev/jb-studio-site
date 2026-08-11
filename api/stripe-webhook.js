@@ -346,6 +346,10 @@ export default async function handler(req, res) {
           patch.active        = false;
           patch.paymentStatus = 'cancelled';
           patch.cancelledAt   = new Date().toISOString().slice(0, 10);
+        } else if (sub.status === 'paused') {
+          patch.active        = false;
+          patch.paymentStatus = 'paused';
+          patch.paymentFailed = false;
         }
 
         await updateClient(clientId, patch);
@@ -366,6 +370,33 @@ export default async function handler(req, res) {
           cancelledAt:   new Date().toISOString().slice(0, 10),
         });
         console.log(`[stripe-webhook] Client ${clientId} subscription deleted — cancelled`);
+        break;
+      }
+
+      case 'customer.subscription.paused': {
+        const sub = event.data.object;
+        const clientId = sub.metadata?.clientId;
+        if (!clientId) { console.warn('[stripe-webhook] subscription.paused: no clientId'); break; }
+        await updateClient(clientId, {
+          active:        false,
+          paymentStatus: 'paused',
+          paymentFailed: false,
+        });
+        console.log(`[stripe-webhook] Client ${clientId} → subscription paused`);
+        break;
+      }
+
+      case 'customer.subscription.resumed': {
+        const sub = event.data.object;
+        const clientId = sub.metadata?.clientId;
+        if (!clientId) { console.warn('[stripe-webhook] subscription.resumed: no clientId'); break; }
+        await updateClient(clientId, {
+          active:            true,
+          paymentStatus:     sub.status === 'trialing' ? 'trialing' : 'paid',
+          paymentFailed:     false,
+          gracePeriodEndsAt: null,
+        });
+        console.log(`[stripe-webhook] Client ${clientId} → subscription resumed`);
         break;
       }
 

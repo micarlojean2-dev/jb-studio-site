@@ -53,7 +53,9 @@ globalThis.fetch = async (url, options = {}) => {
   return new Response(JSON.stringify(result), { status: 200, headers: { 'Content-Type': 'application/json' } });
 };
 
-const { default: clientHandler } = await import('../api/clients.js');
+const { default: clientHandler, __test: clientTest } = await import('../api/clients.js');
+const { useClientStripeDouble } = await import('./client-stripe-double.mjs');
+useClientStripeDouble(clientTest);
 const { default: reservationsHandler } = await import('../api/reservations.js');
 const { __test: chatTest } = await import('../api/client-chat.js');
 const { businessInfoBlock, buildSystemPrompt } = chatTest;

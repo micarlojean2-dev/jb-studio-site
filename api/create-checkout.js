@@ -42,6 +42,17 @@ export default async function handler(req, res) {
     const client = await redis.get(`client:${clientId}`);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
+    // New clients already have a Stripe Customer and Subscription. Checkout
+    // would create a second subscription, so send them to Stripe's portal to
+    // add a payment method to the existing Customer instead.
+    if (client.stripeCustomerId) {
+      const session = await stripe.billingPortal.sessions.create({
+        customer: client.stripeCustomerId,
+        return_url: `https://jbstudio.app/reservas/${encodeURIComponent(clientId)}`,
+      });
+      return res.status(200).json({ url: session.url, sessionId: session.id, type: 'portal' });
+    }
+
     // El Price ID se elige siempre a partir del plan guardado en el cliente
     // (nunca de lo que mande el request) — así el precio cobrado coincide
     // siempre con el plan real, sin depender de lo que envíe admin.html.
