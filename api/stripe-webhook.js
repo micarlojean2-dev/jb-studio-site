@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { Redis } from '@upstash/redis';
 import { initSentry, captureApiException } from '../lib/sentry.js';
+import { sendBillingAlertEmail } from '../lib/reservation-emails.js';
 
 initSentry();
 
@@ -288,19 +289,24 @@ export default async function handler(req, res) {
         const clientId = getInvoiceClientId(invoice) || await getClientIdFromSubscription(subscriptionId);
         if (!clientId) { console.warn('[stripe-webhook] payment_failed: no clientId'); break; }
 
-        // No se pausa por el primer fallo: Stripe reintenta automáticamente
-        // (Smart Retries) mientras la suscripción esté en past_due — la
-        // fecha del próximo reintento la da Stripe (invoice.next_payment_attempt),
-        // nunca se inventa. Si ya no hay próximo intento programado, tampoco
-        // se pausa aquí: el estado final ("unpaid"/"canceled") lo confirma
-        // customer.subscription.updated / customer.subscription.deleted.
+        const gracePeriodEndsAt = isoDate(invoice.next_payment_attempt);
         await updateClient(clientId, {
           paymentStatus:      'past_due',
           paymentFailed:      true,
           lastPaymentFailedAt: new Date().toISOString().slice(0, 10),
-          gracePeriodEndsAt:  isoDate(invoice.next_payment_attempt),
+          gracePeriodEndsAt,
         });
-        console.log(`[stripe-webhook] Client ${clientId} payment failed — next attempt: ${isoDate(invoice.next_payment_attempt) || '(ninguno)'}`);
+        console.log(`[stripe-webhook] Client ${clientId} payment failed — next attempt: ${gracePeriodEndsAt || '(ninguno)'}`);
+
+        try {
+          const clientData = await redis.get(`client:${clientId}`);
+          if (clientData && clientData.ownerEmail) {
+            await sendBillingAlertEmail(clientData, 'payment_failed', { clientId, gracePeriodEndsAt });
+          }
+        } catch (e) {
+          console.error('[stripe-webhook] payment_failed email error:', e.message);
+          captureApiException(e, { clientId, feature: 'email_owner', route: '/api/stripe-webhook' });
+        }
         break;
       }
 
@@ -323,6 +329,15 @@ export default async function handler(req, res) {
             cancelledAt:   isoDate(sub.canceled_at),
           });
           console.log(`[stripe-webhook] Client ${clientId} → subscription canceled_at=${isoDate(sub.canceled_at)}`);
+          
+          try {
+            const clientData = await redis.get(`client:${clientId}`);
+            if (clientData && clientData.ownerEmail) {
+              await sendBillingAlertEmail(clientData, 'subscription_paused', { clientId });
+            }
+          } catch (e) {
+            console.error('[stripe-webhook] canceled_at email error:', e.message);
+          }
           break;
         }
 
@@ -354,6 +369,18 @@ export default async function handler(req, res) {
 
         await updateClient(clientId, patch);
         console.log(`[stripe-webhook] Client ${clientId} → subscription ${sub.status}`);
+        
+        if (sub.status === 'unpaid' || sub.status === 'canceled' || sub.status === 'paused') {
+          try {
+            const clientData = await redis.get(`client:${clientId}`);
+            if (clientData && clientData.ownerEmail) {
+              await sendBillingAlertEmail(clientData, 'subscription_paused', { clientId });
+            }
+          } catch (e) {
+            console.error('[stripe-webhook] subscription_paused email error:', e.message);
+            captureApiException(e, { clientId, feature: 'email_owner', route: '/api/stripe-webhook' });
+          }
+        }
         break;
       }
 
@@ -370,6 +397,15 @@ export default async function handler(req, res) {
           cancelledAt:   new Date().toISOString().slice(0, 10),
         });
         console.log(`[stripe-webhook] Client ${clientId} subscription deleted — cancelled`);
+        
+        try {
+          const clientData = await redis.get(`client:${clientId}`);
+          if (clientData && clientData.ownerEmail) {
+            await sendBillingAlertEmail(clientData, 'subscription_paused', { clientId });
+          }
+        } catch (e) {
+          console.error('[stripe-webhook] subscription.deleted email error:', e.message);
+        }
         break;
       }
 
