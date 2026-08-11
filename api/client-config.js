@@ -6,6 +6,7 @@ import { loadClientMedia } from '../lib/media.js';
 import { findServiceByLinkedItemId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 import { sendBillingAlertEmail } from '../lib/reservation-emails.js';
+import { hashPassword, verifyPassword } from '../lib/password.js';
 
 initSentry();
 
@@ -384,6 +385,7 @@ export function createReservationsListApiHandler({ redis: store } = {}) {
       if (!token) return false;
       if (client.panelToken && token === client.panelToken) return true;
       if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) return true;
+      if (client.passwordHash && verifyPassword(token, client.passwordHash)) return true;
       return false;
     }
 
@@ -391,6 +393,16 @@ export function createReservationsListApiHandler({ redis: store } = {}) {
       const client = await dataStore.get(`client:${clientId}`);
       if (!client) return res.status(404).json({ error: 'Client not found' });
       if (!authorized(token, client)) return res.status(401).json({ error: 'Unauthorized' });
+
+      if ((req.method === 'POST' || req.method === 'PUT') && (req.query?.scope === 'set_password' || req.body?.action === 'set_password')) {
+        const { newPassword } = req.body || {};
+        if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 6) {
+          return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+        }
+        client.passwordHash = hashPassword(newPassword.trim());
+        await dataStore.set(`client:${clientId}`, client);
+        return res.status(200).json({ ok: true, hasPassword: true, message: 'Contraseña guardada correctamente' });
+      }
 
       if (req.method === 'GET' && req.query?.scope === 'activity') {
         const raw = await dataStore.lrange(`activity:${clientId}`, 0, -1);
@@ -402,11 +414,7 @@ export function createReservationsListApiHandler({ redis: store } = {}) {
 
       if (req.method === 'GET') {
         const keys = await dataStore.keys(`reservations:${clientId}:*`);
-        if (!keys.length) return res.status(200).json([]);
-
-        const items = keys.length === 1
-          ? [await dataStore.get(keys[0])]
-          : await dataStore.mget(...keys);
+        const items = keys.length ? (keys.length === 1 ? [await dataStore.get(keys[0])] : await dataStore.mget(...keys)) : [];
 
         const reservations = items
           .filter(Boolean)
@@ -419,6 +427,7 @@ export function createReservationsListApiHandler({ redis: store } = {}) {
 
         return res.status(200).json({
           reservations,
+          hasPassword:         !!client.passwordHash,
           plan:                client.plan               || null,
           active:              client.active             || false,
           paymentStatus:       client.paymentStatus      || 'none',
@@ -482,14 +491,17 @@ function createClientStatusHandler({ redis: store } = {}) {
       if (!client) return res.status(404).json({ error: 'Client not found' });
 
       if (!token) return res.status(401).json({ error: 'Unauthorized' });
-      if (client.panelToken !== token && process.env.ADMIN_TOKEN !== token)
-        return res.status(401).json({ error: 'Unauthorized' });
+      const isValid = (client.panelToken && token === client.panelToken) ||
+                      (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) ||
+                      (client.passwordHash && verifyPassword(token, client.passwordHash));
+      if (!isValid) return res.status(401).json({ error: 'Unauthorized' });
 
       const trialEnd = client.trial_end
         ? new Date(Number(client.trial_end) * 1000).toISOString()
         : null;
 
       return res.status(200).json({
+        hasPassword:        !!client.passwordHash,
         plan:               client.plan               || null,
         active:             client.active             || false,
         paymentStatus:      client.paymentStatus      || 'none',
@@ -530,7 +542,8 @@ function createPortalHandler({ redis: store } = {}) {
       if (!client) return res.status(404).json({ error: 'Client not found' });
 
       const isValidToken = (client.panelToken && token === client.panelToken) ||
-                           (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN);
+                           (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) ||
+                           (client.passwordHash && verifyPassword(token, client.passwordHash));
       if (!isValidToken)
         return res.status(401).json({ error: 'Unauthorized' });
 

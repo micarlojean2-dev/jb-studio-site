@@ -175,6 +175,20 @@
     </div>
   </div>
 
+  <!-- Crear Contraseña (Primer Acceso) -->
+  <div id="setup-password-view" style="display:none">
+    <div class="login-card">
+      <h2>🔐 Crea tu contraseña</h2>
+      <p style="color:var(--muted); font-size:13.5px; margin: 8px 0 16px;">
+        Establece una contraseña para entrar al panel de tu negocio directamente en el futuro sin necesidad del enlace largo.
+      </p>
+      <input class="login-inp" id="sp-pass1" type="password" placeholder="Nueva contraseña (mín. 6 caracteres)" style="margin-bottom: 10px;">
+      <input class="login-inp" id="sp-pass2" type="password" placeholder="Confirma tu contraseña" style="margin-bottom: 14px;">
+      <button class="login-go" id="sp-save-btn" onclick="savePasswordFromSetup()">Guardar contraseña y entrar</button>
+      <div class="login-err" id="sp-err" style="display:none"></div>
+    </div>
+  </div>
+
   <!-- Panel -->
   <div id="panel" style="display:none">
     <div class="hdr">
@@ -285,6 +299,8 @@
     document.getElementById('login-btn').disabled = true;
   }
 
+  var pendingSetupToken = '';
+
   window.addEventListener('DOMContentLoaded', function () {
     setPanelLanguage(panelLanguage);
     var frag = '';
@@ -292,9 +308,11 @@
       frag = decodeURIComponent(window.location.hash.replace(/^#t=/, ''));
       history.replaceState(null, '', window.location.pathname + window.location.search);
     }
-    if (frag) tryToken(frag);
-    else { var saved = localStorage.getItem(STORE_KEY); if (saved) tryToken(saved); }
+    if (frag) tryToken(frag, true);
+    else { var saved = localStorage.getItem(STORE_KEY); if (saved) tryToken(saved, false); }
     document.getElementById('token-inp').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+    var sp2 = document.getElementById('sp-pass2');
+    if (sp2) sp2.addEventListener('keydown', function (e) { if (e.key === 'Enter') savePasswordFromSetup(); });
   });
 
   function doLogin() {
@@ -303,7 +321,7 @@
     var b = document.getElementById('login-btn');
     b.disabled = true; b.textContent = tr('verifying');
     document.getElementById('login-err').style.display = 'none';
-    tryToken(t);
+    tryToken(t, false);
   }
 
   function fetchList(t) {
@@ -323,12 +341,18 @@
       });
   }
 
-  function tryToken(t) {
+  function tryToken(t, isFromHash) {
     Promise.all([fetchList(t), fetchActivity(t)])
       .then(function (results) {
         currentToken = t;
         localStorage.setItem(STORE_KEY, t);
-        showPanel(results[0], results[1].activities);
+
+        if (isFromHash && results[0] && results[0].hasPassword === false) {
+          pendingSetupToken = t;
+          showPasswordSetup();
+        } else {
+          showPanel(results[0], results[1].activities);
+        }
       })
       .catch(function (err) {
         localStorage.removeItem(STORE_KEY);
@@ -336,6 +360,56 @@
         b.disabled = false; b.textContent = tr('enter');
         if (err.message === 'unauthorized') document.getElementById('login-err').style.display = 'block';
       });
+  }
+
+  function showPasswordSetup() {
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('panel').style.display = 'none';
+    document.getElementById('setup-password-view').style.display = 'block';
+  }
+
+  function savePasswordFromSetup() {
+    var p1 = document.getElementById('sp-pass1').value;
+    var p2 = document.getElementById('sp-pass2').value;
+    var errEl = document.getElementById('sp-err');
+    errEl.style.display = 'none';
+
+    if (!p1 || p1.trim().length < 6) {
+      errEl.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+      errEl.style.display = 'block';
+      return;
+    }
+    if (p1 !== p2) {
+      errEl.textContent = 'Las contraseñas no coinciden.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    var btn = document.getElementById('sp-save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+
+    fetch(API + '/api/reservations-list?clientId=' + encodeURIComponent(clientId) + '&token=' + encodeURIComponent(pendingSetupToken) + '&scope=set_password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_password', newPassword: p1.trim() })
+    })
+    .then(function (r) {
+      if (!r.ok) throw new Error('Error al guardar contraseña');
+      return r.json();
+    })
+    .then(function () {
+      document.getElementById('setup-password-view').style.display = 'none';
+      currentToken = p1.trim();
+      localStorage.setItem(STORE_KEY, p1.trim());
+      tryToken(p1.trim(), false);
+    })
+    .catch(function (err) {
+      btn.disabled = false;
+      btn.textContent = 'Guardar contraseña y entrar';
+      errEl.textContent = err.message || 'Error al guardar la contraseña';
+      errEl.style.display = 'block';
+    });
   }
 
   function showPanel(data, activities) {
