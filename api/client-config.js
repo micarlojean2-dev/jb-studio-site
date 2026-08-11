@@ -521,15 +521,17 @@ function createPortalHandler({ redis: store } = {}) {
     const token     = req.headers['x-admin-token'];
     const { clientId } = req.body || {};
 
-    if (!process.env.ADMIN_TOKEN || token !== process.env.ADMIN_TOKEN)
-      return res.status(401).json({ error: 'Unauthorized' });
-
     if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
       return res.status(400).json({ error: 'Invalid clientId' });
 
     try {
       const client = await dataStore.get(`client:${clientId}`);
       if (!client) return res.status(404).json({ error: 'Client not found' });
+
+      const isValidToken = (client.panelToken && token === client.panelToken) ||
+                           (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN);
+      if (!isValidToken)
+        return res.status(401).json({ error: 'Unauthorized' });
 
       if (!client.stripeCustomerId)
         return res.status(400).json({ error: 'No Stripe customer found for this client' });
