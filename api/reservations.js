@@ -569,19 +569,28 @@ function validarReserva(client, fechaISO, horaISO, servicio, ahoraMs, reservas) 
       alternativa: pedido < primero[0] ? fmt(primero[0]) : null,
     };
   }
+
+  const interval = Number.isFinite(client.reservationIntervalMinutes) ? client.reservationIntervalMinutes : 15;
+
   if (occupiedDuration > 0 && pedido + occupiedDuration > dentro[1]) {
+    const rawMax = dentro[1] - occupiedDuration;
+    let alignedMax = null;
+    if (rawMax >= dentro[0]) {
+      const offset = rawMax - dentro[0];
+      const step = (interval > 0) ? Math.floor(offset / interval) * interval : offset;
+      alignedMax = dentro[0] + step;
+    }
     return {
       ok: false,
       motivo: 'no_cabe_antes_del_cierre',
       mensaje: 'Este servicio necesita más tiempo del que queda disponible ese día.',
-      alternativa: dentro[1] - occupiedDuration >= dentro[0] ? fmt(dentro[1] - occupiedDuration) : null,
+      alternativa: (alignedMax !== null && alignedMax >= dentro[0]) ? fmt(alignedMax) : null,
     };
   }
 
   // Starts are aligned with the business-defined booking interval rather than
   // an arbitrary frontend suggestion. This remains authoritative for curls,
   // email reschedules, and every chat surface.
-  const interval = Number.isFinite(client.reservationIntervalMinutes) ? client.reservationIntervalMinutes : 15;
   if (interval > 0 && (pedido - dentro[0]) % interval !== 0) {
     return { ok: false, motivo: 'intervalo_invalido', mensaje: 'Ese horario no coincide con los intervalos de reserva disponibles.' };
   }

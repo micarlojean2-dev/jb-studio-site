@@ -462,8 +462,8 @@ window.JBChatCore = (function () {
     }
     if (motivo === 'fuera_de_horario') {
       return en
-        ? (alt ? 'We are closed at that time. The earliest we open is ' + alt + '.' : 'We are closed at that time. Tell me another time and I will check.')
-        : (alt ? 'En ese horario ya estamos cerrados. Abrimos desde las ' + alt + '.' : 'En ese horario ya estamos cerrados. Dime otra hora y reviso.');
+        ? (alt ? 'We are closed at that time. The earliest we open is ' + alt + ' 🕒' : 'We are closed at that time 🕒 Tell me another time and I will check 😊')
+        : (alt ? 'En ese horario ya estamos cerrados. Abrimos desde las ' + alt + ' 🕒' : 'En ese horario ya estamos cerrados 🕒 Dime otra hora y reviso 😊');
     }
     if (motivo === 'no_cabe_antes_del_cierre') {
       return en
