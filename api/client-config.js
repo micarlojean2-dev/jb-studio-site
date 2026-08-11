@@ -628,9 +628,10 @@ export default async function handler(req, res) {
     const ownerEmail = req.query?.email || req.query?.ownerEmail || 'mikestandlyjeanbaptiste@gmail.com';
     const client = await redis.get(`client:${clientId}`);
     if (client) {
+      client.active = true;
       client.ownerEmail = ownerEmail;
       await redis.set(`client:${clientId}`, client);
-      return res.status(200).json({ ok: true, clientId, ownerEmail });
+      return res.status(200).json({ ok: true, clientId, ownerEmail, active: true });
     }
     return res.status(404).json({ error: 'Client not found' });
   }
