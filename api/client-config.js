@@ -367,6 +367,16 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
+function authorized(token, client) {
+  if (!token) return false;
+  if (client.panelToken && token === client.panelToken) return true;
+  if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) return true;
+  const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
+  if (testBypassSecret !== '' && token === testBypassSecret) return true;
+  if (client.passwordHash && verifyPassword(token, client.passwordHash)) return true;
+  return false;
+}
+
 export function createReservationsListApiHandler({ redis: store } = {}) {
   const dataStore = store || redis;
   return async function handler(req, res) {
@@ -380,16 +390,6 @@ export function createReservationsListApiHandler({ redis: store } = {}) {
 
     if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
       return res.status(400).json({ error: 'Invalid clientId' });
-
-    function authorized(token, client) {
-      if (!token) return false;
-      if (client.panelToken && token === client.panelToken) return true;
-      if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) return true;
-      const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
-      if (testBypassSecret !== '' && token === testBypassSecret) return true;
-      if (client.passwordHash && verifyPassword(token, client.passwordHash)) return true;
-      return false;
-    }
 
     try {
       const client = await dataStore.get(`client:${clientId}`);
