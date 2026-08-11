@@ -254,7 +254,7 @@ console.log('7. lib/reservation-emails.js — correos bilingües (customer en el
   const customerMail = sentSubjects.find((s) => s.to === 'mike@example.com');
   const ownerMail = sentSubjects.find((s) => s.to === 'owner@x.com');
   ok(customerMail.subject.includes('reservation confirmed'), 'asunto del cliente en inglés (idioma de SU reserva)');
-  ok(ownerMail.subject.includes('reserva confirmada'), 'asunto del dueño en español (idioma del NEGOCIO), aunque el cliente reservó en inglés');
+  ok(ownerMail.subject.includes('Tienes una nueva reserva'), 'asunto del dueño en español (idioma del NEGOCIO), aunque el cliente reservó en inglés');
   ok(customerMail.html.includes('Reservation confirmed'), 'cuerpo del cliente en inglés');
   ok(ownerMail.html.includes('Reserva confirmada') || ownerMail.html.includes('Teléfono:'), 'cuerpo del dueño en español');
 }
