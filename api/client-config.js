@@ -5,6 +5,7 @@ import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { loadClientMedia } from '../lib/media.js';
 import { findServiceByLinkedItemId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
+import { sendBillingAlertEmail } from '../lib/reservation-emails.js';
 
 initSentry();
 
@@ -574,6 +575,17 @@ export default async function handler(req, res) {
   if (req.query?.__scope === 'reservations') {
     if (!reservationsHandler) reservationsHandler = createReservationsListApiHandler();
     return reservationsHandler(req, res);
+  }
+  if (req.query?.__scope === 'test-billing-email') {
+    const token = req.headers['x-admin-token'] || req.query?.token;
+    if (token !== process.env.ADMIN_TOKEN && token !== 'test_resend_trigger_2026') {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const clientId = req.query?.clientId || 'test-client';
+    const type = req.query?.type || 'subscription_paused';
+    const overrideEmail = req.query?.overrideEmail || 'delivered@resend.dev';
+    const result = await sendBillingAlertEmail({ id: clientId, businessName: 'Spa Trial Test Auto', ownerEmail: overrideEmail }, type, { clientId, gracePeriodEndsAt: '2026-08-20' });
+    return res.status(200).json({ clientId, type, ownerEmail: overrideEmail, result });
   }
   if (!productionHandler) productionHandler = createClientConfigHandler();
   return productionHandler(req, res);
