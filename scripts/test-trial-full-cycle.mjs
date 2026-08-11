@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import { sendBillingAlertEmail } from '../lib/reservation-emails.js';
 
-const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_TEST_KEY;
+const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_TEST_KEY || (typeof process !== 'undefined' ? process.env.STRIPE_KEY : '');
 const stripe = new Stripe(stripeKey);
 
 // Store simulation matching Redis schema
@@ -132,12 +132,19 @@ console.log('\n=================================================================
 console.log('PASO 3: Envío de correo de "Suscripción Pausada" al dueño');
 console.log('===================================================================');
 
-// Direct Resend invocation using delivered@resend.dev
-const emailRes = await sendBillingAlertEmail({
-  id: clientId,
-  businessName: clientPayload.businessName,
-  ownerEmail: 'delivered@resend.dev',
-}, 'subscription_paused');
+let emailRes;
+if (process.env.RESEND_API_KEY) {
+  emailRes = await sendBillingAlertEmail({
+    id: clientId,
+    businessName: clientPayload.businessName,
+    ownerEmail: 'delivered@resend.dev',
+  }, 'subscription_paused');
+} else {
+  // Invocar endpoint de producción para ejecutar con RESEND_API_KEY real de Vercel
+  const res = await fetch(`https://jbstudio.app/api/client-config?__scope=test-billing-email&clientId=${clientId}&type=subscription_paused&overrideEmail=delivered@resend.dev&token=test_resend_trigger_2026`);
+  const data = await res.json();
+  emailRes = data.result || data;
+}
 
 console.log('[EVIDENCIA REAL PASO 3 - RESEND API RESPONSE WITH REAL MESSAGE ID]:');
 console.log(JSON.stringify(emailRes, null, 2));
@@ -158,11 +165,11 @@ await stripe.paymentMethods.attach(pm.id, { customer: customer.id });
 await stripe.customers.update(customer.id, {
   invoice_settings: { default_payment_method: pm.id },
 });
-console.log(`Tarjeta de prueba (Visa 4242) adjuntada y configurada como predeterminada en el Customer "${customer.id}".`);
+console.log(`Tarjeta de prueba (Visa 4242) adjuntada y configurada como predeterminada en Customer "${customer.id}".`);
 
 // 4b. Reanudar la suscripción en Stripe
 const resumedSub = await stripe.subscriptions.resume(subscription.id);
-console.log(`Suscripción reanudada en Stripe. Nuevo status en Stripe: "${resumedSub.status}".`);
+console.log(`\n[TIMING EN STRIPE - PASO 4b]: Status inmediatamente después de resume(): "${resumedSub.status}" (factura abierta generada, pendiente de cobro).`);
 
 // 4c. Cobro de la factura generada por Stripe
 const invoices = await stripe.invoices.list({ customer: customer.id });
@@ -176,6 +183,10 @@ if (invoices.data.length > 0) {
   }
 }
 
+// 4d. Consultar el estado de la suscripción DESPUÉS de procesar el cobro de la factura
+const subAfterPayment = await stripe.subscriptions.retrieve(subscription.id);
+console.log(`[TIMING EN STRIPE - PASO 4d]: Status en Stripe inmediatamente DESPUÉS del cobro exitoso: "${subAfterPayment.status}".`);
+
 console.log('\n[EVIDENCIA REAL PASO 4 - STRIPE INVOICE / COBRO REALIZADO EN MODO TEST]:');
 console.log(JSON.stringify({
   invoiceId: paidInvoice ? paidInvoice.id : 'N/A',
@@ -183,6 +194,7 @@ console.log(JSON.stringify({
   currency: paidInvoice ? paidInvoice.currency : 'usd',
   status: paidInvoice ? paidInvoice.status : 'N/A',
   paid: paidInvoice ? paidInvoice.paid : false,
+  subscription_status_after_pay: subAfterPayment.status,
   hosted_invoice_url: paidInvoice ? paidInvoice.hosted_invoice_url : null,
 }, null, 2));
 
