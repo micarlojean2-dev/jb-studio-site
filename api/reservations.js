@@ -931,7 +931,8 @@ export default async function handler(req, res) {
   const urlObj = new URL(req.url || '', 'https://jbstudio.app');
   const queryBypass = req.body?.__bypass || req.query?.__bypass || urlObj.searchParams.get('__bypass');
   const headerVal = (req.headers['x-test-bypass'] || '').trim();
-  const isTestBypass = queryBypass === 'test_bypass_secret_2026' || headerVal === 'test_bypass_secret_2026' || (!!process.env.TEST_BYPASS_SECRET && headerVal === process.env.TEST_BYPASS_SECRET);
+  const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
+  const isTestBypass = testBypassSecret !== '' && (queryBypass === testBypassSecret || headerVal === testBypassSecret);
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
   if (!isTestBypass && !checkRateLimit(ip))

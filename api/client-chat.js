@@ -39,7 +39,7 @@ function maybeCleanup() {
 
 // ── Provider config ────────────────────────────────────────────────────────
 function getProvider(req) {
-  const testBypassSecret = process.env.TEST_BYPASS_SECRET || 'test_bypass_secret_2026';
+  const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
   const isTestBypass = testBypassSecret !== '' && req?.headers?.['x-test-bypass'] === testBypassSecret;
   if (isTestBypass && req?.headers?.['x-test-provider']) {
     return String(req.headers['x-test-provider']).toLowerCase();
@@ -740,7 +740,8 @@ export default async function handler(req, res) {
   maybeCleanup();
   const queryBypass = req.query?.__bypass || (req.url && new URL(req.url, 'https://jbstudio.app').searchParams.get('__bypass'));
   const headerVal = (req.headers['x-test-bypass'] || '').trim();
-  const isTestBypass = queryBypass === 'test_bypass_secret_2026' || headerVal === 'test_bypass_secret_2026' || (!!process.env.TEST_BYPASS_SECRET && headerVal === process.env.TEST_BYPASS_SECRET);
+  const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
+  const isTestBypass = testBypassSecret !== '' && (queryBypass === testBypassSecret || headerVal === testBypassSecret);
   if (!isTestBypass && !checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
 

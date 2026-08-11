@@ -385,8 +385,8 @@ export function createReservationsListApiHandler({ redis: store } = {}) {
       if (!token) return false;
       if (client.panelToken && token === client.panelToken) return true;
       if (process.env.ADMIN_TOKEN && token === process.env.ADMIN_TOKEN) return true;
-      const testBypassSecret = process.env.TEST_BYPASS_SECRET || 'test_bypass_secret_2026';
-      if (testBypassSecret && token === testBypassSecret) return true;
+      const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
+      if (testBypassSecret !== '' && token === testBypassSecret) return true;
       if (client.passwordHash && verifyPassword(token, client.passwordHash)) return true;
       return false;
     }
