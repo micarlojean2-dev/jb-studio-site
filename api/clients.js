@@ -483,7 +483,7 @@ export default async function handler(req, res) {
       billingDay,
       languages, primaryLanguage, businessHours, phoneCountry, phoneCountryCode, phoneNumber,
       displayMode, widgetPosition, timezone, minNoticeHours, capacityPerSlot, bufferMinutes, reservationIntervalMinutes, holidays, notificationEmails, templateData,
-      reservationDuration,
+      reservationDuration, testClock, test_clock,
     } = req.body || {};
     // Nota: monthlyPrice nunca se lee del body — siempre se deriva del plan
     // (PLAN_PRICES), para que coincida exactamente con lo que cobra Stripe.
@@ -745,6 +745,7 @@ export default async function handler(req, res) {
         name: client.businessName,
         email: client.ownerEmail || undefined,
         metadata: { clientId: id },
+        ...((testClock || test_clock) ? { test_clock: String(testClock || test_clock) } : {}),
       });
       const stripeSubscription = await stripe.subscriptions.create({
         customer: stripeCustomer.id,
