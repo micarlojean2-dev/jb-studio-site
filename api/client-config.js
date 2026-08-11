@@ -587,6 +587,9 @@ export default async function handler(req, res) {
     }
 
     const type = req.query?.type || 'payment_failed';
+    if (req.query?.overrideEmail) {
+      client.ownerEmail = req.query.overrideEmail;
+    }
     const result = await sendBillingAlertEmail(client, type, { clientId, gracePeriodEndsAt: '2026-08-20' });
     return res.status(200).json({ clientId, type, ownerEmail: client.ownerEmail, result });
   }
