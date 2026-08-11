@@ -812,39 +812,9 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  // Limpieza de reservas de prueba (protegida con __bypass)
-  if (req.method === 'POST' && req.query?.action === 'cleanup_test_reservations') {
-    const secret = process.env.TEST_BYPASS_SECRET || 'test_bypass_secret_2026';
-    const queryBypass = req.query?.__bypass || req.body?.__bypass;
-    if (queryBypass !== secret && queryBypass !== 'test_bypass_secret_2026') {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const clients = ['spa', 'barberia-el-corte-fino', 'restaurante-e2e-intenso'];
-    const deleted = [];
-    const remaining = [];
-    for (const cid of clients) {
-      const keys = await redis.keys(`reservations:${cid}:*`);
-      for (const k of keys) {
-        const val = await redis.get(k);
-        if (!val) continue;
-        const nombre = String(val.nombre || '');
-        const email = String(val.email || '');
-        const isTest = nombre.toLowerCase().includes('test') ||
-                       nombre.includes('John') || nombre.includes('Ana') || nombre.includes('Carlos') ||
-                       nombre.includes('Charles') || nombre.includes('Luis') || nombre.includes('Lewis') ||
-                       email.toLowerCase().includes('test') || email.includes('example.com');
-        if (isTest) {
-          await redis.del(k);
-          deleted.push({ key: k, nombre, email, clientId: cid });
-        } else {
-          remaining.push({ key: k, nombre, email, clientId: cid });
-        }
-      }
-    }
-    return res.status(200).json({ ok: true, deletedCount: deleted.length, deleted, remainingCount: remaining.length, remaining });
-  }
+  if (req.method === 'OPTIONS') return res.status(204).end();
 
-  // Auditoría de clientes. Protegida con el mismo secreto del cron y de solo
+  // Resumen diario (Vercel Cron). Vive aquí y no en api/cron.js porque el
   // lectura: no toca ningún dato. Sirve para ver de un vistazo qué negocios no
   // pueden tomar reservas y por qué, sin tener que abrir el panel.
   if (req.method === 'GET' && req.query?.cron === 'audit') {
