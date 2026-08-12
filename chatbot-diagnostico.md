@@ -13,6 +13,7 @@ Documentación técnica y diagnóstico actualizado del chatbot conversacional de
 - [4. Integración en frontend (`widget.js` / `asistente.html`)](#4-integración-en-frontend-widgetjs--asistentehtml)
 - [5. Backend de autoridad y reservación (`api/reservations.js` / `chat-core.js`)](#5-backend-de-autoridad-y-reservación-apireservationsjs--chat-corejs)
 - [6. Cambios recientes (registro)](#6-cambios-recientes-registro)
+- [7. Panel admin — creación de cliente nuevo](#7-panel-admin--creación-de-cliente-nuevo)
 
 ---
 
@@ -295,3 +296,179 @@ El código de backend mantiene la autoridad absoluta sobre la reserva:
   - Implementación de un reintento único hacia OpenAI en `callProvider()` de `api/client-chat.js` ante fallos de parseo/esquema antes de degradar.
   - Registro enriquecido con el texto crudo del modelo en `console.error` y `captureApiException`.
   - Adición del bloque de pruebas 8 en `test/message-interpreter.test.mjs` para verificar la recuperación de JSON roto.
+
+---
+
+## 7. Panel admin — creación de cliente nuevo
+
+### 7.1 Código del formulario creador de clientes (`admin.html`)
+
+El creador de chatbots/clientes en el panel de administración (`admin.html`) opera mediante un wizard interactivo (`<template id="legacy-wizard">`) disparado por el botón `open-spa-creator-btn`.
+
+#### Código real del formulario del negocio en `admin.html`:
+
+```html
+  2775	          <!-- ── Sección: Negocio ── -->
+  2776	          <div class="wizard-step" data-step="1">
+  2777	            <div class="ws-section-header"><span class="wizard-step-title">Negocio</span><span class="ws-section-badge" data-badge-for="1"></span></div>
+  2778	            <div class="wizard-step-sub">Esta información se usará para personalizar el chatbot.</div>
+  2779	            <div class="wizard-grid-2">
+  2780	              <div class="form-group">
+  2781	                <label>Nombre del negocio</label>
+  2782	                <input type="text" id="w-b-name" class="admin-input" placeholder="Barbería López">
+  2783	              </div>
+  2784	              <div class="form-group">
+  2785	                <label>Tipo de negocio</label>
+  2786	                <select id="w-b-type" class="admin-input">
+  2787	                  <option value="">Selecciona un tipo</option>
+  2788	                  <option>Barbería</option>
+  2789	                  <option>Restaurante</option>
+  2790	                  <option>Salón de belleza</option>
+  2791	                  <option>Spa</option>
+  2792	                  <option>Uñas</option>
+  2793	                  <option>Fotografía</option>
+  2794	                  <option>Entrenador personal</option>
+  2795	                  <option>Taller mecánico</option>
+  2796	                  <option>Clínica</option>
+  2797	                  <option>Hotel</option>
+  2798	                  <option>Otro</option>
+  2799	                </select>
+  2800	              </div>
+  2801	              <div class="form-group">
+  2802	                <label>Plan</label>
+  2803	                <select id="w-b-plan" class="admin-input">
+  2804	                  <option value="basic">Básico</option>
+  2805	                  <option value="pro">Pro</option>
+  2806	                </select>
+  2807	              </div>
+  2808	              <div class="form-group">
+  2809	                <label>Dirección</label>
+  2810	                <input type="text" id="w-b-address" class="admin-input" placeholder="Av. Principal 123">
+  2811	              </div>
+  2812	              <div class="form-group">
+  2813	                <label>Correo del dueño</label>
+  2814	                <input type="email" id="w-b-email" class="admin-input" placeholder="owner@negocio.com">
+  2815	              </div>
+  2816	              <div class="form-group">
+  2817	                <label>Teléfono <span>(opcional)</span></label>
+  2818	                <div class="phone-row">
+  2819	                  <select id="w-b-phone-country" class="admin-input phone-country-select"></select>
+  2820	                  <input type="tel" id="w-b-phone-number" class="admin-input" placeholder="912345678" style="flex:1">
+  2821	                </div>
+  2822	              </div>
+  2823	            </div>
+  2824	
+  2825	            <div class="form-group" style="margin-top:6px">
+  2826	              <label>Idiomas del chatbot</label>
+  2827	              <div class="lang-chip-row" id="w-b-lang-chips"></div>
+  2828	            </div>
+  2829	            <div class="form-group" style="max-width:260px">
+  2830	              <label>Idioma principal</label>
+  2831	              <select id="w-b-primary-lang" class="admin-input"></select>
+  2832	            </div>
+```
+
+---
+
+### 7.2 Selectores e IDs exactos para automatización de pruebas
+
+- **Nombre del negocio**: `#w-b-name` (`input[type="text"]`)
+- **Tipo de negocio (template)**: `#w-b-type` (`select` con opciones: `Barbería`, `Restaurante`, `Salón de belleza`, `Spa`, `Uñas`, `Fotografía`, `Entrenador personal`, `Taller mecánico`, `Clínica`, `Hotel`, `Otro`)
+- **Plan**: `#w-b-plan` (`select` con opciones: `basic`, `pro`)
+- **Dirección**: `#w-b-address` (`input[type="text"]`)
+- **Correo del dueño**: `#w-b-email` (`input[type="email"]`)
+- **Teléfono**: `#w-b-phone-number` (`input[type="tel"]`) y `#w-b-phone-country` (`select`)
+- **Botón de Crear/Guardar**: `#wizard-create-btn` (`button.action-btn`) (Formulario legacy alternativo: `#create-btn`)
+
+---
+
+### 7.3 Flujo tras la creación y elemento del Client ID
+
+1. Al presionar `#wizard-create-btn`, el frontend ejecuta `POST /api/generate-client-config` enviando la configuración del negocio.
+2. El servidor responde con la configuración creada y su `clientId` único (ej: `barberia-lopez-83`).
+3. La interfaz conmuta automáticamente al paso de éxito (`.wizard-step[data-step="success"]`).
+
+#### Código real de la pantalla de éxito en `admin.html`:
+
+```html
+  2982	          <!-- ── Éxito (Fase 3) ── -->
+  2983	          <div class="wizard-step" data-step="success" style="display:none">
+  2984	            <div class="wizard-step-title">CHATBOT CREADO</div>
+  2985	            <div style="margin:18px 0 26px;">
+  2986	              <div class="summary-row"><span>Nombre</span><span id="w-success-name"></span></div>
+  2987	              <div class="summary-row"><span>Estado</span><span class="st-badge st-yellow">Pendiente de pago</span></div>
+  2988	            </div>
+  2989	            <div style="display:flex;flex-direction:column;gap:12px;">
+  2990	              <a id="w-success-try" class="action-btn" style="margin-top:0;text-align:center;text-decoration:none;display:block;" target="_blank" rel="noopener noreferrer">Probar chatbot</a>
+  2991	              <button type="button" id="w-success-copy" class="wizard-btn-secondary">Copiar enlace</button>
+  2992	              <button type="button" id="w-success-install-toggle" class="wizard-btn-secondary">Instalar en una web</button>
+  2993	              <div id="w-success-install-panel" style="display:none;">
+  2994	                <div class="snippet-box" id="w-success-snippet" style="word-break:break-all;"></div>
+  2995	                <button type="button" id="w-success-install-copy" class="copy-link" style="margin-top:8px;">Copiar código</button>
+  2996	              </div>
+  2997	              <a id="w-success-reservas" class="wizard-btn-secondary" style="text-align:center;text-decoration:none;display:block;" target="_blank" rel="noopener noreferrer">Ver panel de reservas</a>
+  2998	              <button type="button" id="w-success-back" class="wizard-btn-secondary">Volver a clientes</button>
+  2999	            </div>
+  3000	          </div>
+```
+
+- **Ubicación del `clientId` en la interfaz**:
+  - Enlace "Probar chatbot": `<a id="w-success-try">` (atributo `href` contiene `/asistente.html?id=<clientId>`).
+  - Enlace "Ver panel de reservas": `<a id="w-success-reservas">` (atributo `href` contiene `/reservas.html?id=<clientId>#t=<token>`).
+  - Contenedor del snippet de código: `<div id="w-success-snippet">` (contiene el parámetro `id="<clientId>"`).
+
+---
+
+### 7.4 Vista de agenda de reservas del dueño (`reservas.html`)
+
+Para confirmar visualmente que una reserva ha quedado creada y guardada en Redis, se utiliza el panel de reservas ([`reservas.html`](file:///Users/mike/jb-studio-site/reservas.html)).
+
+#### Código real del listado y resumen de agenda en `reservas.html`:
+
+```html
+   210	      <section class="agenda-intro" aria-labelledby="agenda-title">
+   211	        <div>
+   212	          <div class="eyebrow" data-i18n="businessSchedule">Agenda del negocio</div>
+   213	          <h1 id="agenda-title" data-i18n="myAppointments">Tus citas</h1>
+   214	          <div class="sub" id="count">—</div>
+   215	        </div>
+   216	        <div class="agenda-live" data-i18n="autoRefresh">Actualización automática</div>
+   217	      </section>
+   218	
+   219	      <section class="summary-grid" aria-label="Schedule summary">
+   220	        <article class="summary-card is-today"><span class="summary-value" id="summary-today">0</span><span class="summary-label" data-i18n="todayAppointments">Citas de hoy</span></article>
+   221	        <article class="summary-card is-upcoming"><span class="summary-value" id="summary-upcoming">0</span><span class="summary-label" data-i18n="upcomingAppointments">Próximas citas</span></article>
+   222	        <article class="summary-card is-rescheduled"><span class="summary-value" id="summary-rescheduled">0</span><span class="summary-label" data-i18n="rescheduled">Reprogramadas</span></article>
+   223	        <article class="summary-card is-cancelled"><span class="summary-value" id="summary-cancelled">0</span><span class="summary-label" data-i18n="cancelled">Canceladas</span></article>
+   224	      </section>
+   225	
+   226	      <section aria-labelledby="list-title">
+   227	        <div class="agenda-list-header">
+   228	          <h2 id="list-title" data-i18n="schedule">Agenda</h2>
+   229	          <div class="filters">
+   230	            <button class="filter-btn" data-f="todas" onclick="setFilter('todas',this)" data-i18n="all">Todas</button>
+   231	            <button class="filter-btn active" data-f="proximas" onclick="setFilter('proximas',this)" data-i18n="upcoming">Próximas</button>
+   232	            <button class="filter-btn" data-f="hoy" onclick="setFilter('hoy',this)" data-i18n="todayFilter">Hoy</button>
+   233	            <button class="filter-btn" data-f="manana" onclick="setFilter('manana',this)" data-i18n="tomorrowFilter">Mañana</button>
+   234	            <button class="filter-btn" data-f="pasadas" onclick="setFilter('pasadas',this)" data-i18n="pastFilter">Pasadas</button>
+   235	            <button class="filter-btn" data-f="canceladas" onclick="setFilter('canceladas',this)" data-i18n="cancelled">Canceladas</button>
+   236	          </div>
+   237	        </div>
+   238	        <div class="sheet" id="sheet"></div>
+   239	      </section>
+   240	      <div class="updated" id="updated"></div>
+   241	
+   242	      <section class="activity" aria-labelledby="activity-title">
+   243	        <div class="activity-head"><h2 id="activity-title" data-i18n="recentActivity">Actividad reciente</h2><p data-i18n="latestChanges">Últimos cambios</p></div>
+   244	        <div class="activity-list" id="activity-list"></div>
+   245	      </section>
+```
+
+#### IDs/Selectores clave para verificación visual de reservas:
+- **Contenedor principal de la lista/tabla de citas**: `div#sheet` (`.sheet`)
+- **Contador total de citas**: `div#count`
+- **Contador de próximas citas**: `span#summary-upcoming`
+- **Contador de citas de hoy**: `span#summary-today`
+- **Lista de actividad reciente (auditoría)**: `div#activity-list`
+- **Filtros de estado de agenda**: `button.filter-btn[data-f="proximas"]`, `button.filter-btn[data-f="todas"]`
+
