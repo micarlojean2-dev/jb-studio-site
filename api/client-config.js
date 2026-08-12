@@ -348,9 +348,13 @@ function createHealthHandler({ redis } = {}) {
       captureApiException(err, { feature: 'redis', route: '/api/health' });
     }
 
-    if (!redisUp) return res.status(503).json({ ok: false, services: { app: 'up', redis: 'down' } });
+    const timestamp = new Date().toISOString();
     if (req.method === 'HEAD') return res.status(200).end();
-    return res.status(200).json({ ok: true, services: { app: 'up', redis: 'up' } });
+    if (redisUp) {
+      return res.status(200).json({ status: 'ok', timestamp });
+    } else {
+      return res.status(200).json({ status: 'degraded', timestamp });
+    }
   };
 }
 
