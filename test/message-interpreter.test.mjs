@@ -229,7 +229,7 @@ console.log('\n7. api/client-chat.js — una sola llamada al modelo, en TODO tur
     'ya no existe el bloqueo de ETAPA 1 que solo pedía structured fuera de booking activo');
   ok(/catch \(err\) \{[\s\S]{0,700}interpretation = emptyInterpretation\(\);/.test(clientChat),
     'si el JSON del modelo no valida, se degrada a emptyInterpretation() en vez de propagar un valor a medio validar');
-  ok(/const fallback = provider === 'deepseek'[\s\S]{0,200}await callDeepSeek\(messages, systemPrompt, 600\)/.test(clientChat),
+  ok(/const fallback = await callOpenAI\(messages, systemPrompt, 600\);/.test(clientChat),
     'ante fallo de interpretación, UNA llamada de respaldo en texto plano (nunca se deja al cliente sin respuesta)');
   ok(!clientChat.includes("app.post('/api/message-interpreter'") && !clientChat.includes('interpret-message'),
     'no se creó ningún endpoint serverless nuevo (reutiliza /api/client-chat, límite de 12 funciones de Vercel)');

@@ -37,35 +37,13 @@ function maybeCleanup() {
   for (const [ip, d] of ipStore) if (d.ts < cutoff) ipStore.delete(ip);
 }
 
-// ── Provider config ────────────────────────────────────────────────────────
-function getProvider(req) {
-  const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
-  const isTestBypass = testBypassSecret !== '' && req?.headers?.['x-test-bypass'] === testBypassSecret;
-  if (isTestBypass && req?.headers?.['x-test-provider']) {
-    return String(req.headers['x-test-provider']).toLowerCase();
-  }
-  return (process.env.CLIENT_CHAT_PROVIDER || 'anthropic').toLowerCase();
+// ── Provider config (OpenAI gpt-4o-mini) ──────────────────────────────────
+function getProvider() {
+  return 'openai';
 }
 
-// DeepSeek retired 'deepseek-chat': its API now only accepts deepseek-v4-flash
-// / deepseek-v4-pro and 400s on the old name, which made every chat 500 in
-// production. Map the dead name (and an empty default) to the current flash
-// model so a stale DEEPSEEK_MODEL env never breaks the assistant. [BUG-MODEL]
-const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-flash';
-export function resolveDeepseekModel(configured) {
-  if (!configured || /^deepseek-chat$/i.test(String(configured).trim())) return DEEPSEEK_DEFAULT_MODEL;
-  return configured;
-}
-
-function getModel(req) {
-  const provider = getProvider(req);
-  if (provider === 'deepseek') {
-    return resolveDeepseekModel(process.env.DEEPSEEK_MODEL);
-  }
-  if (provider === 'openai') {
-    return process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  }
-  return process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+function getModel() {
+  return process.env.OPENAI_MODEL || 'gpt-4o-mini';
 }
 
 // ── Build system prompt with injected context ──────────────────────────────
@@ -566,78 +544,6 @@ ${isEnglish ? personalityHeaderEn(day, date, time, tz) : personalityHeaderEs(day
   return header + (businessInfo ? `${businessInfo}\n` : '') + effectiveBasePrompt + restaurantRules + toneRules + catalogRules + mediaRules + (hasLanguageChoice(client) ? `\n${langDirective}\n` : '');
 }
 
-// ── DeepSeek call (OpenAI-compatible) ──────────────────────────────────────
-// `responseFormat` es opcional: solo lo manda el turno de interpretación
-// (ver runInterpretedChat). El resto de llamadas (chat normal, turno de
-// reserva en curso) no lo pasan y el body queda exactamente igual que antes
-// de esta migración.
-async function callDeepSeek(messages, systemPrompt, maxTokens, responseFormat, temperature) {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) throw new Error('DEEPSEEK_API_KEY not configured');
-
-  const model = getModel();
-  const body = {
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      ...messages.slice(-50),
-    ],
-    max_tokens: maxTokens || 300,
-    temperature: temperature !== undefined ? temperature : 0.7,
-  };
-  if (responseFormat) {
-    body.response_format = responseFormat;
-    // deepseek-v4-flash (el modelo real, ver resolveDeepseekModel) razona
-    // internamente antes de responder y esos tokens de razonamiento SALEN
-    // del mismo max_tokens que la respuesta visible — comprobado en vivo:
-    // "mañana después del trabajo" gastó sus 500 tokens completos en
-    // razonamiento (reasoning_tokens:500, finish_reason:"length",
-    // content:"") tanto con temperature 0.7 como 0, dejando el JSON
-    // truncado y degradando a intent:"unknown" sin que hubiera ningún
-    // problema real de clasificación.
-    // reasoning_effort probado en vivo, las 3 opciones, mismo prompt, mismo
-    // max_tokens=500, batería de 32 mensajes (scripts/interpreter-battery.mjs):
-    //   (sin fijarlo, razonamiento normal): igual que el bug original —
-    //     varios casos agotan los 500 tokens SOLO en razonamiento
-    //     (reasoning_tokens:500, finish_reason:"length", content:"").
-    //   'minimal'/'low': NO es un punto medio estable — el consumo de
-    //     razonamiento salta de ~60 a 500 tokens de forma impredecible
-    //     entre mensajes simples sin relación alguna (7/32 truncamientos en
-    //     una corrida, peor que 'none').
-    //   'none': el más predecible con diferencia (consumo bajo y estable
-    //     en toda la batería) — su único fallo reproducible (3/3) es el
-    //     caso contextual más difícil ("no, manicura" corrigiendo el
-    //     servicio dentro de una reserva activa), donde responde en blanco
-    //     (20 tokens de solo espacios) en vez de JSON. Eso NO es un falso
-    //     positivo: sanitizeInterpretation() lo trata como JSON inválido y
-    //     degrada a intent:"unknown" (fail-closed, ver más abajo) más una
-    //     llamada de respaldo en texto plano — el cliente nunca se queda
-    //     sin respuesta, solo no arranca el flujo estructurado en ese turno
-    //     exacto. Entre "estable con un fallo raro que degrada seguro" y
-    //     "impredecible en casos simples", se eligió 'none'.
-    // [Corrección de inestabilidad de intent]
-    body.reasoning_effort = 'none';
-  }
-
-  const baseUrl = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '');
-  const upstream = await fetch(baseUrl + '/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!upstream.ok) {
-    const errBody = await upstream.text().catch(() => '');
-    console.error(`[api/client-chat] DeepSeek ${upstream.status}: ${errBody}`);
-    throw new Error(`DeepSeek API error: ${upstream.status}`);
-  }
-
-  return await upstream.json();
-}
-
 // ── OpenAI call (GPT-4o-mini) ──────────────────────────────────────────────
 async function callOpenAI(messages, systemPrompt, maxTokens, responseFormat, temperature) {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -671,41 +577,6 @@ async function callOpenAI(messages, systemPrompt, maxTokens, responseFormat, tem
     const errBody = await upstream.text().catch(() => '');
     console.error(`[api/client-chat] OpenAI ${upstream.status}: ${errBody}`);
     throw new Error(`OpenAI API error: ${upstream.status}`);
-  }
-
-  return await upstream.json();
-}
-
-// ── Anthropic call ─────────────────────────────────────────────────────────
-// `outputConfig` es opcional: solo lo manda el turno de interpretación (ver
-// runInterpretedChat). Sin él, el body es idéntico al de antes de esta
-// migración — el turno de reserva en curso (askBookingTurn) nunca lo pasa.
-async function callAnthropic(messages, systemPrompt, maxTokens, outputConfig, temperature) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
-
-  const model = getModel();
-  const body = {
-    model,
-    max_tokens: maxTokens || 300,
-    system: systemPrompt,
-    messages: messages.slice(-50),
-  };
-  if (outputConfig) body.output_config = outputConfig;
-  if (temperature !== undefined) body.temperature = temperature;
-  const upstream = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!upstream.ok) {
-    console.error(`[api/client-chat] Anthropic ${upstream.status}`);
-    throw new Error('Anthropic API error');
   }
 
   return await upstream.json();
@@ -988,23 +859,14 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
   const interpreterPrompt = structured ? systemPrompt + buildInterpreterInstructions(structured.activeLanguage) : systemPrompt;
   const maxTokens = structured ? (structured.bookingActive ? BOOKING_TURN_MAX_TOKENS : INTERPRETER_MAX_TOKENS) : 600;
   const temperature = structured ? (structured.bookingActive ? BOOKING_TURN_TEMPERATURE : INTERPRETER_TEMPERATURE) : undefined;
-  const data = provider === 'deepseek'
-    ? await callDeepSeek(messages, interpreterPrompt, maxTokens, structured ? deepseekResponseFormat() : undefined, temperature)
-    : provider === 'openai'
-    ? await callOpenAI(messages, interpreterPrompt, maxTokens, structured ? deepseekResponseFormat() : undefined, temperature)
-    : await callAnthropic(messages, interpreterPrompt, maxTokens, structured ? interpreterOutputConfig() : undefined, temperature);
+  const data = await callOpenAI(messages, interpreterPrompt, maxTokens, structured ? deepseekResponseFormat() : undefined, temperature);
 
-  let text = '';
-  if (provider === 'deepseek' || provider === 'openai') {
-    text = data.choices?.[0]?.message?.content || '';
-  } else {
-    text = data.content?.[0]?.text || '';
-  }
+  let text = data.choices?.[0]?.message?.content || '';
 
-  const inputTokens = data.usage?.input_tokens || data.usage?.prompt_tokens || 0;
-  const outputTokens = data.usage?.output_tokens || data.usage?.completion_tokens || 0;
-  const costPer1kInput = provider === 'deepseek' ? 0.00014 : provider === 'openai' ? 0.00015 : 0.00080;
-  const costPer1kOutput = provider === 'deepseek' ? 0.00028 : provider === 'openai' ? 0.00060 : 0.00400;
+  const inputTokens = data.usage?.prompt_tokens || 0;
+  const outputTokens = data.usage?.completion_tokens || 0;
+  const costPer1kInput = 0.00015;
+  const costPer1kOutput = 0.00060;
   const estimatedCost = (inputTokens / 1000) * costPer1kInput + (outputTokens / 1000) * costPer1kOutput;
 
   trackUsage(clientId, inputTokens, outputTokens, estimatedCost);
@@ -1020,11 +882,8 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
       console.error('[api/client-chat] interpreter fallback:', err.message);
       captureApiException(err, { clientId, feature: 'chat_interpretation', route: '/api/client-chat' });
       // Fail-closed: llamada de respaldo en texto plano.
-      const isOaiLike = provider === 'deepseek' || provider === 'openai';
-      const fallback = provider === 'deepseek' ? await callDeepSeek(messages, systemPrompt, 600)
-        : provider === 'openai' ? await callOpenAI(messages, systemPrompt, 600)
-        : await callAnthropic(messages, systemPrompt, 600);
-      text = isOaiLike ? (fallback.choices?.[0]?.message?.content || '') : (fallback.content?.[0]?.text || '');
+      const fallback = await callOpenAI(messages, systemPrompt, 600);
+      text = fallback.choices?.[0]?.message?.content || '';
       interpretation = emptyInterpretation();
     }
   }
@@ -1096,4 +955,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, resolveDeepseekModel, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, BOOKING_TURN_MAX_TOKENS, BOOKING_TURN_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock };
+export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, BOOKING_TURN_MAX_TOKENS, BOOKING_TURN_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock };
