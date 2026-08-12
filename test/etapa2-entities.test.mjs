@@ -116,12 +116,16 @@ console.log('A) sanitizeBookingEntities() / mergeBookingEntities() — unidad, m
     ok(e2.email === undefined, 'email con formato inválido (sin @ ni dominio real) -> se rechaza, nunca se guarda tal cual');
   }
 
-  console.log('\nA6. teléfono — válido e inválido');
+  console.log('\nA6. teléfono — válido, inválido y fallback de texto');
   {
     const e1 = CORE.sanitizeBookingEntities({ ...emptyEntities(), phone: '206-742-1261' }, CFG, BUSINESS_HOURS, 'es');
     ok(e1.telefono === '206-742-1261', 'teléfono con suficientes dígitos se acepta');
     const e2 = CORE.sanitizeBookingEntities({ ...emptyEntities(), phone: '12345' }, CFG, BUSINESS_HOURS, 'es');
     ok(e2.telefono === undefined, 'teléfono con muy pocos dígitos (<7) -> se rechaza');
+    const e3 = CORE.sanitizeBookingEntities(emptyEntities(), CFG, BUSINESS_HOURS, 'es', 'Mi teléfono es +1 555-000-0004');
+    ok(e3.telefono === '+1 555-000-0004', 'teléfono explícito se recupera del texto cuando la IA devuelve null');
+    const e4 = CORE.sanitizeBookingEntities(emptyEntities(), CFG, BUSINESS_HOURS, 'es', 'Mi teléfono es 12345');
+    ok(e4.telefono === undefined, 'fallback también rechaza teléfonos con menos de siete dígitos');
   }
 
   console.log('\nA7. personas — válido e inválido');
@@ -216,7 +220,7 @@ function ultimosMensajesBot(dom, n) {
 // respuesta simulada del modelo, en el orden dado -- así cada prueba
 // controla EXACTAMENTE qué "diría la IA" para su mensaje, sin reimplementar
 // un NLU de juguete.
-async function buildDom({ interpretations = [], presetSessionStorage, lang, reservationResult } = {}) {
+async function buildDom({ interpretations = [], presetSessionStorage, lang, reservationResult, clientConfig = CLIENT_CONFIG } = {}) {
   const dom = new JSDOM(HTML_SKELETON, { runScripts: 'outside-only', url: 'https://jbstudio.app/asistente/spa-e2' });
   const { window } = dom;
   if (lang) window.sessionStorage.setItem('jba_spa-e2_language', lang);
@@ -228,7 +232,7 @@ async function buildDom({ interpretations = [], presetSessionStorage, lang, rese
   const reservationCalls = [];
   window.fetch = async (u, options = {}) => {
     const s = String(u);
-    if (s.includes('/api/client-config')) return { ok: true, json: async () => CLIENT_CONFIG };
+    if (s.includes('/api/client-config')) return { ok: true, json: async () => clientConfig };
     if (s.includes('/api/client-chat') && options.method === 'POST') {
       const body = JSON.parse(options.body);
       clientChatCalls.push(body);
@@ -277,6 +281,18 @@ function realBookingAttempts(reservationCalls) {
 }
 
 console.log('\nB) Flujo real (asistente.html) con /api/client-chat mockeado');
+
+console.log('\nB0 needsSetup bloquea la captura antes de crear una sesión de reserva');
+{
+  const { dom, clientChatCalls } = await buildDom({
+    lang: 'es',
+    clientConfig: { ...CLIENT_CONFIG, needsSetup: true },
+    interpretations: [interp('booking', { service: 'Manicura' })],
+  });
+  await escribir(dom, 'Quiero reservar una manicura');
+  ok(dom.window.sessionStorage.getItem('jba_spa-e2_booking') === null, 'needsSetup no crea BOOKING_SESS ni inicia bookingStep');
+  ok(clientChatCalls.length === 1 && clientChatCalls[0].booking === undefined, 'needsSetup no llama al turno de captura de reserva');
+}
 
 console.log('\nB1 (ES) "quiero manicura el viernes a las 4, soy Ana" — arranca booking con 3 campos de una vez, hora ambigua pendiente');
 {

@@ -936,9 +936,14 @@ window.JBChatCore = (function () {
     }
 
     // teléfono: reutiliza el mismo umbral de valorValido('telefono', …)
-    // (≥7 dígitos) que ya exigía extractBooking().
+    // (≥7 dígitos) que ya exigía extractBooking(). Si la IA no lo transcribió,
+    // se aplica el mismo respaldo determinista de extractBooking() al texto.
     if (typeof e.phone === 'string' && valorValido('telefono', e.phone.trim())) {
       out.telefono = e.phone.trim();
+    } else if (raw) {
+      var rawWithoutEmail = typeof e.email === 'string' ? raw.replace(e.email, ' ') : raw;
+      var phoneFallback = rawWithoutEmail.match(TEL_RE);
+      if (phoneFallback && valorValido('telefono', phoneFallback[0])) out.telefono = phoneFallback[0].trim();
     }
 
     // personas: mismo rango 1-200 que extractBooking() ya exigía.

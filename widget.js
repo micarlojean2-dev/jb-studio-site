@@ -1577,6 +1577,17 @@
         }
 
         if (!activeReservation && featureOn('reservations') && intent === 'booking') {
+          // client-config comparte este estado con el backend. No iniciamos una
+          // captura que /api/reservations necesariamente rechazará al final.
+          if (cfg.needsSetup) {
+            var unavailable = lang === 'en'
+              ? 'I cannot confirm appointments right now, but I can help with information about the business.'
+              : 'No puedo confirmar citas en este momento, pero puedo ayudarte con información del negocio.';
+            addMsg('bot', unavailable);
+            msgs.push({ role: 'user', content: t }, { role: 'assistant', content: unavailable });
+            save();
+            return;
+          }
           msgs.push({ role: 'user', content: t });
           save();
           bookingStep = 1;          // en modo reserva; el modelo conduce
