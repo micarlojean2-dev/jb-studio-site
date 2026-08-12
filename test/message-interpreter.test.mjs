@@ -219,7 +219,7 @@ console.log('\n6. chat-core.js — sanitizeBookingEntities()/mergeBookingEntitie
 console.log('\n7. api/client-chat.js — una sola llamada al modelo, en TODO turno, contrato completo, fail-closed');
 {
   const clientChat = readFileSync(join(root, 'api', 'client-chat.js'), 'utf8');
-  ok(clientChat.includes("import {\n  interpreterOutputConfig, deepseekResponseFormat, buildInterpreterInstructions,\n  emptyInterpretation, sanitizeInterpretation,\n} from '../lib/message-interpreter.js';"),
+  ok(clientChat.includes("from '../lib/message-interpreter.js';") && clientChat.includes('extractJsonFromText'),
     'importa el intérprete desde lib/message-interpreter.js (no un endpoint nuevo)');
   // ETAPA 2: structured ahora se manda SIEMPRE (antes, ETAPA 1, solo fuera
   // de booking activo) — el turno de reserva en curso también pide entities.
@@ -227,8 +227,8 @@ console.log('\n7. api/client-chat.js — una sola llamada al modelo, en TODO tur
     'la interpretación estructurada se pide en TODO turno (también dentro de una reserva en curso) — ETAPA 2');
   ok(!clientChat.includes('bookingActive ? null : { activeLanguage }'),
     'ya no existe el bloqueo de ETAPA 1 que solo pedía structured fuera de booking activo');
-  ok(/catch \(err\) \{[\s\S]{0,700}interpretation = emptyInterpretation\(\);/.test(clientChat),
-    'si el JSON del modelo no valida, se degrada a emptyInterpretation() en vez de propagar un valor a medio validar');
+  ok(/if \(!interpretation\) \{[\s\S]{0,1000}interpretation = emptyInterpretation\(\);/.test(clientChat),
+    'si el JSON del modelo no valida tras la limpieza y el reintento, se degrada a emptyInterpretation()');
   ok(/const fallback = await callOpenAI\(messages, systemPrompt, 600\);/.test(clientChat),
     'ante fallo de interpretación, UNA llamada de respaldo en texto plano (nunca se deja al cliente sin respuesta)');
   ok(!clientChat.includes("app.post('/api/message-interpreter'") && !clientChat.includes('interpret-message'),
@@ -240,5 +240,30 @@ console.log('\n7. api/client-chat.js — una sola llamada al modelo, en TODO tur
   ok(clientChat.includes('BOOKING_TURN_TEMPERATURE'), 'el turno de reserva en curso mantiene su propia temperatura (conversacional), distinta de la de clasificación');
 }
 
-console.log(failures ? `\n❌ ${failures} verificación(es) fallaron` : '\n✅ Intérprete de intención + entidades (MIGRACIÓN 1, ETAPA 2): contrato {intent, text, entities} y wiring verificados en widget.js y asistente.html');
+console.log('\n8. Recortes de markdown y limpieza de JSON (extractJsonFromText / parseInterpretation)');
+{
+  const { extractJsonFromText, parseInterpretation } = await import('../lib/message-interpreter.js');
+
+  // Caso 1: JSON dentro de code fences ```json ... ```
+  const markdownFenced = '```json\n{\n  "intent": "booking",\n  "text": "¡Claro! ¿Para qué fecha?",\n  "entities": {\n    "service": "Masaje Relajante",\n    "date": null,\n    "time": null,\n    "name": null,\n    "email": null,\n    "phone": null,\n    "people": null,\n    "notes": null\n  }\n}\n```';
+  const res1 = parseInterpretation(markdownFenced);
+  ok(res1 !== null, 'JSON dentro de code fences ```json se recupera correctamente');
+  ok(res1.intent === 'booking', 'intent extraído correctamente del code fence');
+  ok(res1.entities.service === 'Masaje Relajante', 'service extraído correctamente del code fence');
+
+  // Caso 2: JSON rodeado de texto explicativo (prosa antes y después)
+  const proseSurrounded = 'Aquí está el resultado en formato JSON:\n{\n  "intent": "show_menu",\n  "text": "Te muestro los servicios",\n  "entities": {\n    "service": null,\n    "date": null,\n    "time": null,\n    "name": null,\n    "email": null,\n    "phone": null,\n    "people": null,\n    "notes": null\n  }\n}\nEspero haberte ayudado.';
+  const res2 = parseInterpretation(proseSurrounded);
+  ok(res2 !== null, 'JSON rodeado de texto explicativo se recupera correctamente');
+  ok(res2.intent === 'show_menu', 'intent extraído correctamente de respuesta con prosa alrededor');
+
+  // Caso 3: Espacios y saltos de línea al inicio y final
+  const paddedJson = '   \n  {\n  "intent": "reschedule",\n  "text": "Cambiemos la fecha",\n  "entities": {\n    "service": null,\n    "date": "mañana",\n    "time": null,\n    "name": null,\n    "email": null,\n    "phone": null,\n    "people": null,\n    "notes": null\n  }\n}  \n ';
+  const res3 = parseInterpretation(paddedJson);
+  ok(res3 !== null, 'JSON con espacios y saltos de línea se recupera correctamente');
+  ok(res3.intent === 'reschedule', 'intent extraído correctamente de JSON con espacios alrededor');
+  ok(res3.entities.date === 'mañana', 'date extraído correctamente de JSON con espacios alrededor');
+}
+
+console.log(failures ? `\n❌ ${failures} verificación(es) fallaron` : '\n✅ Intérprete de intención + entidades (MIGRACIÓN 1, ETAPA 2): contrato {intent, text, entities}, recuperación de JSON y wiring verificados en widget.js y asistente.html');
 process.exit(failures ? 1 : 0);

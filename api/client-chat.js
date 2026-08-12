@@ -5,7 +5,7 @@ import { findServiceByLinkedItemId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
 import {
   interpreterOutputConfig, deepseekResponseFormat, buildInterpreterInstructions,
-  emptyInterpretation, sanitizeInterpretation,
+  emptyInterpretation, sanitizeInterpretation, extractJsonFromText, parseInterpretation,
 } from '../lib/message-interpreter.js';
 import { obtenerHuecosDisponibles, parseFechaISO, nowEnZona } from './reservations.js';
 
@@ -873,17 +873,43 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
 
   let interpretation = null;
   if (structured) {
-    try {
-      const parsed = JSON.parse(text);
-      interpretation = sanitizeInterpretation(parsed);
-      if (!interpretation) throw new Error('interpretation failed schema validation');
-      text = typeof parsed.text === 'string' ? parsed.text : '';
-    } catch (err) {
-      console.error('[api/client-chat] interpreter fallback:', err.message);
-      captureApiException(err, { clientId, feature: 'chat_interpretation', route: '/api/client-chat' });
+    // 1. Intento inicial de parseo con limpieza de markdown (code fences ```json) y texto prosaico
+    interpretation = parseInterpretation(text);
+    if (interpretation) {
+      const parsedObj = extractJsonFromText(text);
+      if (parsedObj && typeof parsedObj.text === 'string') {
+        text = parsedObj.text;
+      }
+    } else {
+      // 2. Si el parseo/esquema falló, realizar UN reintento a OpenAI antes de rendirse
+      console.warn('[api/client-chat] initial JSON parse/schema failed, retrying OpenAI once. Raw response:', text);
+      try {
+        const retryData = await callOpenAI(messages, interpreterPrompt, maxTokens, deepseekResponseFormat(), temperature);
+        const retryText = retryData.choices?.[0]?.message?.content || '';
+        interpretation = parseInterpretation(retryText);
+        if (interpretation) {
+          text = retryText;
+          const parsedRetryObj = extractJsonFromText(retryText);
+          if (parsedRetryObj && typeof parsedRetryObj.text === 'string') {
+            text = parsedRetryObj.text;
+          }
+        }
+      } catch (retryErr) {
+        console.error('[api/client-chat] retry OpenAI failed:', retryErr.message);
+      }
+    }
+
+    // 3. Fallback en caso de que el reintento también haya fallado
+    if (!interpretation) {
+      console.error('[api/client-chat] interpreter fallback — failed to get valid JSON interpretation after retry. Raw model response:', text);
+      captureApiException(new Error('Invalid JSON interpretation from AI after retry'), { clientId, feature: 'chat_interpretation', route: '/api/client-chat', rawText: text });
       // Fail-closed: llamada de respaldo en texto plano.
-      const fallback = await callOpenAI(messages, systemPrompt, 600);
-      text = fallback.choices?.[0]?.message?.content || '';
+      try {
+        const fallback = await callOpenAI(messages, systemPrompt, 600);
+        text = fallback.choices?.[0]?.message?.content || '';
+      } catch (fbErr) {
+        console.error('[api/client-chat] plain text fallback failed:', fbErr.message);
+      }
       interpretation = emptyInterpretation();
     }
   }
