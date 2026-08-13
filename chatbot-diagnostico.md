@@ -14,6 +14,7 @@ Documentación técnica y diagnóstico actualizado del chatbot conversacional de
 - [5. Backend de autoridad y reservación (`api/reservations.js` / `chat-core.js`)](#5-backend-de-autoridad-y-reservación-apireservationsjs--chat-corejs)
 - [6. Cambios recientes (registro)](#6-cambios-recientes-registro)
 - [7. Panel admin — creación de cliente nuevo](#7-panel-admin--creación-de-cliente-nuevo)
+- [8. Sistema de fechas relativas y disponibilidad](#8-sistema-de-fechas-relativas-y-disponibilidad)
 
 ---
 
@@ -471,4 +472,293 @@ Para confirmar visualmente que una reserva ha quedado creada y guardada en Redis
 - **Contador de citas de hoy**: `span#summary-today`
 - **Lista de actividad reciente (auditoría)**: `div#activity-list`
 - **Filtros de estado de agenda**: `button.filter-btn[data-f="proximas"]`, `button.filter-btn[data-f="todas"]`
+
+---
+
+## 8. Sistema de fechas relativas y disponibilidad
+
+### 8.1 `parseFechaISO()` completa (`api/reservations.js`)
+
+Esta función convierte expresiones en lenguaje natural en español e inglés ("hoy", "mañana", "pasado mañana", "el sábado", "15 de julio", "7/24") en una fecha ISO 8601 (`YYYY-MM-DD`).
+
+#### Código real en `api/reservations.js` (líneas 60–155):
+
+```javascript
+    60	export function parseFechaISO(raw, now) {
+    61	  const txt = String(raw || '').toLowerCase().trim();
+    62	  if (!txt) return '';
+    63	  const base = now ? new Date(now) : new Date();
+    64	  const mk = (d) => d.toISOString().slice(0, 10);
+    65	  const addDays = (d, n) => { const x = new Date(d); x.setUTCDate(x.getUTCDate() + n); return x; };
+    66	
+    67	  if (/\bpasado\s+ma(ñ|n)ana\b|\bday\s+after\s+tomorrow\b/.test(txt)) return mk(addDays(base, 2));
+    68	  if (/\bhoy\b|\btoday\b/.test(txt)) return mk(base);
+    69	  if (/\bma(ñ|n)ana\b|\btomorrow\b/.test(txt)) return mk(addDays(base, 1));
+    70	
+    71	  const DIAS = { domingo:0, lunes:1, martes:2, 'miercoles':3, 'miércoles':3, jueves:4, viernes:5, 'sabado':6, 'sábado':6,
+    72	                 sunday:0, monday:1, tuesday:2, wednesday:3, thursday:4, friday:5, saturday:6 };
+    73	  const MESES = { enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5, julio:6, agosto:7,
+    74	                  septiembre:8, setiembre:8, octubre:9, noviembre:10, diciembre:11,
+    75	                  january:0, february:1, march:2, april:3, may:4, june:5, july:6, august:7,
+    76	                   september:8, october:9, november:10, december:11,
+    77	                   jan:0, feb:1, mar:2, apr:3, jun:5, jul:6, aug:7, sep:8, sept:8, oct:9, nov:10, dec:11 };
+    78	
+    79	  // "15 de julio" / "july 15" / "18 julio"
+    80	  const dm = txt.match(/\b(\d{1,2})\s*(?:de\s+)?([a-záéíóú]+)/);
+    81	  if (dm && MESES[dm[2]] !== undefined) {
+    82	    const day = parseInt(dm[1], 10), mon = MESES[dm[2]];
+    83	    if (day >= 1 && day <= 31) {
+    84	      let y = base.getUTCFullYear();
+    85	      let d = new Date(Date.UTC(y, mon, day));
+    86	      const r = rollYear(d, base, y, mon, day);
+    87	      if (r) return r;
+    88	    }
+    89	  }
+    90	  const md = txt.match(/\b([a-záéíóú]+)\s+(\d{1,2})\b/);
+    91	  if (md && MESES[md[1]] !== undefined) {
+    92	    const day = parseInt(md[2], 10), mon = MESES[md[1]];
+    93	    if (day >= 1 && day <= 31) {
+    94	      let y = base.getUTCFullYear();
+    95	      let d = new Date(Date.UTC(y, mon, day));
+    96	      const r = rollYear(d, base, y, mon, day);
+    97	      if (r) return r;
+    98	    }
+    99	  }
+   100	
+   101	  // "este sábado" / "el viernes" / "sábado"
+   102	  for (const name in DIAS) {
+   103	    if (new RegExp('\\b' + name + '\\b').test(txt)) {
+   104	      const target = DIAS[name];
+   105	      let delta = (target - base.getUTCDay() + 7) % 7;
+   106	      if (delta === 0) delta = 7;                       // "el sábado" dicho un sábado = el próximo
+   107	      if (/\bpróximo\b|\bproximo\b|\bnext\b/.test(txt) && delta < 7) delta += 7;
+   108	      return mk(addDays(base, delta));
+   109	    }
+   110	  }
+   111	
+   112	  // "2026-07-18" / "18/07" / "18-07-2026"
+   113	  const iso = txt.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+   114	  if (iso) {
+   115	    const y = +iso[1], mon = +iso[2] - 1, day = +iso[3];
+   116	    const d = new Date(Date.UTC(y, mon, day));
+   117	    if (mon >= 0 && mon <= 11 && d.getUTCFullYear() === y && d.getUTCMonth() === mon && d.getUTCDate() === day) {
+   118	      return iso[0];
+   119	    }
+   120	    return '';
+   121	  }
+   122	  const dmy = txt.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/);
+   123	  if (dmy) {
+   124	    const a = +dmy[1], b = +dmy[2];
+   125	    let y = dmy[3] ? +dmy[3] : base.getUTCFullYear();
+   126	    if (y < 100) y += 2000;
+   127	    let day = null, mon = null;
+   128	    if (a > 12 && b <= 12)       { day = a; mon = b - 1; }   // DD/MM
+   129	    else if (b > 12 && a <= 12)  { day = b; mon = a - 1; }   // MM/DD
+   130	    else if (a <= 12 && b <= 12) { day = a; mon = b - 1; }   // ambiguo → DD/MM
+   131	    if (day !== null && day >= 1 && day <= 31 && mon >= 0 && mon <= 11) {
+   132	      const d = new Date(Date.UTC(y, mon, day));
+   133	      if (d.getUTCDate() === day) return mk(d);
+   134	    }
+   135	  }
+   136	  return '';
+   137	}
+```
+
+---
+
+### 8.2 Reconocimiento de fechas relativas en texto libre (`chat-core.js`)
+
+En el motor compartido del cliente (`chat-core.js`), la expresión regular `FECHA_TEXTO_RE` extrae expresiones temporales de mensajes antes de enviarlos a la API.
+
+#### Código real en `chat-core.js` (líneas 30–60):
+
+```javascript
+    30	  var MES_NOM = 'enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec';
+    31	
+    32	  var MESES = { enero:1, febrero:2, marzo:3, abril:4, mayo:5, junio:6, julio:7,
+    33:                 agosto:8, septiembre:9, setiembre:9, octubre:10, noviembre:11, diciembre:12,
+    34:                 january:1, february:2, march:3, april:4, may:5, june:6, july:7, august:8,
+    35:                 september:9, october:10, november:11, december:12, jan:1, feb:2, mar:3,
+    36:                 apr:4, jun:6, jul:7, aug:8, sep:9, sept:9, oct:10, nov:11, dec:12 };
+    37	
+    38	  var NUM_TXT_RE = '\\d{1,2}|un|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|one|two|three|four|five|six|seven|eight|nine|ten|a';
+    39	  var FECHA_TEXTO_RE = new RegExp(
+    40	    '(pasado\\s+ma(?:ñ|n)ana|ma(?:ñ|n)ana|hoy|' +
+    41	    'day\\s+after\\s+tomorrow|tomorrow|today|' +
+    42	    '(?:este|el|pr(?:ó|o)ximo|this|next)\\s+(?:lunes|martes|mi(?:é|e)rcoles|jueves|viernes|s(?:á|a)bado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|' +
+    43	    '(?:lunes|martes|mi(?:é|e)rcoles|jueves|viernes|s(?:á|a)bado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|' +
+    44	    '\\d{1,2}\\s+de\\s+(?:' + MES_NOM + ')(?:\\s+de\\s+\\d{4})?|' +
+    45	    '(?:' + MES_NOM + ')\\s+\\d{1,2}\\b|' +
+    46	    '(?:dentro\\s+de|en)\\s+(?:' + NUM_TXT_RE + ')\\s+(?:d[ií]as?|semanas?|mes(?:es)?)|' +
+    47	    'in\\s+(?:' + NUM_TXT_RE + ')\\s+(?:days?|weeks?|months?)|' +
+    48	    '(?:la\\s+)?(?:pr(?:ó|o)xima\\s+semana|semana\\s+que\\s+viene)|next\\s+week|' +
+    49	    '(?:el\\s+)?(?:pr(?:ó|o)ximo\\s+mes|mes\\s+que\\s+viene)|next\\s+month)', 'i');
+```
+
+---
+
+### 8.3 `availabilityContextBlock()` completa (`api/client-chat.js`)
+
+#### Código real en `api/client-chat.js` (líneas 398–447):
+
+```javascript
+   398	function reservationTruthBlock(isEnglish, ctx) {
+   399	  if (isEnglish) {
+   400	    const rule = 'RESERVATION STATUS: never say a reservation/appointment was created, confirmed, submitted, or sent, never say you notified the business/team about it, and never say a confirmation email was sent — unless the real status below says so. This is never something to guess or infer from the conversation.';
+   401	    if (ctx) {
+   402	      return `\n${rule} Real status from the system (not from you): status "${ctx.status}"${ctx.service ? `, service "${ctx.service}"` : ''}${ctx.date ? `, date "${ctx.date}"` : ''}${ctx.time ? `, time "${ctx.time}"` : ''}. Confirmation email sent: ${ctx.emailSent ? 'yes' : 'no'}. You may share this plainly if asked; never contradict it or add details it does not include.\n`;
+   403	    }
+   404	    return `\n${rule} There is no confirmed reservation on record right now. If asked whether one went through, say you cannot confirm that from here — point to the "Yes, confirm" button on the summary, or suggest contacting the business directly.\n`;
+   405	  }
+   406	  const rule = 'ESTADO DE LA RESERVA: nunca digas que una reserva o cita fue creada, confirmada, enviada, ni que avisaste al negocio/equipo sobre ella, ni que se envió un correo de confirmación — salvo que el estado real de abajo lo diga. Esto nunca se adivina ni se infiere de la conversación.';
+   407	  if (ctx) {
+   408	    return `\n${rule} Estado real del sistema (no tuyo): estado "${ctx.status}"${ctx.service ? `, servicio "${ctx.service}"` : ''}${ctx.date ? `, fecha "${ctx.date}"` : ''}${ctx.time ? `, hora "${ctx.time}"` : ''}. Correo de confirmación enviado: ${ctx.emailSent ? 'sí' : 'no'}. Puedes compartirlo con naturalidad si preguntan; nunca lo contradigas ni agregues datos que no incluye.\n`;
+   409	  }
+   410	  return `\n${rule} No hay ninguna reserva confirmada registrada ahora mismo. Si preguntan si se concretó, di que no puedes confirmarlo desde aquí — señala el botón "Sí, confirmar" del resumen, o sugiere contactar al negocio directamente.\n`;
+   411	}
+   412	
+   413	async function availabilityContextBlock(client, clientId, messages, isEnglish) {
+   414	  if (!client || !messages || !messages.length) return '';
+   415	  const lastUserMsg = [...messages].reverse().find((m) => m && m.role === 'user')?.content || '';
+   416	  if (!lastUserMsg) return '';
+   417	
+   418	  const isAvailabilityQuery = /(disponib|horario|hora|hueco|agenda|slot|open|available|free|qu[eé]\s+hora|what\s+time)/i.test(lastUserMsg);
+   419	  if (!isAvailabilityQuery) return '';
+   420	
+   421	  const now = nowEnZona(client.timezone);
+   422	  const fechaISO = parseFechaISO(lastUserMsg, now);
+   423	  if (!fechaISO) return '';
+   424	
+   425	  let keys, items;
+   426	  try {
+   427	    keys = await redis.keys(`reservations:${clientId}:*`);
+   428	    items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+   429	  } catch (err) {
+   430	    items = [];
+   431	  }
+   432	
+   433	  const huecos = obtenerHuecosDisponibles(client, fechaISO, undefined, items);
+   434	
+   435	  if (huecos && huecos.length > 0) {
+   436	    const muestra = huecos.length > 10
+   437	      ? huecos.slice(0, 10).join(', ') + (isEnglish ? ' and more' : ' entre otros')
+   438	      : huecos.join(', ');
+   439	    return isEnglish
+   440	      ? `\nREAL-TIME AVAILABILITY SLOTS FOR ${fechaISO}:\nAvailable time slots: ${muestra}.\nINSTRUCTION: The customer asked what times are available for this date. List these real available time slots warmly and ask which one they prefer.\n`
+   441	      : `\nDISPONIBILIDAD REAL EN TIEMPO REAL PARA EL DÍA ${fechaISO}:\nHorarios libres disponibles: ${muestra}.\nINSTRUCCIÓN: El cliente preguntó qué horas hay disponibles para esta fecha. Menciónale de forma cálida y clara estos horarios reales disponibles y pregúntale cuál prefiere.\n`;
+   442	  } else {
+   443	    return isEnglish
+   444	      ? `\nREAL-TIME AVAILABILITY SLOTS FOR ${fechaISO}:\nNo available time slots for this date (fully booked or closed).\nINSTRUCTION: The customer asked what times are available for this date. Inform them warmly that there are no open slots for this date and invite them to check another day.\n`
+   445:       : `\nDISPONIBILIDAD REAL EN TIEMPO REAL PARA EL DÍA ${fechaISO}:\nNo hay horarios libres disponibles para esa fecha (completamente ocupado o cerrado).\nINSTRUCCIÓN: El cliente preguntó qué horas hay disponibles para esta fecha. Infórmale de forma cálida que no quedan horarios libres ese día e invítale a consultar otra fecha.\n`;
+   446	  }
+   447	}
+```
+
+---
+
+### 8.4 `obtenerHuecosDisponibles()` y funciones auxiliares (`api/reservations.js`)
+
+#### `obtenerHuecosDisponibles()` (líneas 663–684):
+
+```javascript
+   663	export function obtenerHuecosDisponibles(client, fechaISO, servicio, reservasInput) {
+   664	  if (!client || !fechaISO) return [];
+   665	  const rangos = rangosDelDia(client.businessHours, fechaISO);
+   666	  if (!rangos || !rangos.length) return [];
+   667	
+   668	  const dur = durationFor(client, servicio);
+   669	  const occupiedDuration = occupiedDurationFor(client, servicio, dur);
+   670	  const interval = Number.isFinite(client.reservationIntervalMinutes) ? client.reservationIntervalMinutes : 15;
+   671	  const cap = Number.isFinite(client.capacityPerSlot) ? client.capacityPerSlot : 1;
+   672	  const reservas = Array.isArray(reservasInput) ? reservasInput.filter(Boolean) : [];
+   673	
+   674	  const disponibles = [];
+   675	  for (const [a, b] of rangos) {
+   676	    const limite = b - (occupiedDuration || 0);
+   677	    for (let t = a; t <= limite; t += interval) {
+   678	      if (contarSolapes(reservas, fechaISO, t, occupiedDuration, client) < cap) {
+   679	        disponibles.push(fmt(t));
+   680	      }
+   681	    }
+   682	  }
+   683	  return disponibles;
+   684	}
+```
+
+#### `contarSolapes()` (líneas 480–490):
+
+```javascript
+   480	function contarSolapes(reservas, fechaISO, iniMin, durMin, client) {
+   481	  let n = 0;
+   482	  for (const r of reservas) {
+   483	    if (!activa(r) || r.fechaISO !== fechaISO) continue;
+   484	    const ini = minutosDe(r.horaISO);
+   485	    if (ini === null) continue;                          // sin hora normalizada: no cuenta
+   486	    const dur = occupiedDurationFor(client || {}, r.servicio, r.duracion);
+   487	    if (solapan(iniMin, durMin, ini, dur)) n++;
+   488	  }
+   489	  return n;
+   490	}
+```
+
+#### `solapan()` (líneas 469–474):
+
+```javascript
+   469	function solapan(aIni, aDur, bIni, bDur) {
+   470	  const aFin = aIni + (aDur || 0);
+   471	  const bFin = bIni + (bDur || 0);
+   472	  if (aDur === 0 || bDur === 0) return aIni === bIni;   // sin duración: solo choque exacto
+   473	  return aIni < bFin && bIni < aFin;
+   474	}
+```
+
+#### `rangosDelDia()` (líneas 448–461):
+
+```javascript
+   448	function rangosDelDia(businessHours, fechaISO) {
+   449	  if (!businessHours || !fechaISO) return null;          // sin datos: no se valida
+   450	  const dow = new Date(fechaISO + 'T12:00:00Z').getUTCDay();
+   451	  const dia = businessHours[DIAS_ORDEN[dow]];
+   452	  if (!dia) return null;
+   453	  if (dia.unknown) return null;                          // horario no especificado
+   454	  if (dia.enabled === false) return [];                  // cerrado ese día
+   455	  const out = [];
+   456	  (dia.ranges || []).forEach(r => {
+   457	    const a = minutosDe(r.start), b = minutosDe(r.end);
+   458	    if (a !== null && b !== null && b > a) out.push([a, b]);
+   459	  });
+   460	  return out.length ? out : [];
+   461	}
+```
+
+#### `durationFor()` y `occupiedDurationFor()` (líneas 424–445):
+
+```javascript
+   424	function durationFor(client, servicio) {
+   425	  const item = (client.menu || []).find(m => m.nombre && servicio &&
+   426	    String(servicio).toLowerCase().indexOf(String(m.nombre).toLowerCase()) !== -1);
+   427	  return parseDurationMinutes(item && item.duracion) || parseDurationMinutes(client.reservationDuration ||
+   428	    ((client.config || {}).reservationDuration));
+   429	}
+...
+   442	function occupiedDurationFor(client, servicio, storedDuration) {
+   443	  const duration = Number.isFinite(storedDuration) ? storedDuration : durationFor(client, servicio);
+   444	  return duration + spaBufferMinutes(client);
+   445	}
+```
+
+---
+
+### 8.5 Ejemplo real de ejecución de `parseFechaISO()`
+
+Ejecución real comprobada mediante Node.js tomando como base el **miércoles 12 de agosto de 2026** (`2026-08-12T19:00:00Z`):
+
+```javascript
+const now = new Date('2026-08-12T19:00:00Z'); // Miércoles
+
+parseFechaISO('el sábado', now);             // -> "2026-08-15" (Sábado próximo)
+parseFechaISO('mañana', now);                 // -> "2026-08-13" (Jueves)
+parseFechaISO('el viernes que viene', now);   // -> "2026-08-14" (Viernes próximo)
+```
+
 
