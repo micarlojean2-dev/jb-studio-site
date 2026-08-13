@@ -411,16 +411,16 @@ function reservationTruthBlock(isEnglish, ctx) {
 }
 
 async function availabilityContextBlock(client, clientId, messages, isEnglish) {
-  if (!client || !messages || !messages.length) return '';
+  if (!client || !messages || !messages.length) return { promptText: '', slots: null };
   const lastUserMsg = [...messages].reverse().find((m) => m && m.role === 'user')?.content || '';
-  if (!lastUserMsg) return '';
+  if (!lastUserMsg) return { promptText: '', slots: null };
 
   const isAvailabilityQuery = /(disponib|horario|hora|hueco|agenda|slot|open|available|free|qu[eé]\s+hora|what\s+time)/i.test(lastUserMsg);
-  if (!isAvailabilityQuery) return '';
+  if (!isAvailabilityQuery) return { promptText: '', slots: null };
 
   const now = nowEnZona(client.timezone);
   const fechaISO = parseFechaISO(lastUserMsg, now);
-  if (!fechaISO) return '';
+  if (!fechaISO) return { promptText: '', slots: null };
 
   let keys, items;
   try {
@@ -431,18 +431,21 @@ async function availabilityContextBlock(client, clientId, messages, isEnglish) {
   }
 
   const huecos = obtenerHuecosDisponibles(client, fechaISO, undefined, items);
+  const slots = (huecos && huecos.length > 0) ? huecos.slice(0, 8) : null;
 
   if (huecos && huecos.length > 0) {
     const muestra = huecos.length > 10
       ? huecos.slice(0, 10).join(', ') + (isEnglish ? ' and more' : ' entre otros')
       : huecos.join(', ');
-    return isEnglish
+    const promptText = isEnglish
       ? `\nREAL-TIME AVAILABILITY SLOTS FOR ${fechaISO}:\nAvailable time slots: ${muestra}.\nINSTRUCTION: The customer asked what times are available for this date. List these real available time slots warmly and ask which one they prefer.\n`
       : `\nDISPONIBILIDAD REAL EN TIEMPO REAL PARA EL DÍA ${fechaISO}:\nHorarios libres disponibles: ${muestra}.\nINSTRUCCIÓN: El cliente preguntó qué horas hay disponibles para esta fecha. Menciónale de forma cálida y clara estos horarios reales disponibles y pregúntale cuál prefiere.\n`;
+    return { promptText, slots };
   } else {
-    return isEnglish
+    const promptText = isEnglish
       ? `\nREAL-TIME AVAILABILITY SLOTS FOR ${fechaISO}:\nNo available time slots for this date (fully booked or closed).\nINSTRUCTION: The customer asked what times are available for this date. Inform them warmly that there are no open slots for this date and invite them to check another day.\n`
       : `\nDISPONIBILIDAD REAL EN TIEMPO REAL PARA EL DÍA ${fechaISO}:\nNo hay horarios libres disponibles para esa fecha (completamente ocupado o cerrado).\nINSTRUCCIÓN: El cliente preguntó qué horas hay disponibles para esta fecha. Infórmale de forma cálida que no quedan horarios libres ese día e invítale a consultar otra fecha.\n`;
+    return { promptText, slots: null };
   }
 }
 
@@ -730,16 +733,11 @@ Datos que aún faltan (en orden): ${faltan.length ? faltan.join(', ') : 'ninguno
 
 Cómo responder:
 - Habla natural y cálido, como recepción. Confirma en una frase lo que el cliente acaba de decir.
-- Pide SOLO el primer dato que falta de la lista, uno a la vez. No enumeres pasos ("Paso 2 de 8") ni uses listas de datos pendientes.
-- Si el cliente corrige algo (cambia hora, servicio, etc.), acéptalo con naturalidad.
-- NUNCA escribas tú el resumen ni listes los datos capturados (nombre, fecha, hora, personas, platillo, teléfono, correo, etc.): de eso se encarga la interfaz, con sus propias etiquetas y en el idioma correcto. Tú solo pides el siguiente dato.
-- CRÍTICO: la lista de "Datos que aún faltan" es la única verdad sobre qué se guardó — no lo que tú creas haber entendido. Si el primer dato que falta sigue apareciendo ahí, TODAVÍA NO se guardó, sin importar lo que el cliente haya escrito o lo que tú le hayas respondido antes: sigue pidiéndolo, no lo des por hecho ni sigas con el siguiente. Si la frase del cliente para ese dato es ambigua o no la reconoces (por ejemplo una fecha relativa poco clara), no la reformules como si ya estuviera confirmada: pide que la exprese de forma más concreta (una fecha exacta, un día de la semana, una hora con am/pm). [BUG-FECHA-RELATIVA]
-- PROHIBIDO decir "ya tenemos todo listo" o "te muestro el resumen" mientras la lista de arriba todavía tenga algún dato pendiente: eso solo es cierto cuando la lista dice "ninguno".
-- Si ya no falta nada, dilo con una frase corta y cálida (en el idioma indicado arriba) anunciando que le muestras el resumen para confirmar, SIN listar los datos, y no lo confirmes tú.
-- NUNCA digas que la cita quedó agendada o confirmada. NUNCA inventes horarios libres ni disponibilidad: eso lo revisa el negocio al confirmar. (La regla ESTADO DE LA RESERVA de arriba ya cubre qué puedes o no afirmar sobre el resultado de una reserva — sigue esa, no una suposición tuya.)
-- Frase breve, sin markdown.
-
-CAPTURA DE NOTAS (silenciosa, no la menciones al cliente): si el cliente dice espontáneamente una preferencia, aviso o petición importante para su cita —por ejemplo alergias, "prefiero una persona en concreto", "voy acompañado/a", necesita estacionamiento, es un regalo, no puede cierta postura, no quiere música, quiere sala privada, "si me retraso avísame"— añade AL FINAL de tu respuesta, en su propia línea, un marcador EXACTO con esta forma: [NOTA: la frase del cliente con sus propias palabras]. Reglas estrictas: solo lo que el cliente dijo de forma explícita; nunca inventes ni deduzcas nada; una nota por marcador (varias notas = varios marcadores); si el cliente no dijo nada importante, NO escribas ningún marcador; nunca expliques ni menciones el marcador.`;
+- Habla con naturalidad y calidez, como el personal de recepción. Confirma en una frase lo que el cliente acaba de decir.
+- Pide SOLO el siguiente dato que falta (${faltan[0] || 'ninguno'}).
+- No repitas preguntas sobre datos que ya tienes arriba.
+- NUNCA digas que la cita quedó reservada, creada o confirmada en Redis: eso se hace ÚNICAMENTE cuando el cliente hace clic en el botón "Sí, confirmar" del resumen.
+`;
     }
 
     if (necesitaSetup(client)) {
@@ -747,23 +745,21 @@ CAPTURA DE NOTAS (silenciosa, no la menciones al cliente): si el cliente dice es
 
 IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, dile exactamente esta idea con tus palabras: "No puedo confirmar citas en este momento, pero puedo ayudarte con información del negocio." Si tienes teléfono o correo del negocio, ofrécelo para que se la agenden ahí. Sigue ayudando con servicios, precios, horarios y dudas.\n\nNUNCA des una razón técnica ni menciones sistemas, configuración, instalación, activación, datos que falten, pruebas, demos, ni que algo "estará listo pronto": eso es interno y al cliente no le importa. Nunca pidas datos para una cita ni digas que la has agendado.`;
     }
-    // ETAPA 2: la interpretación estructurada ({intent, text, entities}) se
-    // pide en TODO turno, también dentro de un flujo de reserva ya en curso
-    // (antes, ETAPA 1, solo se pedía en el turno inicial) — es la única forma
-    // de que la IA reemplace la extracción por regex de CORE.extractBooking()
-    // también mientras se está completando una reserva. El prompt de
-    // askBookingTurn() (arriba) no cambia su contenido, solo gana el mismo
-    // envoltorio de salida estructurada que ya tenía el turno inicial.
-    // [MIGRACIÓN 1 — ETAPA 2]
     const bookingActive = !!(booking && typeof booking === 'object');
     const { text, interpretation } = await callProvider(
       provider, messages, systemPrompt, client, clientId, bookingActive,
       { activeLanguage, bookingActive },
     );
 
-    return res.status(200).json(interpretation
+    const responsePayload = interpretation
       ? { text, provider, model: getModel(req), preview: previewOk, interpretation }
-      : { text, provider, model: getModel(req), preview: previewOk });
+      : { text, provider, model: getModel(req), preview: previewOk };
+
+    if (availabilityRes.slots && availabilityRes.slots.length > 0) {
+      responsePayload.slots = availabilityRes.slots;
+    }
+
+    return res.status(200).json(responsePayload);
 
   } catch (error) {
     console.error('[api/client-chat]', error.message);
@@ -981,4 +977,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, BOOKING_TURN_MAX_TOKENS, BOOKING_TURN_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock };
+export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, BOOKING_TURN_MAX_TOKENS, BOOKING_TURN_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock, availabilityContextBlock };

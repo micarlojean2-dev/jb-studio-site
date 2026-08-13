@@ -1052,6 +1052,9 @@
         // Se persiste el texto ya saneado (lo mismo que se mostró): así ni el
         // cliente ni DeepSeek vuelven a ver marcadores al recargar el historial.
         msgs.push({ role: 'assistant', content: txt });
+        if (d && Array.isArray(d.slots) && d.slots.length > 0) {
+          renderSlotButtons(d.slots, lang);
+        }
         save();
       })
       .catch(function (err) {
@@ -1134,6 +1137,35 @@
     CORE.irAlFondo(msgsEl, true);
     bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva
     save();
+  }
+
+  var slotButtonsWrap = null;
+  function renderSlotButtons(slots, lang) {
+    if (!Array.isArray(slots) || !slots.length) return;
+    if (slotButtonsWrap && slotButtonsWrap.parentNode) slotButtonsWrap.remove();
+
+    var wrap = document.createElement('div');
+    wrap.className = 'jbw-quick';
+    slotButtonsWrap = wrap;
+
+    slots.forEach(function (slot, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'jbw-quick-btn';
+      b.textContent = '⏰ ' + slot;
+      b.style.animationDelay = (i * 40) + 'ms';
+      b.addEventListener('click', function () {
+        if (inp.disabled) return;
+        wrap.remove();
+        if (slotButtonsWrap === wrap) slotButtonsWrap = null;
+        var msgText = lang === 'en' ? 'at ' + slot : 'a las ' + slot;
+        send(msgText);
+      });
+      wrap.appendChild(b);
+    });
+
+    msgsEl.appendChild(wrap);
+    CORE.irAlFondo(msgsEl, true);
   }
 
   function submitBooking() {
@@ -1651,6 +1683,9 @@
           // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
           // historial va solo lo que realmente se mostró, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: shownTexts.join('\n\n') });
+          if (d && Array.isArray(d.slots) && d.slots.length > 0) {
+            renderSlotButtons(d.slots, lang);
+          }
           save();
         } else {
           addMsg('bot', cfg.language === 'en'
