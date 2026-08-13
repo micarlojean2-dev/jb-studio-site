@@ -1,58 +1,57 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
 
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const coreSource = readFileSync(join(root, 'chat-core.js'), 'utf8');
-const assistant = readFileSync(join(root, 'asistente.html'), 'utf8');
-const widget = readFileSync(join(root, 'widget.js'), 'utf8');
-const win = {};
-new Function('window', coreSource)(win);
-const CORE = win.JBChatCore;
+const require = createRequire(import.meta.url);
+const { STEPS, EVENTS, createBookingFlow } = require('../chat-flow.js');
 
-let checks = 0;
-function ok(condition, message) {
-  assert.ok(condition, message);
-  checks++;
-  console.log('  ✓', message);
+function readyFlow() {
+  const flow = createBookingFlow({ config: { clientId: 'corrections-v2' } });
+  flow.startBooking();
+  flow.dispatch({ type: EVENTS.SELECT_SERVICE, service: 'Masaje relajante' });
+  flow.dispatch({ type: EVENTS.SELECT_DATE, date: '2026-08-20' });
+  flow.dispatch({ type: EVENTS.SELECT_TIME, time: '16:00' });
+  flow.dispatch({
+    type: EVENTS.SET_CUSTOMER_DATA,
+    customer: { name: 'María López', phone: '2067421261', email: 'maria@example.com' },
+    specialRequests: '',
+  });
+  flow.dispatch({ type: EVENTS.SHOW_SUMMARY });
+  return flow;
 }
 
-console.log('Correcciones de reserva');
-['Juan Pérez', 'María José', 'Jean-Baptiste'].forEach((name) => {
-  ok(CORE.valorValido('nombre', name), `acepta el nombre "${name}"`);
-});
-['ya te lo dije', 'eso mismo', 'te dije antes', 'como te dije'].forEach((reply) => {
-  ok(!CORE.valorValido('nombre', reply), `rechaza la frase conversacional "${reply}"`);
-});
-ok(CORE.campoCorreccion('el correo está mal') === 'email', 'detecta corrección de correo');
-ok(CORE.campoCorreccion('me equivoqué con el teléfono') === 'telefono', 'detecta corrección de teléfono');
-ok(CORE.campoCorreccion('el nombre está incorrecto') === 'nombre', 'detecta corrección de nombre');
-ok(CORE.campoCorreccion('perdón, el correo lo puse mal') === 'email', 'detecta la variante “lo puse mal”');
-
-const menu = [{ nombre: 'Masaje Relajante' }];
-ok(CORE.extractBooking('micarlojean2@gmail.com', menu, null, 'es').email === 'micarlojean2@gmail.com', 'extrae el nuevo correo');
-ok(CORE.extractBooking('206-742-1261', menu, null, 'es').telefono === '206-742-1261', 'extrae el nuevo teléfono');
-ok(CORE.extractBooking('me llamo María López', menu, null, 'es').nombre === 'María López', 'extrae el nuevo nombre');
-ok(CORE.extractBooking('quiero reservar Masaje Relajante mañana a las 2 pm', menu, null, 'es').servicio === 'Masaje Relajante', 'la captura normal de reserva sigue activa');
-
-for (const [name, source] of [['asistente', assistant], ['widget', widget]]) {
-  ok(source.includes('function pedirCorreccion(campo, lang)'), `${name} pide exclusivamente el campo corregido`);
-  ok(source.includes("delete bookingData[campo];\n    bookingStep = 1;\n    bookingPending = campo;"), `${name} borra el valor anterior y deja el campo pendiente`);
-  // [auditoría de reservas — BUG-CONFIRMACION-TEXTO] Antes había una rama
-  // previa ("if (CORE.esConfirmacion(t, lang)) submitBooking();") que
-  // confirmaba la reserva por texto libre, así que esta quedaba como "else
-  // if". Esa rama se eliminó (solo el botón puede confirmar) y esta pasó a
-  // ser el primer "if" de la comprobación.
-  ok(source.includes('if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);\n        else showBookingSummary();'), `${name} permite corregir desde el resumen`);
-  ok(!source.includes('if (CORE.esConfirmacion(t, lang)) submitBooking();'), `${name} ya no confirma la reserva por texto libre (BUG-CONFIRMACION-TEXTO corregido)`);
-  // ETAPA 2: la detección de corrección ya no ocurre sobre `traidos` de
-  // CORE.extractBooking() (regex, síncrono) sino sobre `mergeResult.traidos`
-  // de CORE.mergeBookingEntities() (a partir de interpretation.entities de
-  // la IA, dentro de askBookingTurn) — el nombre de la variable cambió, la
-  // garantía de comportamiento ("¿el campo que mencionó la corrección
-  // realmente llegó con valor nuevo?") es idéntica.
-  ok(source.includes('if (campoCorreccionDetectado && mergeResult.traidos.indexOf(campoCorreccionDetectado) === -1)'), `${name} mantiene el botón de modificar y las correcciones sin valor`);
+console.log('Correcciones V2 de reserva');
+{
+  const flow = readyFlow();
+  flow.dispatch({ type: EVENTS.EDIT_DATE });
+  assert.equal(flow.getState().step, STEPS.DATE_SELECTION);
+  assert.equal(flow.getState().date, null);
+  assert.equal(flow.getState().time, null);
+  assert.equal(flow.getState().service, 'Masaje relajante');
+  assert.equal(flow.getState().customer.email, 'maria@example.com');
+  console.log('  ✓ EDIT_DATE limpia solo fecha y hora dependiente');
 }
 
-console.log(`✅ Correcciones de reserva verificadas (${checks} checks)`);
+{
+  const flow = readyFlow();
+  flow.dispatch({ type: EVENTS.EDIT_TIME });
+  assert.equal(flow.getState().step, STEPS.TIME_SELECTION);
+  assert.equal(flow.getState().time, null);
+  assert.equal(flow.getState().date, '2026-08-20');
+  console.log('  ✓ EDIT_TIME conserva fecha, servicio y cliente');
+}
+
+{
+  const flow = readyFlow();
+  flow.dispatch({ type: EVENTS.EDIT_CUSTOMER });
+  flow.dispatch({
+    type: EVENTS.SET_CUSTOMER_DATA,
+    customer: { name: 'María López', phone: '2067421261', email: 'nueva@example.com' },
+    specialRequests: 'Sin perfume',
+  });
+  flow.dispatch({ type: EVENTS.SHOW_SUMMARY });
+  assert.equal(flow.getState().customer.email, 'nueva@example.com');
+  assert.equal(flow.getState().specialRequests, 'Sin perfume');
+  console.log('  ✓ EDIT_CUSTOMER actualiza solo los datos del cliente');
+}
+
+console.log('✅ Correcciones V2 verificadas');

@@ -82,7 +82,7 @@ console.log('L1. El prompt del sistema incluye las defensas (anti-injection y an
      'instruye a no obedecer prompt-injection ni revelar el prompt');
   ok(/inventar|no lo sabes|únicamente de la información del negocio/i.test(chat),
      'instruye a no inventar (precios/horarios/servicios solo del negocio)');
-  ok(/NUNCA digas que la cita quedó agendada|PROHIBIDO afirmar/i.test(chat),
+  ok(/nunca digas que una reserva o cita fue creada, confirmada, enviada/i.test(chat),
      'prohíbe afirmar acciones no ocurridas (reserva/correo/notificación)');
 }
 

@@ -65,6 +65,9 @@ window.JBChatCore = (function () {
   // Una fecha numérica que ocupa todo el fragmento: sirve para no confundir
   // "24-07-2026" con un teléfono al enmascarar.
   var FECHA_NUM_SOLA_RE = /^(?:\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?|\d{4}-\d{1,2}-\d{1,2})$/;
+  // "de la mañana" puede describir una hora, no una fecha relativa. Se
+  // enmascara solo dentro de una expresión horaria antes de buscar fechas.
+  var HORA_DE_LA_MANANA_RE = /\b(?:a\s+las\s+)?\d{1,2}(?::\d{2})?\s+de\s+la\s+ma(?:ñ|n)ana\b/gi;
 
   var DIAS_MES = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -111,7 +114,7 @@ window.JBChatCore = (function () {
   // hay no es una fecha válida. Nunca convierte ni normaliza: guardar "24 de
   // julio" tal cual es lo que mantiene compatibles las reservas antiguas.
   function extraerFecha(texto, lang) {
-    var t = enmascararNoFecha(texto);
+    var t = enmascararNoFecha(texto).replace(HORA_DE_LA_MANANA_RE, ' ');
 
     var iso = t.match(FECHA_ISO_RE);
     if (iso) {
@@ -172,39 +175,10 @@ window.JBChatCore = (function () {
 
   var MARCADOR_RE = /\[[A-Z_]{3,}\]/g;
 
-  // ETAPA 2 — limpieza: MODIFY_TRIGGERS e INTENT_RE quedaban huérfanos tras
-  // migrar TAMBIÉN asistente.html a interpretation.intent (ver informe) —
-  // 0 callers reales confirmados por grep, se eliminaron junto con
-  // pareceReserva() (más abajo, su único consumidor real de INTENT_RE).
-  // BOOKING_TRIGGERS SÍ se conserva: sigue siendo usada por
-  // extractNotasUsuario() más abajo, para un propósito distinto y no
-  // relacionado con detectar intención inicial (evitar que "necesito
-  // reservar" se cuele como una "nota" del cliente).
-  var BOOKING_TRIGGERS = /reservar|agendar|cita|quiero ir|disponibilidad|appointment|reserve|reservation|book(?:ing)?|table|reserva|hora libre|turno|quiero una cita/i;
-
-  var CORRECCION_RE = /(me\s+equivoqu[eé]|cambiar|corregir|est[aá]\s+mal|incorrect[oa]|(?:lo\s+)?puse\s+mal|mejor|en realidad|prefiero)/i;
-
   // Preguntar el precio/duración de un servicio no es elegirlo: sin esto,
   // "cuánto cuesta el tratamiento facial" durante una reserva de Manicura
   // cambiaba el servicio en curso solo por nombrar el otro. [BUG-PRECIO-SERVICIO]
   var PRICE_QUESTION_RE = /cu[aá]nto\s+(?:cuesta|vale|sale|dura)|qu[eé]\s+precio|price|how\s+much|how\s+long/i;
-
-  var CAMPO_MENCIONADO = [
-      [/hora|horario/i, 'hora'], [/fecha|d[ií]a/i, 'fecha'], [/personas?|somos/i, 'personas'],
-      [/servicio/i, 'servicio'], [/correo|email/i, 'email'], [/tel[eé]fono|n[uú]mero/i, 'telefono'],
-      [/nombre/i, 'nombre'], [/mesa|terraza|ventana/i, 'tablePreference'],
-      [/barbero|barbera|estilista/i, 'barberPreference']
-    ];
-
-  // A correction without its new value must clear the named field, even after
-  // every required field has already been captured.
-  function campoCorreccion(text) {
-    if (!CORRECCION_RE.test(String(text || ''))) return '';
-    for (var i = 0; i < CAMPO_MENCIONADO.length; i++) {
-      if (CAMPO_MENCIONADO[i][0].test(text)) return CAMPO_MENCIONADO[i][1];
-    }
-    return '';
-  }
 
   // ── Nombre completo ────────────────────────────────────────────────────────
   // Partículas que van EN medio de un nombre ("de la Cruz", "del Valle"): se
@@ -254,53 +228,8 @@ window.JBChatCore = (function () {
     return out.join(' ');
   }
 
-  // ── Notas del cliente extraídas de SUS propios mensajes ────────────────────
-  // Respaldo de [NOTA:]: si DeepSeek responde en prosa sin emitir el marcador,
-  // la preferencia se perdía. Aquí se captura de forma conservadora desde lo que
-  // el cliente escribe, sin ninguna llamada extra al modelo. Solo se toman
-  // frases con una intención clara de preferencia/restricción; nunca datos
-  // estructurados ni cortesías.
-  var NOTA_USER_TRIGGER = /(soy\s+al[eé]rgic|tengo\s+alergia|al[eé]rgic[oa]\s+a|prefiero|prefer[ií]a|quisiera\s+(?:una?\s+)?(?:habitaci[oó]n|sala|cuarto)|necesito\s+(?:una?\s+)?(?:habitaci[oó]n|sala|cuarto|silencio|silla|ayuda|espacio|ambiente)|evit[ea]n?\b|sin\s+fragancia|con\s+poca\s+luz|poca\s+luz|habitaci[oó]n\s+silenciosa|ambiente\s+(?:silencioso|tranquilo)|movilidad\s+reducida|silla\s+de\s+ruedas|es\s+mi\s+cumplea[nñ]os|(?:voy|estoy)\s+embarazad|no\s+puedo\s+con|me\s+molesta)/i;
-
-  // Cortesías/genéricos que NUNCA son nota, aunque cuelen por casualidad.
-  var NOTA_USER_GENERICO = /^(?:s[ií]|no|ok(?:ay)?|vale|gracias|perfecto|genial|est[aá]\s+bien|de\s+acuerdo|correcto|listo|claro|buenas?|hola|adi[oó]s)[\s.!]*$/i;
   var FOOD_PREFERENCE_TRIGGER = /\b(?:sin|without|no|hold|leave\s+out|don\s+t\s+like|extra|more|less|m[aá]s|poc[ao]|poquit[ao]|little|light|mucho|very|doble|double|con|with|ponle|add|on\s+the\s+side|apart\w*|side|solo|only|bien\s+cocid[ao]|muy\s+cocid[ao]|t[eé]rmino\s+medio|medium\s+rare|well\s+done|rare|cambiar\s+papas|swap)\b/i;
   var FOOD_MEDICAL_TRIGGER = /al[eé]rg|allerg|intoleran|intolerant|cel[ií]ac|celiac|no\s+puedo\s+consumir|cannot\s+(?:eat|have|consume)|contaminaci[oó]n|contamination|reacci[oó]n\s+al[eé]rgica|lactos|dairy/i;
-
-  function limpiarFraseNota(frag) {
-    return String(frag || '')
-      // Sin datos estructurados dentro de la nota (req.: nada de correo/tel/id).
-      .replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, ' ')
-      .replace(/\+?\d[\d\s().-]{6,}\d/g, ' ')
-      .replace(/\b\d{5,}\b/g, ' ')
-      // Muletillas de arranque que no aportan a la preferencia.
-      .replace(/^(?:y|e|ah+|oye|pues|mira|bueno|adem[aá]s|tambi[eé]n|por\s+cierto|una\s+cosa|otra\s+cosa|eh+)[,\s]+/i, '')
-      .replace(/\s{2,}/g, ' ')
-      .replace(/^[\s,;.]+|[\s,;.]+$/g, '')
-      .trim();
-  }
-
-  function extractNotasUsuario(text, cfg) {
-    var t = String(text || '');
-    // Trocear en cláusulas por puntuación fuerte, saltos y la conjunción " y ",
-    // para separar "mi correo es x@y.com Y prefiero silencio" en dos ideas.
-    var clausulas = t.split(/[.;\n]+|\s+\by\b\s+/i);
-    var notas = [];
-    clausulas.forEach(function (c) {
-      var frag = c.trim();
-      if (!frag) return;
-      var foodPreference = templateId(cfg) === 'restaurant' && FOOD_PREFERENCE_TRIGGER.test(frag);
-      var foodMedical = templateId(cfg) === 'restaurant' && FOOD_MEDICAL_TRIGGER.test(frag);
-      if (!NOTA_USER_TRIGGER.test(frag) && !foodPreference && !foodMedical) return;
-      // "necesito reservar", "quiero una cita": intención de reserva, no nota.
-      if (BOOKING_TRIGGERS.test(frag) && !foodPreference && !foodMedical) return;
-      var nota = limpiarFraseNota(frag);
-      if (nota.length < 3) return;
-      if (NOTA_USER_GENERICO.test(nota)) return;
-      if (notas.indexOf(nota) === -1) notas.push(nota);
-    });
-    return notas;
-  }
 
   var RESUMEN_ICONOS = {
       nombre: '👤', servicio: '✂️', fecha: '📅', hora: '⏰',
@@ -520,23 +449,6 @@ window.JBChatCore = (function () {
       ' ' + (en ? 'What new date and time would you prefer?' : '¿Qué nueva fecha y hora prefieres?');
   }
 
-  function horasAbiertas(businessHours) {
-    var set = {};
-    if (!businessHours) return null;
-    var vacio = true;
-    Object.keys(businessHours).forEach(function (d) {
-      var day = businessHours[d];
-      if (!day || day.enabled === false || day.unknown) return;
-      (day.ranges || []).forEach(function (r) {
-        var a = parseInt(String(r.start || '').split(':')[0], 10);
-        var b = parseInt(String(r.end || '').split(':')[0], 10);
-        if (isNaN(a) || isNaN(b)) return;
-        for (var h = a; h <= b; h++) { set[h] = true; vacio = false; }
-      });
-    });
-    return vacio ? null : set;
-  }
-
   // Devuelve { hora } resuelta, { ambigua: n, mm } si hay que preguntar, o
   // null.
   //
@@ -564,9 +476,18 @@ window.JBChatCore = (function () {
     if (n === 0) return { hora: '12' + mm + ' AM' };
     if (n === 12) return { hora: '12' + mm + ' PM' };
 
-    // The business schedule cannot determine the customer's intended meridiem.
-    // Ask explicitly instead of silently selecting the only currently open slot.
-    return { ambigua: n, mm: mm };
+    var opciones = opcionesHoraAmbigua({ n: n, mm: mm }, businessHours);
+    if (opciones.length === 1) return { hora: opciones[0] };
+    return { ambigua: n, mm: mm, opciones: opciones };
+  }
+
+  // Devuelve solo franjas que el horario configurado no descarta. Si el
+  // horario no es verificable o admite ambas, se conservan AM y PM para que la
+  // interfaz ofrezca una elección explícita con botones.
+  function opcionesHoraAmbigua(amb, businessHours) {
+    var opciones = [amb.n + amb.mm + ' AM', amb.n + amb.mm + ' PM'];
+    var validas = opciones.filter(function (hora) { return horaDentroDeHorario(hora, businessHours) !== false; });
+    return validas.length ? validas : opciones;
   }
 
   // ── Respaldo determinista de fecha/hora (sin IA) ────────────────────────────
@@ -640,40 +561,6 @@ window.JBChatCore = (function () {
     var config = (cfg && cfg.config) || {};
     var staff = cfg && (cfg.staff || cfg.barbers) || config.staff || config.barbers;
     return Array.isArray(staff) ? staff : [];
-  }
-
-  // Orden fijo: primero lo que define LA CITA (qué, cuándo), después los
-  // datos de contacto de quien la pide. Antes se pedía nombre/teléfono/correo
-  // antes que servicio/fecha/hora, así que alguien que ya había dicho
-  // "quiero reservar el masaje el viernes" volvía a que le preguntaran su
-  // nombre antes de seguir con lo que ya había dicho — se sentía como que el
-  // asistente "olvidaba" lo que acababa de escribir. [BUG-ORDEN-RESERVA]
-  function bookingRequirements(cfg, data) {
-    var template = templateId(cfg);
-    var required = template === 'restaurant'
-        ? ['fecha', 'hora', 'personas', 'nombre', 'contacto', 'email', 'specialRequests']
-      : template === 'barber'
-        ? ['servicio', 'fecha', 'hora', 'nombre', 'contacto', 'email', 'specialRequests']
-        : ['servicio', 'fecha', 'hora', 'nombre', 'telefono', 'email', 'specialRequests'];
-    return required.filter(function (field) {
-      if (field === 'contacto') return !(data.telefono || data.email || data.contacto);
-      if (field === 'specialRequests') return data.specialRequests === undefined;
-      // Nombre de una sola palabra: se pide confirmación natural antes de
-      // darlo por completo, sin perderlo (sigue en data.nombre) ni volver a
-      // preguntarlo desde cero. [Objetivo 5]
-      if (field === 'nombre') {
-        if (!data.nombre) return true;
-        return esNombreUnaPalabra(data.nombre) && data.__nombreConfirmado !== true;
-      }
-      return !data[field];
-    });
-  }
-
-  function summaryFields(cfg) {
-    var template = templateId(cfg);
-    if (template === 'restaurant') return ['nombre', 'servicio', 'personas', 'fecha', 'hora', 'tablePreference', 'telefono', 'email', 'specialRequests'];
-    if (template === 'barber') return ['nombre', 'servicio', 'fecha', 'hora', 'barberPreference', 'telefono', 'email', 'specialRequests'];
-    return ['nombre', 'servicio', 'fecha', 'hora', 'personas', 'telefono', 'email', 'specialRequests'];
   }
 
   function extractBooking(text, menu, businessHours, lang, cfg) {
@@ -801,17 +688,15 @@ window.JBChatCore = (function () {
     return out;
   }
 
-  // ── ETAPA 2 — entities de la IA → bookingData ─────────────────────────────
+  // ── Entities de IA para modificación → update validado ─────────────────────
   // Frontera de autoridad: interpretation.entities (lib/message-interpreter.js,
   // api/client-chat.js) es SOLO lo que la IA transcribió del mensaje — nunca
   // se confía en ello tal cual. Esta es la ÚNICA función que decide qué se
   // acepta, y reutiliza EXACTAMENTE los mismos validadores deterministas que
   // ya usaba extractBooking() (EMAIL_RE2, TEL_RE/valorValido, extraerFecha(),
   // resolverHora(), el catálogo real) — no se inventa ninguna regla nueva.
-  // Devuelve un objeto con las MISMAS claves que bookingData ya usa
-  // (servicio/fecha/hora/nombre/email/telefono/personas/notes), incluyendo
-  // SOLO los campos que de verdad pasaron validación; lo demás se omite —
-  // igual que extractBooking() nunca inventaba un campo que no encontraba.
+  // Devuelve solo campos que pasaron validación para buildModifyUpdateFromEntities;
+  // la nueva reserva V2 no precarga datos desde texto libre.
   // Una hora ambigua no se descarta: viaja como __horaAmbigua, igual que
   // siempre, para que el llamador reutilice la pregunta "¿mañana o tarde?"
   // que ya existía.
@@ -876,7 +761,10 @@ window.JBChatCore = (function () {
     // frase completa del cliente.
     if (typeof e.date === 'string' && e.date.trim()) {
       var fechaValida = extraerFecha(e.date, lang);
-      if (fechaValida) out.fecha = fechaValida;
+      // No aceptar "mañana" de entities si en el mensaje original solo forma
+      // parte de una hora como "a las 3 de la mañana".
+      var fechaEnRaw = extraerFecha(raw, lang);
+      if (fechaValida && (fechaValida !== 'mañana' || !raw || fechaEnRaw === 'mañana')) out.fecha = fechaValida;
     } else if (raw) {
       // Respaldo determinista: la IA devolvió null para "date" en este turno
       // — se intenta reconocer la fecha directamente en el mensaje del
@@ -902,11 +790,14 @@ window.JBChatCore = (function () {
     // ETAPA 2: con HORA_RE, "4" aislado no matcheaba ninguna rama y la hora
     // se perdía sin pedir aclaración]
     if (typeof e.time === 'string' && e.time.trim()) {
-      var hMatch = e.time.trim().match(/^(?:a\s+las\s+|at\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?$/i);
+      var timeValue = e.time.trim();
+      var palabra = timeValue.match(/^(?:a\s+las\s+)?(\d{1,2})(?::(\d{2}))?\s+de\s+la\s+(tarde|noche|ma(?:ñ|n)ana)$/i);
+      var hMatch = palabra || timeValue.match(/^(?:a\s+las\s+|at\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?$/i);
       if (hMatch) {
         var hh = parseInt(hMatch[1], 10);
         if (hh >= 0 && hh <= 23) {
-          var horaR = resolverHora(hh, hMatch[2], hMatch[3], businessHours);
+          var sufijo = palabra ? HORA_PALABRA_SUFIJO[palabra[3].toLowerCase()] : hMatch[3];
+          var horaR = resolverHora(hh, hMatch[2], sufijo, businessHours);
           if (horaR && horaR.hora) out.hora = horaR.hora;
           else if (horaR && horaR.ambigua) out.__horaAmbigua = { n: horaR.ambigua, mm: horaR.mm };
         }
@@ -951,36 +842,13 @@ window.JBChatCore = (function () {
       out.personas = String(e.people);
     }
 
-    // notas: texto libre, limpiado con limpiarFraseNota() — la MISMA función
-    // que ya limpiaba una nota detectada en texto libre (quita datos
-    // estructurados colados por accidente, muletillas de arranque).
+    // notas: texto libre acotado para una modificación existente.
     if (typeof e.notes === 'string' && e.notes.trim()) {
-      var notaLimpia = limpiarFraseNota(e.notes);
+      var notaLimpia = e.notes.trim().replace(/\s{2,}/g, ' ');
       if (notaLimpia.length >= 3) out.notes = notaLimpia;
     }
 
     return out;
-  }
-
-  // Aplica a bookingData SOLO las claves que sanitizeBookingEntities() validó
-  // en ESTE mensaje — nunca toca ni borra un campo que este mensaje no trajo.
-  // Centraliza el merge que antes vivía repetido (con el mismo patrón) en
-  // widget.js y asistente.html, para que ambos se comporten idénticos.
-  // No muta businessHours ni cfg; sí muta bookingData (mismo contrato que ya
-  // tenía el merge manual anterior).
-  function mergeBookingEntities(bookingData, sanitized, businessHours) {
-    var ambigua = sanitized.__horaAmbigua || null;
-    var fueraDeHorario = false;
-    var keys = Object.keys(sanitized).filter(function (k) { return k !== '__horaAmbigua'; });
-    if (sanitized.hora && horaDentroDeHorario(sanitized.hora, businessHours) === false) {
-      fueraDeHorario = true;
-      keys = keys.filter(function (k) { return k !== 'hora'; });
-    }
-    // "notes" NUNCA se sobrescribe aquí: se acumula (fusionarNotas), nunca se
-    // reemplaza. El llamador es quien decide cómo fusionarla —
-    // mergeBookingEntities solo copia el resto de campos tal cual.
-    keys.forEach(function (k) { if (k !== 'notes') bookingData[k] = sanitized[k]; });
-    return { ambigua: ambigua, fueraDeHorario: fueraDeHorario, traidos: keys };
   }
 
   // Proyección mínima de activeReservation para mandar a /api/client-chat como
@@ -1029,44 +897,8 @@ window.JBChatCore = (function () {
         .trim();
     }
 
-  // Notas del cliente: DeepSeek, durante el flujo de reserva, marca las frases
-  // importantes que el cliente dice espontáneamente con [NOTA: ...]. Aquí se
-  // extraen (sin llamada extra al modelo) y se quitan del texto visible. Solo se
-  // conserva lo que el cliente dijo; el modelo tiene prohibido inventar.
+  // Los marcadores [NOTA:] son internos y nunca se muestran al cliente.
   var NOTA_RE = /\[NOTA:\s*([^\]]{1,300})\]/gi;
-
-  function extractNotas(text) {
-      var t = String(text || '');
-      var notas = [];
-      var m;
-      NOTA_RE.lastIndex = 0;
-      while ((m = NOTA_RE.exec(t)) !== null) {
-        var v = m[1].trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
-        if (v && notas.indexOf(v) === -1) notas.push(v);
-      }
-      var limpio = t.replace(NOTA_RE, '').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-      return { notas: notas, limpio: limpio };
-    }
-
-  // Acumula notas nuevas en la nota existente, sin duplicar, como un solo texto.
-  // El de-dup compara en forma normalizada (minúsculas, espacios colapsados, sin
-  // puntuación final): así "prefiero una habitación silenciosa" (del cliente) y
-  // "Prefiero una habitación silenciosa." (reescrita por DeepSeek en [NOTA:]) no
-  // entran las dos. Se conserva la primera aparición, con su texto original.
-  function normNota(s) {
-      return String(s || '').toLowerCase().replace(/\s+/g, ' ').replace(/[.,;:!?¿¡]+$/, '').trim();
-    }
-  function fusionarNotas(prev, nuevas) {
-      var base = String(prev || '').split(/\s+·\s+/).map(function (s) { return s.trim(); }).filter(Boolean);
-      var vistos = {};
-      base.forEach(function (b) { vistos[normNota(b)] = true; });
-      (nuevas || []).forEach(function (n) {
-        var v = String(n || '').trim();
-        var k = normNota(v);
-        if (v && k && !vistos[k]) { vistos[k] = true; base.push(v); }
-      });
-      return base.join(' · ');
-    }
 
   function isFoodMedical(text, cfg) {
     return templateId(cfg) === 'restaurant' && FOOD_MEDICAL_TRIGGER.test(String(text || ''));
@@ -1337,19 +1169,6 @@ window.JBChatCore = (function () {
     };
   }
 
-  // ── Memoria del servicio elegido ─────────────────────────────────────────
-  // Un servicio mencionado en chat libre, elegido en una tarjeta o tomado del
-  // catálogo se recuerda aunque el cliente no esté todavía en modo reserva:
-  // al iniciar una, se usa como respaldo si el mensaje que la dispara no
-  // vuelve a nombrar el servicio. No se lee del historial del modelo — es el
-  // frontend quien decide y persiste este estado.
-  function resolveServicio(bookingData, selectedService) {
-    return (bookingData && bookingData.servicio) || selectedService || '';
-  }
-
-  // ── Nombre de una sola palabra: confirmación natural ────────────────────
-  // "Mike" no se descarta ni se vuelve a preguntar desde cero: se conserva y
-  // se pregunta, en un tono natural, si es el nombre completo.
   function esNombreUnaPalabra(nombre) {
     var s = String(nombre || '').trim();
     return !!s && s.indexOf(' ') === -1;
@@ -1360,44 +1179,6 @@ window.JBChatCore = (function () {
     return en
       ? 'I noted you as ' + nombre + ' 😊 Is that your full name, or would you like to add your last name?'
       : 'Te anoté como ' + nombre + ' 😊 ¿Ese es tu nombre completo o quieres agregar tu apellido?';
-  }
-
-  // Decide qué hacer con la respuesta a "¿es tu nombre completo o agregas
-  // apellido?", de forma estructural y compartida por widget.js/asistente.html
-  // (antes duplicada byte a byte en ambos, con el mismo bug en los dos). Nunca
-  // anexa como apellido nada que en realidad sea otro dato: si extractBooking
-  // ya reconoció en ESTE mensaje un correo, teléfono, fecha, hora, servicio,
-  // personas, mesa o barbero, eso significa que el mensaje respondía OTRA
-  // cosa, no un apellido — se conserva el nombre tal cual y se confirma. Una
-  // negación ("no"/"not"/"don't"...) tampoco cuenta, vía NOMBRE_STOP. Una
-  // corrección explícita ("en realidad me llamo Miguel") SÍ reemplaza el
-  // nombre: se detecta reutilizando el propio marcador de nombre de
-  // extractBooking, no una lista de frases nuevas. Nunca deja al cliente sin
-  // respuesta: responder cualquier cosa avanza la conversación una sola vez.
-  // [auditoría — nombre corrupto: "gmail its", "no" pegados como apellido]
-  function confirmarNombreUnaPalabra(bookingData, t, extraCampos, lang) {
-    var next = Object.assign({}, bookingData);
-    var campos = Object.assign({}, extraCampos);
-    var nombreNuevo = campos.nombre;
-    delete campos.__horaAmbigua;
-    delete campos.nombre;
-    Object.keys(campos).forEach(function (k) { if (!next[k]) next[k] = campos[k]; });
-
-    if (nombreNuevo && nombreNuevo.toLowerCase() !== String(next.nombre || '').toLowerCase()) {
-      next.nombre = nombreNuevo;
-      next.__nombreConfirmado = true;
-      return next;
-    }
-
-    if (Object.keys(campos).length > 0 || esConfirmacion(t, lang)) {
-      next.__nombreConfirmado = true;
-      return next;
-    }
-
-    var apellido = limpiarNombre(t);
-    next.__nombreConfirmado = true;
-    if (apellido) next.nombre = next.nombre + ' ' + apellido;
-    return next;
   }
 
   // ── Mensaje final de reserva confirmada (única fuente: nunca se redacta
@@ -1502,10 +1283,8 @@ window.JBChatCore = (function () {
     detectarIdioma: detectarIdioma,
     hasLanguageChoice: hasLanguageChoice,
     languageChoiceCopy: languageChoiceCopy,
-    resolveServicio: resolveServicio,
     esNombreUnaPalabra: esNombreUnaPalabra,
     nombreConfirmacionMensaje: nombreConfirmacionMensaje,
-    confirmarNombreUnaPalabra: confirmarNombreUnaPalabra,
     mensajeReservaGuardada: mensajeReservaGuardada,
     citaLabel: citaLabel,
     catalogItems: catalogItems,
@@ -1525,21 +1304,14 @@ window.JBChatCore = (function () {
     reservaTextos: reservaTextos,
     motivoDisponibilidadMensaje: motivoDisponibilidadMensaje,
     emailActionContextoMensaje: emailActionContextoMensaje,
-    CORRECCION_RE: CORRECCION_RE,
-    CAMPO_MENCIONADO: CAMPO_MENCIONADO,
-    campoCorreccion: campoCorreccion,
     extractBooking: extractBooking,
     sanitizeBookingEntities: sanitizeBookingEntities,
-    mergeBookingEntities: mergeBookingEntities,
     buildReservationContext: buildReservationContext,
     resolverHora: resolverHora,
-    horasAbiertas: horasAbiertas,
+    opcionesHoraAmbigua: opcionesHoraAmbigua,
     horaDentroDeHorario: horaDentroDeHorario,
     limpiarMarcadores: limpiarMarcadores,
     limpiarMarkdown: limpiarMarkdown,
-    extractNotas: extractNotas,
-    extractNotasUsuario: extractNotasUsuario,
-    fusionarNotas: fusionarNotas,
     isFoodMedical: isFoodMedical,
     applyFoodPreferences: applyFoodPreferences,
     foodPreferencesToSpecialRequests: foodPreferencesToSpecialRequests,
@@ -1555,8 +1327,6 @@ window.JBChatCore = (function () {
     accionesRapidas: accionesRapidas,
     featureOn: featureOn,
     templateId: templateId,
-    bookingRequirements: bookingRequirements,
-    summaryFields: summaryFields,
     estaAlFondo: estaAlFondo,
     irAlFondo: irAlFondo,
   };

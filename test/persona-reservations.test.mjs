@@ -20,45 +20,16 @@ const hours = {
   monday: { enabled: true, ranges: [{ start: '09:00', end: '19:00' }] },
 };
 
-console.log('1. Shared chat requirements and extraction');
+console.log('1. V2 reservation surfaces and modification parser');
 {
   const restaurant = { templateId: 'restaurant' };
   const barber = { templateId: 'barber', staff: [{ id: 'ana', name: 'Ana' }] };
-  // Orden: primero lo que define la cita (servicio/personas, fecha, hora),
-  // después los datos de contacto de quien la pide. [BUG-ORDEN-RESERVA]
-  ok(CORE.bookingRequirements(restaurant, {}).join(',') === 'fecha,hora,personas,nombre,contacto,email,specialRequests',
-    'restaurant requires special requests before review');
-  ok(CORE.bookingRequirements(barber, {}).join(',') === 'servicio,fecha,hora,nombre,contacto,email,specialRequests',
-    'barber requires special requests before review');
-  ok(CORE.bookingRequirements({}, {}).join(',') === 'servicio,fecha,hora,nombre,telefono,email,specialRequests',
-    'legacy Spa/Bella also requires special requests');
-  const table = CORE.extractBooking('Somos 4, mesa junto a la ventana', [], hours, 'es', restaurant);
-  ok(table.personas === '4' && table.tablePreference === 'mesa junto a la ventana',
-    'restaurant extracts party size and table preference');
-  const cut = CORE.extractBooking('Quiero corte con Ana', [{ nombre: 'Corte' }], hours, 'es', barber);
-  ok(cut.servicio === 'Corte' && cut.barberPreference === 'Ana', 'barber extracts configured preference');
-  ok(CORE.CAMPO_MENCIONADO.some(([re, field]) => field === 'barberPreference' && re.test('cambiar barbero')),
-    'barber preference can be cleared during a pre-submit change');
-
-  // Regression: answering the CURRENT pending field (e.g. teléfono) and
-  // pre-answering specialRequests in the same message must capture both —
-  // before, the extra "no tengo petición especial" was silently dropped and
-  // the assistant asked the special-request question again as if the
-  // customer had never answered it. [BUG-MEMORIA-ADELANTADA]
-  const spa = {};
-  const withPhone = CORE.extractBooking('Mi teléfono es 2067421261 y no tengo petición especial.', [], hours, 'es', spa);
-  ok(withPhone.telefono === '2067421261' && withPhone.specialRequests === '',
-    'phone + pre-answered specialRequests are both captured from one message');
-  const onlyPhone = CORE.extractBooking('Mi teléfono es 2067421261', [], hours, 'es', spa);
-  ok(onlyPhone.telefono === '2067421261' && onlyPhone.specialRequests === undefined,
-    'specialRequests is left undefined when not mentioned');
-
-  // esSinPeticionEspecial must also recognize "no tengo" (without "ninguna")
-  // as a standalone reply, and "no tengo petición especial" as an embedded
-  // phrase — both used to fall through and get stored as literal text.
-  ok(CORE.esSinPeticionEspecial('No tengo') === true, '"No tengo" alone means no special request');
-  ok(CORE.esSinPeticionEspecial('no tengo petición especial') === true,
-    '"no tengo petición especial" (without "ninguna") means no special request');
+  const update = CORE.buildModifyUpdate('Somos 4 para mañana a las 3 pm', { ...restaurant, menu: [], businessHours: hours }, {});
+  ok(update.partySize === '4' && update.fecha === 'mañana' && update.hora === '3:00 PM',
+    'explicit modification parses changed date, time, and party size');
+  const entityUpdate = CORE.buildModifyUpdateFromEntities({ service: 'Corte', date: null, time: '10 am', name: null, email: null, phone: null, people: null, notes: null }, { ...barber, menu: [{ nombre: 'Corte' }], businessHours: hours }, {}, '');
+  ok(entityUpdate.servicio === 'Corte' && entityUpdate.hora === '10:00 AM',
+    'conversational reschedule validates structured entities');
 }
 
 console.log('2. Server-side persona validation');
@@ -115,29 +86,7 @@ console.log('2. Server-side persona validation');
     'Spa: servicio más preparación debe terminar antes del cierre');
 }
 
-console.log('3. Booking summary renders visibly and never duplicates its buttons');
-{
-  // Regression, found by physically scrolling the real chat: the summary
-  // text can grow the container past what the passive "smart scroll" (which
-  // only follows if you're already within 80px of the bottom) considers
-  // "already at the bottom", so the confirm/change buttons rendered
-  // completely below the fold — visible in the DOM, invisible to the
-  // customer. And if the customer's reply wasn't recognized as either a
-  // clear confirmation or a clear correction (e.g. "todo está correcto"
-  // before CONFIRMACIONES was widened), the flow re-called
-  // showBookingSummary() with the FIRST button pair still on screen,
-  // stacking a second, confusing pair. [BUG-SCROLL-GALERIA] [BUG-RESUMEN-DUPLICADO]
-  for (const file of ['asistente.html', 'widget.js']) {
-    const source = readFileSync(join(root, file), 'utf8');
-    const summaryFn = source.match(/function showBookingSummary\(\)[\s\S]*?\n  \}/)[0];
-    ok(/irAlFondo\(msgsEl, true\)/.test(summaryFn),
-      `${file} showBookingSummary() forces the real confirm button into view`);
-    ok(/resumenBotones/.test(summaryFn) && /resumenBotones\.remove\(\)/.test(summaryFn),
-      `${file} showBookingSummary() removes a stale button pair before showing a new one`);
-  }
-}
-
-console.log('4. Active-reservation duplicate-attempt buttons never leak to free chat');
+console.log('3. Active-reservation duplicate-attempt buttons never leak to free chat');
 {
   // Regression, found live: after a duplicate booking attempt shows the
   // Modificar/Cancelar/Mantener buttons, a customer who types anything else

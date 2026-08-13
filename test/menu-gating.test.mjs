@@ -58,14 +58,13 @@ for (const msg of [
   '¿y el precio?', 'ese tratamiento me interesa', 'quiero saber más de ese producto',
 ]) check(shows(msg) === false, `does not re-show catalog for follow-up: ${msg}`);
 
-// Mid-booking: an incidental dish mention does not flash the menu; an explicit
-// menu request still does.
-check(shows('quiero una hamburguesa clásica', { bookingActive: true }) === false, 'mid-booking incidental dish hides');
-check(shows('muéstrame el menú primero', { bookingActive: true }) === true, 'mid-booking explicit menu shows');
+// The V2 guided flow owns its own UI; general chat only opens the catalog for
+// an explicit catalog request.
+check(shows('quiero una hamburguesa clásica') === false, 'incidental dish hides');
+check(shows('muéstrame el menú primero') === true, 'explicit menu request shows');
 
 // Catalog disabled: never show.
 check(menuDecision('quiero ver el menú', { catalogEnabled: false }) === false, 'catalog disabled hides');
 
 console.log(`menu-gating.test.mjs: ${count} checks passed`);
-
 

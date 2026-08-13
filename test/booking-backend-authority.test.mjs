@@ -25,21 +25,10 @@ const open = validarReserva(restaurant, '2026-07-21', '12:00', 'Hamburguesa Clá
 assert.equal(open.ok, true, 'un horario válido debe permitirse para un único POST');
 
 for (const [name, source] of [['widget', widget], ['asistente', assistant]]) {
-  // ETAPA 2: la comprobación vive en tryLocalBookingShortcut() (compartida
-  // por las dos llamadas de askBookingTurn, antes y después de aplicar
-  // entities) — el patrón cambia de forma pero la garantía es la misma:
-  // completo === true nunca consulta ni muestra texto del modelo.
-  assert.match(source, /if \(completo\) \{ showBookingSummary\(\); return true; \}/,
-    `${name}: no debe consultar ni mostrar texto del modelo al completar datos`);
-  assert.match(source, /Revisando disponibilidad…/,
-    `${name}: debe mostrar un estado neutral mientras espera el POST`);
-  // Auditoría FASE 3: el texto de rechazo ya no está hardcodeado en
-  // widget.js/asistente.html — CORE.motivoDisponibilidadMensaje() decide la
-  // redacción por idioma/plantilla; el backend solo entrega `motivo`.
-  assert.match(source, /CORE\.motivoDisponibilidadMensaje\(d\.motivo, cfg, lang, d\.alternativa\)/,
-    `${name}: usa el mensaje de disponibilidad centralizado (no un texto fijo por motivo)`);
-  assert.ok(source.includes('msgs = msgs.filter(function (m)') && source.includes('pendiente|confirmad[ao]|equipo.*revis'),
-    `${name}: debe limpiar afirmaciones viejas del historial después del rechazo`);
+  assert.match(source, /confirmBooking: (bookingFlowConfirmBooking|widgetFlowConfirmBooking)/,
+    `${name}: V2 usa su adaptador de confirmación autoritativo`);
+  assert.doesNotMatch(source, /function (askBookingTurn|showBookingSummary|submitBooking)\(/,
+    `${name}: no conserva el motor legacy de confirmación`);
 }
 
 assert.doesNotMatch(widget, /else \{\s*card\.appendChild\(buildIcon\(item\.nombre\)\);\s*\}/,

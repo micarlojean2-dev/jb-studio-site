@@ -79,19 +79,6 @@ async function confirmedMedia(clientId, client) {
   return { gallery: media.gallery.length, menuItems: [...new Set(menuItems)] };
 }
 
-function needsRestaurantMedicalWarning(client, messages) {
-  if (client.templateId !== 'restaurant') return false;
-  const text = String([...messages].reverse().find(message => message.role === 'user')?.content || '');
-  return /al[eé]rg|allerg|intoleran|intolerant|cel[ií]ac|celiac|no\s+puedo\s+consumir|cannot\s+(?:eat|have|consume)|contaminaci[oó]n|contamination|reacci[oó]n\s+al[eé]rgica|lactos|dairy/i.test(text);
-}
-
-function restaurantNormalPreference(client, messages) {
-  if (client.templateId !== 'restaurant') return false;
-  const text = String([...messages].reverse().find(message => message.role === 'user')?.content || '');
-  if (needsRestaurantMedicalWarning(client, messages)) return false;
-  return /\b(?:sin|without|no|hold|leave\s+out|extra|more|less|m[aá]s|poc[ao]|poquit[ao]|little|light|doble|double|salsa\s+aparte|sauce\s+on\s+the\s+side|bien\s+cocid|well\s+done|t[eé]rmino\s+medio|medium\s+rare|picante|spicy)\b/i.test(text);
-}
-
 // Idioma fijado por el negocio, no por el modelo ni por quien escribe: se usa
 // tanto en el prompt base como al reforzarlo durante una reserva activa.
 //
@@ -619,7 +606,7 @@ export default async function handler(req, res) {
   if (!isTestBypass && !checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
 
-  const { clientId, messages, previewToken, booking, language, reservationContext } = req.body || {};
+  const { clientId, messages, previewToken, language, reservationContext } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -686,70 +673,13 @@ export default async function handler(req, res) {
     const availabilityRes = await availabilityContextBlock(client, clientId, messages, isEnglish);
     systemPrompt += availabilityRes.promptText;
 
-    // Modo reserva: el frontend manda el estado estructurado (lo capturado y
-    // lo que falta) y el modelo genera la respuesta conversacional. Así la
-    // reserva deja de ser una máquina de pasos rígida ("Paso 2/8"): DeepSeek
-    // entiende texto libre, corrige y pide solo lo que falta, mientras el
-    // frontend sigue siendo el dueño del estado, la validación y la creación.
-    // El modelo NUNCA confirma ni inventa disponibilidad: eso lo decide el
-    // servidor de reservas.
-    if (booking && typeof booking === 'object' && !necesitaSetup(client)) {
-      const cap = (booking.captured && typeof booking.captured === 'object') ? booking.captured : {};
-      const faltan = Array.isArray(booking.faltan) ? booking.faltan : [];
-      const capTxt = Object.keys(cap).length
-        ? Object.entries(cap).map(([k, v]) => `- ${k}: ${v}`).join('\n')
-        : '(todavía nada)';
-      systemPrompt += isEnglish ? `
-
-${langDirectiveFor(client, activeLanguage)}
-
-YOU ARE HELPING BOOK AN APPOINTMENT RIGHT NOW.
-
-Data you already have:
-${capTxt}
-
-Data still missing (in order): ${faltan.length ? faltan.join(', ') : 'none'}
-
-How to respond:
-- Speak naturally and warmly, like front desk staff. Confirm in one sentence what the customer just said.
-- Ask ONLY for the first missing item on the list, one at a time. Do not enumerate steps ("Step 2 of 8") or list the pending items.
-- If the customer corrects something (changes the time, service, etc.), accept it naturally.
-- NEVER write the summary yourself or list the captured data (name, date, time, party size, dish, phone, email, etc.): the interface handles that, with its own labels and in the correct language. You only ask for the next item.
-- CRITICAL: the "Data still missing" list is the only source of truth about what was saved — not what you think you understood. If the first missing item still appears there, it has NOT been saved yet, no matter what the customer wrote or what you replied before: keep asking for it, do not assume it is done or move to the next one. If the customer's phrasing for that item is ambiguous or you do not recognize it (for example an unclear relative date), do not rephrase it as if already confirmed: ask them to state it more precisely (an exact date, a day of the week, a time with am/pm). [BUG-FECHA-RELATIVA]
-- FORBIDDEN to say "we have everything ready" or "here's the summary" while the list above still has any pending item: that is only true when the list says "none".
-- Once nothing is missing, say so in a short, warm sentence (in the language indicated above) announcing that you are showing the summary to confirm, WITHOUT listing the data, and do not confirm it yourself.
-- NEVER say the appointment was booked or confirmed. NEVER make up open time slots or availability: the business reviews that when confirming. (The RESERVATION STATUS rule above already covers what you may or may not claim about a reservation's outcome — follow that, not your own guess.)
-- Short sentence, no markdown.
-
-NOTE-TAKING (silent, do not mention it to the customer): if the customer spontaneously mentions a preference, notice, or important request for their appointment —for example allergies, "I prefer a specific person", "I'm bringing someone", needs parking, it's a gift, cannot do a certain position, does not want music, wants a private room, "let me know if I'm running late"— add AT THE END of your reply, on its own line, an EXACT marker in this form: [NOTA: the customer's phrase in their own words]. Strict rules: only what the customer explicitly said; never invent or infer anything; one note per marker (several notes = several markers); if the customer said nothing important, do NOT write any marker; never explain or mention the marker.` : `
-
-${langDirectiveFor(client, activeLanguage)}
-
-ESTÁS AYUDANDO A AGENDAR UNA CITA AHORA MISMO.
-
-Datos que ya tienes:
-${capTxt}
-
-Datos que aún faltan (en orden): ${faltan.length ? faltan.join(', ') : 'ninguno'}
-
-Cómo responder:
-- Habla natural y cálido, como recepción. Confirma en una frase lo que el cliente acaba de decir.
-- Habla con naturalidad y calidez, como el personal de recepción. Confirma en una frase lo que el cliente acaba de decir.
-- Pide SOLO el siguiente dato que falta (${faltan[0] || 'ninguno'}).
-- No repitas preguntas sobre datos que ya tienes arriba.
-- NUNCA digas que la cita quedó reservada, creada o confirmada en Redis: eso se hace ÚNICAMENTE cuando el cliente hace clic en el botón "Sí, confirmar" del resumen.
-`;
-    }
-
     if (necesitaSetup(client)) {
       systemPrompt += `
 
 IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, dile exactamente esta idea con tus palabras: "No puedo confirmar citas en este momento, pero puedo ayudarte con información del negocio." Si tienes teléfono o correo del negocio, ofrécelo para que se la agenden ahí. Sigue ayudando con servicios, precios, horarios y dudas.\n\nNUNCA des una razón técnica ni menciones sistemas, configuración, instalación, activación, datos que falten, pruebas, demos, ni que algo "estará listo pronto": eso es interno y al cliente no le importa. Nunca pidas datos para una cita ni digas que la has agendado.`;
     }
-    const bookingActive = !!(booking && typeof booking === 'object');
     const { text, interpretation } = await callProvider(
-      provider, messages, systemPrompt, client, clientId, bookingActive,
-      { activeLanguage, bookingActive },
+      provider, messages, systemPrompt, client, clientId, { activeLanguage },
     );
 
     const responsePayload = interpretation
@@ -809,17 +739,6 @@ const CLOSING_INTENT = /\b(eso\s+(?:es|era)\s+todo|nada\s+m[aá]s|ya\s+no|no\s+q
 // (aquel se descartó por completo; este es la forma final, medida). [ETAPA 2]
 const INTERPRETER_MAX_TOKENS = 500;
 
-// El turno de reserva en curso (askBookingTurn) ahora TAMBIÉN pide salida
-// estructurada (ETAPA 2: entities), pero su texto conversacional puede ser
-// algo más largo que una clasificación simple — medido en vivo, el máximo
-// real observado fue similar al del turno inicial (~150-200 tokens); se
-// mantiene el mismo límite que INTERPRETER_MAX_TOKENS en vez de crear una
-// segunda constante que solo diferiría por un margen de seguridad idéntico.
-// Si en producción reaparecen truncamientos en este turno específico, subir
-// SOLO este valor con la misma disciplina empírica de la ETAPA 1 (nunca a
-// ciegas). [ETAPA 2]
-const BOOKING_TURN_MAX_TOKENS = INTERPRETER_MAX_TOKENS;
-
 // El turno de interpretación clasifica intent — no es el turno conversacional
 // que redacta la respuesta libre. temperature:0.7 (la del chat normal, ver
 // callDeepSeek) es apropiada para redactar, pero para clasificar el mismo
@@ -827,18 +746,7 @@ const BOOKING_TURN_MAX_TOKENS = INTERPRETER_MAX_TOKENS;
 // determinista que acepta la API de DeepSeek (no rechaza 0 — no hizo falta
 // subir a 0.1). [Corrección de inestabilidad de intent, ETAPA 1]
 //
-// ETAPA 2: el turno de reserva en curso (bookingActive) NO usa esta
-// temperatura baja — sigue en 0.7 (BOOKING_TURN_TEMPERATURE), la misma que
-// siempre tuvo askBookingTurn(). Motivo: ese turno es principalmente
-// CONVERSACIÓN (variedad natural de respuesta), no clasificación; la
-// fiabilidad de las entities no depende de la temperatura del modelo —
-// depende de sanitizeBookingEntities() en chat-core.js, que nunca confía en
-// el valor de la IA sin revalidarlo. Bajar la temperatura aquí arriesgaría
-// respuestas repetitivas/robóticas sin ninguna ganancia real de fiabilidad
-// (ya demostrado en ETAPA 1: la temperatura no fue la causa real de la
-// inestabilidad, reasoning_effort sí lo fue).
 const INTERPRETER_TEMPERATURE = 0;
-const BOOKING_TURN_TEMPERATURE = 0.7;
 
 // `structured` ahora se manda SIEMPRE (ETAPA 2 — antes, ETAPA 1, solo en el
 // turno inicial). Pide al modelo un único objeto JSON con
@@ -846,16 +754,15 @@ const BOOKING_TURN_TEMPERATURE = 0.7;
 // para no pagar una segunda llamada al modelo. Si el JSON no cumple el
 // esquema, se degrada a intent:"unknown"+entities vacías y se hace UNA
 // llamada de respaldo en texto plano — nunca se inventa una interpretación
-// ni se deja al cliente sin respuesta. `structured.bookingActive` decide
-// solo temperature/max_tokens (ver constantes arriba); el esquema y el
-// saneamiento son siempre los mismos. [MIGRACIÓN 1 — ETAPA 2]
-async function callProvider(provider, messages, systemPrompt, client, clientId, bookingActive, structured) {
+// ni se deja al cliente sin respuesta. El esquema y el saneamiento son siempre
+// los mismos. [MIGRACIÓN 1 — ETAPA 2]
+async function callProvider(provider, messages, systemPrompt, client, clientId, structured) {
   // 420 truncated real replies mid-sentence, including mid-marker (the model
   // writes [MOSTRAR_MENU] itself per the prompt), leaving raw "[MOSTR" visible
   // to the customer. [BUG-TRUNCATED-MARKER]
   const interpreterPrompt = structured ? systemPrompt + buildInterpreterInstructions(structured.activeLanguage) : systemPrompt;
-  const maxTokens = structured ? (structured.bookingActive ? BOOKING_TURN_MAX_TOKENS : INTERPRETER_MAX_TOKENS) : 600;
-  const temperature = structured ? (structured.bookingActive ? BOOKING_TURN_TEMPERATURE : INTERPRETER_TEMPERATURE) : undefined;
+  const maxTokens = structured ? INTERPRETER_MAX_TOKENS : 600;
+  const temperature = structured ? INTERPRETER_TEMPERATURE : undefined;
   const data = await callOpenAI(messages, interpreterPrompt, maxTokens, structured ? deepseekResponseFormat() : undefined, temperature);
 
   let text = data.choices?.[0]?.message?.content || '';
@@ -917,23 +824,6 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
       : 'Entendido. ¿En qué más te puedo ayudar o qué cambio te gustaría hacer?';
   }
 
-  // Only health-related requests need an allergen disclaimer. Ordinary kitchen
-  // preferences are recorded with the reservation and never get that warning.
-  // These canned replies only make sense while we are actually collecting the
-  // reservation's preferences. Outside a booking the greedy trigger (a bare
-  // "no") hijacked ordinary messages — and even answered in English on a
-  // Spanish client. Gate on the active booking and use the client's language. [BUG-EXTRA]
-  const en = client.language === 'en';
-  if (bookingActive && needsRestaurantMedicalWarning(client, messages)) {
-    text = en
-      ? 'Thanks for telling us. I will note this dietary restriction for the restaurant. However, I cannot guarantee the absence of allergens or cross-contamination; the restaurant must confirm it directly.'
-      : 'Gracias por avisarnos. Anotaré tu restricción alimentaria para que el restaurante la vea. Sin embargo, no puedo garantizar la ausencia de alérgenos o contaminación cruzada; el restaurante deberá confirmarlo directamente.';
-  } else if (bookingActive && restaurantNormalPreference(client, messages)) {
-    text = en
-      ? 'Perfect 😊 I will note that preference and send it to the restaurant with your reservation.'
-      : 'Perfecto 😊 Anotaré esa preferencia y la enviaré al restaurante junto con tu reserva.';
-  }
-
   // Menu/gallery gating: each marker is present iff the customer asked for
   // that specific thing. Strip any marker the model volunteered on its own,
   // then re-add only per markerDecisions. Catalog and gallery are independent:
@@ -942,7 +832,7 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
   text = text.replace(/\s*\[MOSTRAR_MENU\]\s*/g, ' ').replace(/\s*\[MOSTRAR_GALERIA\]\s*/g, ' ').replace(/\s*\[MOSTRAR_SERVICIOS_CON_FOTOS\]\s*/g, ' ').trimEnd();
   const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || '';
   const showServicePhotos = SERVICE_PHOTO_INTENT.test(lastUserMsg);
-  const { showMenu, showGallery } = markerDecisions(lastUserMsg, { bookingActive, catalogEnabled });
+  const { showMenu, showGallery } = markerDecisions(lastUserMsg, { catalogEnabled });
   if (showServicePhotos) text = text + '\n[MOSTRAR_SERVICIOS_CON_FOTOS]';
   else {
     if (showMenu) text = text + '\n[MOSTRAR_MENU]';
@@ -954,19 +844,19 @@ async function callProvider(provider, messages, systemPrompt, client, clientId, 
 
 // Pure, testable menu-visibility rule. The marker is driven only by what the
 // customer asked for — never by the assistant's own wording. [BUG-3]
-// An explicit "menu/carta" always shows it (even mid-booking). A merely
-// incidental dish/price word shows it only outside a booking and only when the
-// message is not a closing/refusal that happens to name a dish.
-export function menuDecision(lastUserMsg, { bookingActive, catalogEnabled } = {}) {
+// An explicit "menu/carta" always shows it. A merely incidental dish/price
+// word only shows it when the message is not a closing/refusal that happens to
+// name a dish.
+export function menuDecision(lastUserMsg, { catalogEnabled } = {}) {
   if (!catalogEnabled) return false;
   const msg = String(lastUserMsg || '');
   if (MENU_EXPLICIT.test(msg)) return true;
-  return !bookingActive && MENU_INTENT.test(msg) && !CLOSING_INTENT.test(msg);
+  return MENU_INTENT.test(msg) && !CLOSING_INTENT.test(msg);
 }
 
 // A photo/gallery request is always explicit ("fotos", "galería", "ver el
 // lugar") — there is no incidental/bare-word branch to gate, unlike the
-// catalog, so it is not affected by bookingActive or catalogEnabled.
+// catalog, so it is not affected by catalogEnabled.
 export function galleryDecision(lastUserMsg) {
   return GALLERY_INTENT.test(String(lastUserMsg || ''));
 }
@@ -978,4 +868,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, BOOKING_TURN_MAX_TOKENS, BOOKING_TURN_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock, availabilityContextBlock };
+export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock, availabilityContextBlock };

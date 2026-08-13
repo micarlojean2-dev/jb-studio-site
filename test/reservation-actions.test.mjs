@@ -21,8 +21,8 @@ assert.match(html, /Cancelar/);
 assert.match(html, /Reagendar/);
 
 const source = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../api/reservations.js', import.meta.url), 'utf8'));
-assert.match(source, /action !== 'reschedule' && action !== 'lookup' && action !== 'list' && action !== 'validate' && \(!nombre \|\| !fecha \|\| !hora\)/,
-  'secure actions and read-only validation bypass the creation-only name requirement');
+assert.match(source, /action !== 'reschedule' && action !== 'lookup' && action !== 'list' && action !== 'validate' && action !== 'slots' && action !== 'dates' && \(!nombre \|\| !fecha \|\| !hora\)/,
+  'secure actions and read-only availability bypass the creation-only name requirement');
 const assistant = await import('node:fs').then(({ readFileSync }) => readFileSync(new URL('../asistente.html', import.meta.url), 'utf8'));
 assert.match(assistant, /window\.location\.hash\.slice\(1\) \|\| window\.location\.search/,
   'email action tokens are read from URL fragments before query strings');
@@ -36,10 +36,8 @@ for (const [name, source] of [['asistente.html', assistant], ['widget.js', widge
     `${name} lists contact-bound reservations before chat cancellation or rescheduling`);
   assert.match(source, /selectedReservationId: selectedReservationId/,
     `${name} sends a selected reservation ID only after chat selection`);
-  assert.match(source, /CORE\.templateId\(cfg\) !== 'restaurant'/,
-    `${name} runs early availability validation for a restaurant without a selected dish`);
-  assert.match(source, /servicio: bookingData\.servicio \|\| ''/,
-    `${name} sends an empty service to validate a restaurant table using its standard duration`);
+  assert.match(source, /function (bookingFlowConfirmBooking|widgetFlowConfirmBooking)\(state\)/,
+    `${name} creates new reservations through the V2 adapter`);
 }
 // Auditoría FASE 3: el prompt genérico fue reemplazado por un lookup de solo
 // lectura + contexto real de la reserva (nombre/servicio/fecha/hora), que

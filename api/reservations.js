@@ -685,6 +685,102 @@ export function obtenerHuecosDisponibles(client, fechaISO, servicio, reservasInp
   return disponibles;
 }
 
+// El flujo guiado v2 entrega una fecha canónica, nunca lenguaje natural. Esta
+// comprobación no llama parseFechaISO(): evita que una nueva UI vuelva a
+// introducir interpretación de texto libre en la selección de slots.
+function isStrictIsoDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
+  const [year, month, day] = String(value).split('-').map(Number);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  return candidate.getUTCFullYear() === year && candidate.getUTCMonth() === month - 1 && candidate.getUTCDate() === day;
+}
+
+function formatSlotDate(fechaISO) {
+  const parts = new Intl.DateTimeFormat('es-ES', {
+    timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long',
+  }).formatToParts(new Date(fechaISO + 'T12:00:00Z'));
+  const values = Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+  const weekday = values.weekday ? values.weekday.charAt(0).toUpperCase() + values.weekday.slice(1) : '';
+  return `${weekday} ${values.day} de ${values.month}`;
+}
+
+// Enumera slots canónicos y filtra CADA uno con el mismo validarReserva() que
+// protege la creación final. No reemplaza obtenerHuecosDisponibles(), que se
+// conserva para los consumidores actuales basados en conversación libre.
+function getAvailableSlots(client, fechaISO, servicio, people, reservas, now) {
+  if (!isStrictIsoDate(fechaISO)) {
+    return { ok: false, motivo: 'fecha_invalida', mensaje: 'La fecha debe usar el formato YYYY-MM-DD.' };
+  }
+
+  const template = reservationTemplate(client);
+  const isRestaurant = template === 'restaurant';
+  if ((!isRestaurant && !servicio) || (servicio && !knownService(client, servicio))) {
+    return { ok: false, motivo: 'servicio_invalido', mensaje: 'El servicio seleccionado no es válido.' };
+  }
+
+  if (isRestaurant && (!Number.isInteger(people) || people < 1 || people > 200)) {
+    return { ok: false, motivo: 'personas_invalidas', mensaje: 'Indica una cantidad válida de personas.' };
+  }
+
+  if (necesitaSetup(client)) {
+    return { ok: false, motivo: 'needs_setup', mensaje: 'No podemos consultar disponibilidad en este momento.' };
+  }
+
+  if (!validTimezone(client.timezone)) {
+    return { ok: false, motivo: 'zona_horaria_invalida', mensaje: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' };
+  }
+
+  if ((client.holidays || []).includes(fechaISO)) {
+    return { ok: false, motivo: 'feriado', mensaje: 'Ese día no abrimos.' };
+  }
+
+  const rangos = rangosDelDia(client.businessHours, fechaISO);
+  if (rangos === null) {
+    return { ok: false, motivo: 'horario_no_verificable', mensaje: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' };
+  }
+  if (!rangos.length) {
+    return { ok: false, motivo: 'dia_cerrado', mensaje: 'Ese día el negocio está cerrado.' };
+  }
+
+  const duration = durationFor(client, servicio);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return { ok: false, motivo: 'duracion_no_verificable', mensaje: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' };
+  }
+
+  const interval = Number.isFinite(client.reservationIntervalMinutes) ? client.reservationIntervalMinutes : 15;
+  if (interval <= 0) {
+    return { ok: false, motivo: 'intervalo_invalido', mensaje: 'No pudimos comprobar disponibilidad. Intenta nuevamente.' };
+  }
+
+  const occupiedDuration = occupiedDurationFor(client, servicio, duration);
+  const items = Array.isArray(reservas) ? reservas.filter(Boolean) : [];
+  const slots = [];
+  for (const [start, end] of rangos) {
+    for (let minute = start; minute + occupiedDuration <= end; minute += interval) {
+      const value = String(Math.floor(minute / 60)).padStart(2, '0') + ':' + String(minute % 60).padStart(2, '0');
+      if (validarReserva(client, fechaISO, value, servicio, now, items).ok) {
+        slots.push({ value, label: fmt(minute) });
+      }
+    }
+  }
+  return { ok: true, date: { value: fechaISO, label: formatSlotDate(fechaISO) }, slots };
+}
+
+// Lista días canónicos que tienen al menos un slot real. Reutiliza por completo
+// getAvailableSlots()/validarReserva() para que fechas y horas no diverjan.
+function getAvailableDates(client, servicio, people, reservas, now) {
+  const base = now ? new Date(now) : nowEnZona(client && client.timezone);
+  const dates = [];
+  for (let offset = 0; offset < 14; offset++) {
+    const candidate = new Date(base);
+    candidate.setUTCDate(candidate.getUTCDate() + offset);
+    const value = candidate.toISOString().slice(0, 10);
+    const available = getAvailableSlots(client, value, servicio, people, reservas, now);
+    if (available.ok && available.slots.length) dates.push(available.date);
+  }
+  return { ok: true, dates };
+}
+
 // ── Plantilla del resumen (fija, sin DeepSeek: más barata y predecible) ──────
 const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -938,11 +1034,11 @@ export default async function handler(req, res) {
   if (!isTestBypass && !checkRateLimit(ip))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, selectedReservationId, idempotencyKey, language, previewToken } = req.body || {};
+  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, selectedReservationId, idempotencyKey, language, previewToken, service, date, people } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
-  if (action !== 'reschedule' && action !== 'lookup' && action !== 'list' && action !== 'validate' && (!nombre || !fecha || !hora))
+  if (action !== 'reschedule' && action !== 'lookup' && action !== 'list' && action !== 'validate' && action !== 'slots' && action !== 'dates' && (!nombre || !fecha || !hora))
     return res.status(400).json({ error: 'nombre, fecha and hora are required' });
 
   try {
@@ -973,6 +1069,36 @@ export default async function handler(req, res) {
         motivo: 'reagendado_desactivado',
         mensaje: 'El reagendado no está disponible para este negocio en este momento.',
       });
+    }
+
+    // Read-only slots for the guided booking flow. `date` is deliberately
+    // canonical YYYY-MM-DD; this action never accepts or parses free text.
+    if (action === 'slots') {
+      let keys, items;
+      try {
+        keys = await redis.keys(`reservations:${clientId}:*`);
+        items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+      } catch (err) {
+        captureApiException(err, { clientId, feature: 'reservation_slots', route: '/api/reservations' });
+        return res.status(503).json({ error: 'storage_unavailable', retryable: true });
+      }
+      const availabilityClient = barberPreference === undefined ? client : { ...client, __reservationBarberPreference: barberPreference };
+      return res.status(200).json(getAvailableSlots(
+        availabilityClient, date, service, people, items, undefined,
+      ));
+    }
+
+    if (action === 'dates') {
+      let keys, items;
+      try {
+        keys = await redis.keys(`reservations:${clientId}:*`);
+        items = keys.length ? (keys.length === 1 ? [await redis.get(keys[0])] : await redis.mget(...keys)) : [];
+      } catch (err) {
+        captureApiException(err, { clientId, feature: 'reservation_dates', route: '/api/reservations' });
+        return res.status(503).json({ error: 'storage_unavailable', retryable: true });
+      }
+      const availabilityClient = barberPreference === undefined ? client : { ...client, __reservationBarberPreference: barberPreference };
+      return res.status(200).json(getAvailableDates(availabilityClient, service, people, items, undefined));
     }
 
     // Read-only lookup by actionToken: reconstructs the context of a
@@ -1417,5 +1543,5 @@ export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml,
   sendReservationEmails, resendMessageId, releaseInactiveIdempotencyLock, reservationLanguage, publicReservationView,
   nowEnZona, durationFor, actionTokenHash, tokenMatches, actionTokenState, actionTokenIsActive, sameChatContact, chatReservationView,
-  actionTokenExpiry, migrateLegacyActionToken, obtenerHuecosDisponibles,
+  actionTokenExpiry, migrateLegacyActionToken, obtenerHuecosDisponibles, isStrictIsoDate, formatSlotDate, getAvailableSlots, getAvailableDates,
   setRedisForTests(value) { redis = value; } };

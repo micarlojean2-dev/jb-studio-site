@@ -10,7 +10,7 @@
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId)) return;
 
   var API  = 'https://jbstudio.app';
-  var CORE, RESUMEN_ICONOS, CORRECCION_RE, CAMPO_MENCIONADO;
+  var CORE, FLOW, RESUMEN_ICONOS, CORRECCION_RE, CAMPO_MENCIONADO;
   var SESS = 'jbw_' + clientId;
 
   // Monitoreo aislado (Sentry): corre embebido en el sitio de un negocio
@@ -82,21 +82,44 @@
     } catch (e) { /* el monitoreo nunca debe romper el widget */ }
   }
 
+  function captureWidgetBookingV2Event(event, state, reason) {
+    if (!widgetScope || typeof widgetScope.captureMessage !== 'function') return;
+    try {
+      widgetScope.setTag('flow_version', 'v2'); widgetScope.setTag('surface', 'widget');
+      widgetScope.setTag('template', CORE && CORE.templateId(cfg) || 'spa');
+      widgetScope.setTag('step', state && state.step || 'unknown');
+      if (reason) widgetScope.setTag('reason', reason);
+      widgetScope.captureMessage('booking_' + event, event === 'confirmation_failed' ? 'warning' : 'info');
+    } catch (e) {}
+  }
+
   // El motor compartido vive en jbstudio.app, el mismo origen del que este
   // widget ya depende para /api/client-config y /api/client-chat: no añade
   // un punto de fallo nuevo. Si no carga, no pintamos nada — mejor ausente
   // que a medias.
-  if (window.JBChatCore) { arrancar(); }
+  if (window.JBChatCore) { cargarFlow(); }
   else {
     var _core = document.createElement('script');
     _core.src = API + '/chat-core.js';
-    _core.onload = arrancar;
+    _core.onload = cargarFlow;
     _core.onerror = function () { /* sin motor no hay widget */ };
     document.head.appendChild(_core);
   }
 
+  function cargarFlow() {
+    CORE = window.JBChatCore;
+    if (!CORE) return;
+    if (window.JBChatFlow) { arrancar(); return; }
+    var flow = document.createElement('script');
+    flow.src = API + '/chat-flow.js';
+    flow.onload = arrancar;
+    flow.onerror = function () { arrancar(); };
+    document.head.appendChild(flow);
+  }
+
   function arrancar() {
     CORE = window.JBChatCore;
+    FLOW = window.JBChatFlow || null;
     if (!CORE) return;
     RESUMEN_ICONOS = CORE.RESUMEN_ICONOS;
     CORRECCION_RE  = CORE.CORRECCION_RE;
@@ -169,6 +192,8 @@
   var open    = false;
   var busy    = false;
   var greeted = false;
+  var bookingFlow = null;
+  var bookingFlowIdempotencyKey = '';
 
   // ── Sincronización apertura ↔ config (condición de carrera) ─────────────
   // Antes, el clic decidía selector-vs-saludo con cfg.languages tal cual
@@ -181,29 +206,6 @@
   var configFailed = false;           // resolvió sin datos, o la petición falló
   var openRequested = false;          // el usuario ya pidió abrir el chat
   var initialExperienceShown = false; // selector o saludo YA se mostró (una sola vez)
-
-  // ── Booking flow state ───────────────────────────────────────────────────
-  var bookingStep = 0;   // 0 = idle, >0 = en modo reserva (DeepSeek conduce)
-  var bookingPending = null;   // campo que DeepSeek está pidiendo ahora
-  var bookingReview = false;   // el resumen final está a la vista, esperando confirmación
-  var resumenBotones = null;   // botones del resumen activo, para no dejar un par duplicado
-  var submitting = false;      // evita envíos duplicados de la reserva
-  var bookingData = {};
-  var earlyValidationKey = '';
-  // Servicio recordado aunque el cliente aún no esté en modo reserva: se fija
-  // al mencionarlo en chat libre, al pulsar una tarjeta o al elegirlo del
-  // catálogo. Al iniciar una reserva sirve de respaldo si el mensaje que la
-  // dispara no vuelve a nombrar el servicio. [Objetivo 4]
-  var selectedService = '';
-  // [BUG-DATO-PERDIDO-ANTES-DE-BOOKING, auditoría de reservas] mismo
-  // problema que selectedService pero para el resto de campos: si el
-  // cliente da su nombre/teléfono/fecha/etc. en un mensaje casual ANTES de
-  // que el intent sea 'booking', sanitizeBookingEntities() sí lo extraía,
-  // pero nada lo recordaba — se perdía en cuanto ese turno terminaba, y el
-  // bot lo volvía a preguntar al iniciar la reserva de verdad. Se acumula
-  // aquí (mismo merge que ya usa bookingData) y se aplica en cuanto arranca
-  // una reserva nueva; se vacía en cuanto se consume o se cancela.
-  var preBookingMemory = {};
 
   // ── Active reservation state (misma lógica que asistente.html) ───────────
   var RESERVA_SESS = SESS + '_reserva';
@@ -219,36 +221,12 @@
     if (activeReservation) sessionStorage.setItem(RESERVA_SESS, JSON.stringify(activeReservation));
     else sessionStorage.removeItem(RESERVA_SESS);
   } catch (e) {} }
-  // MODIFY_TRIGGERS/CANCEL_TRIGGERS/BOOKING_TRIGGERS (locales de este
-  // archivo) se eliminaron en la MIGRACIÓN 1, ETAPA 1: sin callers tras
-  // mover la detección de booking/reschedule/cancellation a
-  // interpretation.intent (ver send()). En la ETAPA 2, asistente.html
-  // recibió la misma migración y CORE.pareceReserva()/CORE.MODIFY_TRIGGERS
-  // (chat-core.js) también se eliminaron por quedar sin ningún caller real
-  // en ninguna de las dos superficies (ver informe de la ETAPA 2).
-  // CORE.BOOKING_TRIGGERS SÍ se conserva: la usa extractNotasUsuario() para
-  // un propósito distinto, no relacionado con la intención inicial.
-
   try { msgs = JSON.parse(sessionStorage.getItem(SESS) || '[]'); } catch (e) { msgs = []; }
-  var BOOKING_SESS = SESS + '_booking';
-  try {
-    var restoredBooking = JSON.parse(sessionStorage.getItem(BOOKING_SESS) || 'null');
-    if (restoredBooking && typeof restoredBooking === 'object') {
-      bookingStep = restoredBooking.bookingStep || 0;
-      bookingData = restoredBooking.bookingData || {};
-      bookingPending = restoredBooking.bookingPending || null;
-      bookingReview = !!(restoredBooking.awaitingConfirmation || restoredBooking.bookingReview);
-      horaPendiente = restoredBooking.horaPendiente || null;
-      selectedService = restoredBooking.selectedService || '';
-    }
-  } catch (e) {}
   if (msgs.length) greeted = true;
 
   function save() {
     try {
       sessionStorage.setItem(SESS, JSON.stringify(msgs.slice(-60)));
-      if (bookingStep || selectedService) sessionStorage.setItem(BOOKING_SESS, JSON.stringify({ bookingStep: bookingStep, bookingData: bookingData, bookingPending: bookingPending, bookingReview: bookingReview, awaitingConfirmation: bookingReview, horaPendiente: horaPendiente, language: cfg.language, selectedService: selectedService }));
-      else sessionStorage.removeItem(BOOKING_SESS);
     } catch (e) {}
   }
 
@@ -529,6 +507,7 @@
       if (!position && d.widgetPosition) {
         applyPosition(d.widgetPosition === 'bottom-left' ? 'left' : 'right');
       }
+      restoreWidgetBookingFlowV2();
       // Recién ahora se sabe si corresponde selector de idioma o saludo
       // directo: si el usuario ya había pedido abrir mientras esto cargaba,
       // se decide aquí (nunca antes). [Objetivo 1 — condición de carrera]
@@ -564,6 +543,146 @@
     row.appendChild(bub);
     msgsEl.appendChild(row);
     CORE.irAlFondo(msgsEl, role === 'user');   // tu propio mensaje siempre te lleva abajo
+  }
+
+  function widgetFlowServices() {
+    var services = Array.isArray(cfg.services) && cfg.services.length ? cfg.services : cfg.menu;
+    return Array.isArray(services) ? services : [];
+  }
+
+  function widgetFlowServiceName(service) {
+    return typeof service === 'string' ? service : (service && (service.name || service.nombre || service.servicio)) || '';
+  }
+
+  function widgetFlowStaff() { return CORE.configuredStaff(cfg); }
+  function widgetFlowIsRestaurant() { return CORE.templateId(cfg) === 'restaurant'; }
+
+  function widgetFlowRequestDates(state) {
+    var body = { action: 'dates', clientId: clientId, service: state.service };
+    if (state.people !== null) body.people = state.people;
+    if (state.barberPreference !== null) body.barberPreference = state.barberPreference;
+    if (previewToken) body.previewToken = previewToken;
+    return fetch(API + '/api/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (response) { if (!response.ok) throw new Error('dates request failed'); return response.json(); })
+      .then(function (data) { if (!data || !data.ok || !Array.isArray(data.dates)) throw new Error('dates contract invalid'); return data.dates; });
+  }
+
+  function widgetFlowRequestSlots(state) {
+    var body = { action: 'slots', clientId: clientId, service: state.service, date: state.date };
+    if (state.people !== null) body.people = state.people;
+    if (state.barberPreference !== null) body.barberPreference = state.barberPreference;
+    if (previewToken) body.previewToken = previewToken;
+    return fetch(API + '/api/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (response) { if (!response.ok) throw new Error('slots request failed'); return response.json(); })
+      .then(function (data) { if (!data || !data.ok || !Array.isArray(data.slots)) throw new Error('slots contract invalid'); return data.slots; });
+  }
+
+  function widgetFlowConfirmBooking(state) {
+    var body = { clientId: clientId, nombre: state.customer.name, telefono: state.customer.phone, email: state.customer.email,
+      servicio: state.service, fecha: state.date, hora: state.time, specialRequests: state.specialRequests,
+      foodPreferences: state.foodPreferences, tablePreference: state.tablePreference, barberPreference: state.barberPreference,
+      language: cfg.language === 'en' ? 'en' : 'es', idempotencyKey: bookingFlowIdempotencyKey };
+    if (state.people !== null) { body.personas = state.people; body.partySize = state.people; }
+    if (previewToken) body.previewToken = previewToken;
+    return fetch(API + '/api/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (response) { return response.json(); });
+  }
+
+  function widgetFlowRecover(result, lang) {
+    var motivo = result && result.motivo;
+    if (motivo === 'duplicada') { addMsg('bot', lang === 'en' ? 'You already have a reservation with these details.' : 'Ya existe una reserva con estos datos.'); return; }
+    if (motivo === 'needs_setup' || motivo === 'reservas_desactivadas') { addMsg('bot', (result && result.mensaje) || (lang === 'en' ? 'Reservations are unavailable right now.' : 'Las reservas no están disponibles ahora.')); return; }
+    if (motivo === 'servicio_invalido') { bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_SERVICE }); return; }
+    if (motivo === 'fecha_invalida' || motivo === 'dia_cerrado' || motivo === 'feriado') { bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_DATE }); return; }
+    bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_TIME });
+  }
+
+  function renderWidgetBookingFlow(state) {
+    var lang = cfg.language === 'en' ? 'en' : 'es';
+    var wrap = document.createElement('div'); wrap.className = 'jbw-quick';
+    function button(label, handler) {
+      var element = document.createElement('button');
+      element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = label;
+      element.addEventListener('click', handler); wrap.appendChild(element); return element;
+    }
+    if (state.step === FLOW.STEPS.SERVICE_SELECTION) {
+      addMsg('bot', lang === 'en' ? 'Choose a service.' : 'Elige un servicio.');
+      widgetFlowServices().forEach(function (service) { var name = widgetFlowServiceName(service); if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_SERVICE, service: name }); }); });
+    } else if (state.step === FLOW.STEPS.BARBER_SELECTION) {
+      addMsg('bot', lang === 'en' ? 'Choose a barber, or any available barber.' : 'Elige un barbero o cualquiera disponible.');
+      button(lang === 'en' ? 'Any available barber' : 'Cualquiera', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_BARBER, barberPreference: null }); });
+      widgetFlowStaff().forEach(function (staff) { var name = staff && (staff.name || staff.nombre || staff.id); if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_BARBER, barberPreference: name }); }); });
+    } else if (state.step === FLOW.STEPS.PEOPLE_SELECTION) {
+      addMsg('bot', lang === 'en' ? 'For how many people?' : '¿Para cuántas personas?');
+      [1, 2, 3, 4, 5, 6].forEach(function (people) { button(String(people), function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_PEOPLE, people: people }); }); });
+    } else if (state.step === FLOW.STEPS.DATE_SELECTION) {
+      addMsg('bot', lang === 'en' ? 'Loading available dates...' : 'Buscando fechas disponibles...');
+      bookingFlow.requestAvailableDates().then(function (dates) {
+        if (!dates.length) { addMsg('bot', lang === 'en' ? 'There are no available dates right now.' : 'No hay fechas disponibles en este momento.'); return; }
+        dates.forEach(function (date) { button(date.label, function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_DATE, date: date.value }); }); });
+        msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
+      }).catch(function (error) { captureWidgetError(error, 'booking_v2_dates'); addMsg('bot', lang === 'en' ? 'We could not load dates. Please try again.' : 'No pudimos cargar fechas. Inténtalo de nuevo.'); });
+      return;
+    } else if (state.step === FLOW.STEPS.TIME_SELECTION) {
+      addMsg('bot', lang === 'en' ? 'Loading available times...' : 'Buscando horarios disponibles...');
+      bookingFlow.requestSlots().then(function (slots) {
+        var slotWrap = document.createElement('div'); slotWrap.className = 'jbw-quick';
+        if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date.' : 'No hay horarios disponibles para esa fecha.'); return; }
+        slots.forEach(function (slot) { var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = slot.label; element.addEventListener('click', function () { slotWrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_TIME, time: slot.value }); }); slotWrap.appendChild(element); });
+        msgsEl.appendChild(slotWrap); CORE.irAlFondo(msgsEl, true);
+      }).catch(function (error) { captureWidgetError(error, 'booking_v2_slots'); addMsg('bot', lang === 'en' ? 'We could not load times. Please try again.' : 'No pudimos cargar horarios. Inténtalo de nuevo.'); });
+      return;
+    } else if (state.step === FLOW.STEPS.CUSTOMER_DATA) {
+      addMsg('bot', lang === 'en' ? 'Enter your name, phone, email, and any special requests separated by commas.' : 'Escribe tu nombre, teléfono, correo y peticiones especiales separados por comas.');
+      if (widgetFlowIsRestaurant()) {
+        addMsg('bot', lang === 'en' ? 'Optional table preference:' : 'Preferencia de mesa opcional:');
+        [['Terrace', 'Terraza'], ['Window', 'Ventana'], ['Inside', 'Interior'], ['No preference', 'Sin preferencia']].forEach(function (choice) {
+          button(lang === 'en' ? choice[0] : choice[1], function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SET_RESTAURANT_PREFERENCES, tablePreference: choice[1] === 'Sin preferencia' ? null : choice[1] }); });
+        });
+        msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
+      }
+      return;
+    } else if (state.step === FLOW.STEPS.SUMMARY) {
+      addMsg('bot', (lang === 'en' ? 'Review: ' : 'Resumen: ') + [state.service, state.date, state.time, state.customer.name, state.customer.phone, state.customer.email].join(' · ') + '.');
+      button(lang === 'en' ? 'Continue' : 'Continuar', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.REQUEST_CONFIRMATION }); });
+      button(lang === 'en' ? 'Change service' : 'Cambiar servicio', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_SERVICE }); });
+      button(lang === 'en' ? 'Change date' : 'Cambiar fecha', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_DATE }); });
+      button(lang === 'en' ? 'Change time' : 'Cambiar hora', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_TIME }); });
+      button(lang === 'en' ? 'Change details' : 'Cambiar datos', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_CUSTOMER }); });
+    } else if (state.step === FLOW.STEPS.CONFIRMATION) {
+      addMsg('bot', lang === 'en' ? 'Ready to confirm your reservation?' : '¿Listo para confirmar tu reserva?');
+      var confirmButton = button(lang === 'en' ? 'Confirm' : 'Confirmar', function () {
+        confirmButton.disabled = true;
+        bookingFlow.confirmBooking().then(function (result) {
+          if (!result || result.ok !== true) { if (result && !['duplicada', 'needs_setup', 'reservas_desactivadas'].includes(result.motivo)) wrap.remove(); widgetFlowRecover(result, lang); confirmButton.disabled = false; return; }
+          var confirmed = bookingFlow.getState();
+          activeReservation = { reservationId: result.reservationId || null, actionToken: result.actionToken || null, fecha: confirmed.date, hora: confirmed.time, personas: confirmed.people || '', servicio: confirmed.service, specialRequests: confirmed.specialRequests || '', estado: result.status || 'confirmada', confirmedAt: Date.now(), language: lang, emailSent: !!(result.email && result.email.customer && result.email.customer.sent === true) };
+          saveReserva(); captureWidgetBookingV2Event('confirmation_success', confirmed); wrap.remove();
+        }).catch(function (error) { captureWidgetError(error, 'booking_v2_confirm'); captureWidgetBookingV2Event('confirmation_failed', bookingFlow.getState(), 'network'); addMsg('bot', lang === 'en' ? 'We could not confirm your reservation. Please try again.' : 'No pudimos confirmar tu reserva. Inténtalo de nuevo.'); confirmButton.disabled = false; });
+      });
+    } else if (state.step === FLOW.STEPS.CONFIRMED) { captureWidgetBookingV2Event('completed', state); addMsg('bot', lang === 'en' ? 'Your reservation is confirmed.' : 'Tu reserva está confirmada.'); return; }
+    msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
+  }
+
+  function createWidgetBookingFlow() {
+    return FLOW.createBookingFlow({
+      config: { clientId: clientId, templateId: cfg.templateId || cfg.vertical, staff: widgetFlowStaff(), storageNamespace: 'jbw' }, storage: sessionStorage,
+      render: { render: renderWidgetBookingFlow },
+      request: { availableDates: widgetFlowRequestDates, slots: widgetFlowRequestSlots, confirmBooking: widgetFlowConfirmBooking },
+      onMessage: function (state, event) { console.debug('[widget-booking-v2] transition', event.type, state.step); if (event.type === FLOW.EVENTS.START_BOOKING) captureWidgetBookingV2Event('start', state); },
+    });
+  }
+
+  function startWidgetBookingFlowV2() {
+    if (!FLOW || typeof FLOW.createBookingFlow !== 'function' || !widgetFlowServices().length) return false;
+    try { bookingFlowIdempotencyKey = CORE.genIdempotencyKey(); bookingFlow = createWidgetBookingFlow(); bookingFlow.startBooking(); return true; }
+    catch (error) { captureWidgetError(error, 'booking_v2_start'); captureWidgetBookingV2Event('fallback', null, 'start_failed'); bookingFlow = null; return false; }
+  }
+
+  function restoreWidgetBookingFlowV2() {
+    if (!FLOW) return false;
+    try { bookingFlow = createWidgetBookingFlow(); var restored = bookingFlow.init(); if (restored.step === FLOW.STEPS.CHAT) { bookingFlow = null; return false; } bookingFlowIdempotencyKey = CORE.genIdempotencyKey(); greeted = true; captureWidgetBookingV2Event('restore', restored); return true; }
+    catch (error) { captureWidgetError(error, 'booking_v2_restore'); captureWidgetBookingV2Event('fallback', null, 'restore_failed'); bookingFlow = null; return false; }
   }
 
   function showTyping() {
@@ -754,61 +873,8 @@
     CORE.irAlFondo(msgsEl, true);
   }
 
-  // ETAPA 2 — limpieza: este bloque (FECHA_RE/HORA_RE/HORA_CTX/PERSONAS_RE/
-  // NUM_PAL/EMAIL_RE2/TEL_RE/horasAbiertas()/resolverHora() locales de este
-  // archivo) quedaba huérfano desde ANTES de esta migración — la detección
-  // real siempre pasó por CORE.extractBooking() (chat-core.js), y ninguno de
-  // estos identificadores tenía un solo caller real (confirmado por grep en
-  // la auditoría ETAPA 2). La versión buena de resolverHora() (la que sí
-  // consultaba businessHours) se fusionó en chat-core.js, que es la que de
-  // verdad se usa — ver su definición allí.
-
-  // El modelo emite marcadores internos ([MOSTRAR_MENU], [RESERVA_CONFIRMADA],
-  // [LEAD_MINIMO]…). Antes solo se quitaba [MOSTRAR_MENU] y el resto se
-  // pintaba tal cual: al confirmar una reserva el visitante veía
-  // "[RESERVA_CONFIRMADA]" en pantalla. Se limpian todos por patrón, así que
-  // un marcador nuevo tampoco se escapará.
-
-  // El prompt pide texto plano, pero el modelo se escapa y manda **negritas**
-  // o ### títulos de vez en cuando. Aquí se limpian: en una burbuja de chat
-  // los asteriscos se ven como un error, no como énfasis.
-  // Solo bajamos solos si ya estabas abajo. Si subiste a releer algo, un
-  // mensaje nuevo ya no te arrastra: era imposible leer el historial mientras
-  // el bot escribía.
-    var horaPendiente = horaPendiente || null;
-
-  function preguntarHoraAmbigua(amb, lang) {
-    horaPendiente = amb;
-    addMsg('bot', lang === 'en'
-      ? 'Quick one 😊 do you mean ' + amb.n + ' in the afternoon or ' + amb.n + ' in the morning?'
-      : 'Una cosita 😊 ¿te refieres a las ' + amb.n + ' de la tarde o a las ' + amb.n + ' de la mañana?');
-  }
-
-  function resolverHoraPendiente(t, lang) {
-    if (!horaPendiente) return false;
-    var esPM = /tarde|noche|pm|p\.m|afternoon|evening/i.test(t);
-    var esAM = /ma(ñ|n)ana|madrugada|am|a\.m|morning/i.test(t);
-    if (!esPM && !esAM) {
-      addMsg('bot', lang === 'en' ? 'Sorry, morning or afternoon? 😊' : 'Perdona, ¿de la mañana o de la tarde? 😊');
-      return true;
-    }
-    var hora = horaPendiente.n + horaPendiente.mm + (esPM ? ' PM' : ' AM');
-    var amb = horaPendiente; horaPendiente = null;
-    if (CORE.horaDentroDeHorario(hora, cfg.businessHours) === false) {
-      rechazarHoraFueraDeHorario(lang);
-      return true;
-    }
-    bookingData.hora = hora;
-    addMsg('bot', (lang === 'en' ? 'Got it 😊 ' : 'Perfecto 😊 ') + '⏰ ' + bookingData.hora);
-    seguirDesdeLoQueFalta(lang);
-    return true;
-  }
-
-  // Ambigüedad de hora, pero para MODIFICAR una reserva activa (submitModify),
-  // nunca para bookingData. Separado a propósito de horaPendiente/
-  // resolverHoraPendiente: mezclarlos haría que responder "de la tarde"
-  // durante un cambio de reserva pudiera escribir por error en una reserva
-  // nueva sin terminar (o viceversa). [auditoría FASE 1 — reagendar]
+  // Ambigüedad de hora para MODIFICAR una reserva activa. Se mantiene aislada
+  // para que la respuesta no pueda afectar un flujo de reserva nuevo.
   var modifyHoraPendiente = null;
   var modifyPendingUpdate = null;
 
@@ -841,400 +907,19 @@
     return true;
   }
 
-   var BARE_OK = { nombre: 1, telefono: 1, email: 1, contacto: 1, specialRequests: 1 };
-  var BOOKING_FIELD_LABEL_EN = {
-    nombre: 'name', telefono: 'phone number', email: 'email', contacto: 'contact info',
-    fecha: 'date', hora: 'time', servicio: 'service', personas: 'number of people', specialRequests: 'special requests'
-  };
-  function bookingFaltan() {
-    return CORE.bookingRequirements(cfg, bookingData);
-  }
-  function bookingCaptured() {
-    var out = {};
-    CORE.summaryFields(cfg).concat(['contacto']).forEach(function (k) {
-      if (bookingData[k]) out[k] = bookingData[k];
-    });
-    return out;
-  }
-
-  function rechazarHoraFueraDeHorario(lang) {
-    delete bookingData.hora;
-    bookingPending = 'hora';
-    bookingReview = false;
-    addMsg('bot', CORE.motivoDisponibilidadMensaje('fuera_de_horario', cfg, lang));
-    save();
-  }
-
-  function recordFoodRequest(text, lang) {
-    var food = CORE.applyFoodPreferences(bookingData.foodPreferences, text, cfg);
-    if (food) {
-      bookingData.foodPreferences = food;
-      bookingData.specialRequests = CORE.foodPreferencesToSpecialRequests(food, lang);
-    }
-    if (CORE.isFoodMedical(text, cfg)) {
-      addMsg('bot', lang === 'en'
-        ? 'Thanks for telling us. I will note this dietary restriction for the restaurant. However, I cannot guarantee the absence of allergens or cross-contamination; the restaurant must confirm it directly.'
-        : 'Gracias por avisarnos. Anotaré tu restricción alimentaria para que el restaurante la vea. Sin embargo, no puedo garantizar la ausencia de alérgenos o contaminación cruzada; el restaurante deberá confirmarlo directamente.');
-    }
-  }
-
-  function validarDisponibilidadTemprana(lang) {
-    if ((!bookingData.servicio && CORE.templateId(cfg) !== 'restaurant') || !bookingData.fecha || !bookingData.hora) return false;
-    var key = [bookingData.servicio || '', bookingData.fecha, bookingData.hora].join('\u0000');
-    if (earlyValidationKey === key) return false;
-    busy = true; inp.disabled = true; snd.disabled = true;
-    fetch(API + '/api/reservations', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: clientId, action: 'validate', servicio: bookingData.servicio || '', fecha: bookingData.fecha, hora: bookingData.hora }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d && d.ok) {
-          earlyValidationKey = key;
-          askBookingTurn(lang);
-          return;
-        }
-        var motivo = d && d.motivo;
-        var campo = motivo === 'dia_cerrado' || motivo === 'feriado' ? 'fecha' : 'hora';
-        delete bookingData[campo];
-        earlyValidationKey = '';
-        bookingPending = campo;
-        bookingReview = false;
-        addMsg('bot', CORE.motivoDisponibilidadMensaje(motivo, cfg, lang, d && d.alternativa));
-        save();
-      })
-      .catch(function () {
-        // The final creation validation remains authoritative if this UX check cannot run.
-        earlyValidationKey = key;
-        askBookingTurn(lang);
-      })
-      .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
-    return true;
-  }
-
-  // Si con el bookingData ACTUAL ya se puede responder sin red (resumen
-  // completo, pregunta de petición especial, confirmación de nombre corto),
-  // lo hace y devuelve true. Si no, devuelve false y el llamador debe seguir
-  // con la llamada a la IA. Se usa DOS veces dentro de askBookingTurn(): antes
-  // de llamar a la red (evita una llamada innecesaria cuando ya se sabe la
-  // respuesta local, igual que antes de la ETAPA 2) y después de aplicar las
-  // entities de este turno (para el caso en que la IA acaba de completar el
-  // último dato que faltaba).
-  function tryLocalBookingShortcut(lang, faltan) {
-    // [BUG-SPECIALREQUESTS-LOOP, auditoría de reservas] bookingPending ya
-    // traía 'specialRequests' de la llamada ANTERIOR (la que mostró la
-    // pregunta) cuando el cliente responde. Sin este flag, la llamada
-    // "antes de la red" de más abajo volvía a mostrar la misma pregunta
-    // enlatada y cortaba el turno con `return true` ANTES de intentar
-    // interpretar la respuesta — la única lógica que sabe capturarla (el
-    // "BARE_OK" dentro del .then() de askBookingTurn) nunca se alcanzaba.
-    // Solo se anuncia la pregunta la PRIMERA vez que se entra a este campo;
-    // en la llamada "antes de la red" de una respuesta ya en curso, se dejar
-    // pasar el turno para que intente procesarla de verdad.
-    var yaEsperabaPeticionEspecial = bookingPending === 'specialRequests';
-    var completo = faltan.length === 0;
-    bookingPending = completo ? null : faltan[0];
-    // The model never speaks for a complete booking; only the POST decides it.
-    if (completo) { showBookingSummary(); return true; }
-    if (bookingPending === 'specialRequests' && !yaEsperabaPeticionEspecial) {
-      addMsg('bot', CORE.specialRequestsQuestion(cfg.templateId, lang));
-      save();
-      return true;
-    }
-    // Nombre de una sola palabra ya capturado: se pregunta de forma natural
-    // en vez de dejar que el modelo vuelva a pedir "tu nombre" desde cero.
-    // [Objetivo 5]
-    if (bookingPending === 'nombre' && bookingData.nombre && CORE.esNombreUnaPalabra(bookingData.nombre)) {
-      addMsg('bot', CORE.nombreConfirmacionMensaje(bookingData.nombre, lang));
-      save();
-      return true;
-    }
-    return false;
-  }
-
-  // Cada turno de la reserva lo redacta DeepSeek con el estado estructurado.
-  // El frontend sigue siendo dueño del estado y la validación; el modelo nunca
-  // confirma ni inventa disponibilidad.
-  //
-  // ETAPA 2: esta MISMA llamada, que ya existía solo para redactar la
-  // siguiente pregunta, ahora TAMBIÉN devuelve interpretation.entities — la
-  // IA interpreta servicio/fecha/hora/nombre/email/teléfono/personas/notas
-  // de la conversación (incluido el mensaje que se acaba de enviar, ya en
-  // `msgs`), y CORE.sanitizeBookingEntities()/mergeBookingEntities() son
-  // quienes deciden qué se acepta — la IA nunca escribe bookingData
-  // directamente. `correctionSourceText` (opcional) es el texto crudo del
-  // mensaje que disparó este turno, usado SOLO para el mecanismo de
-  // corrección/respuesta-desnuda ya existente (CORE.campoCorreccion,
-  // BARE_OK) — no se usa para decidir si se llama a la red.
-  function askBookingTurn(lang, correctionSourceText) {
-    if (validarDisponibilidadTemprana(lang)) return;
-    var faltanAntes = bookingFaltan();
-    if (tryLocalBookingShortcut(lang, faltanAntes)) return;
-    var pendienteAntes = faltanAntes[0] || null;
-
-    busy = true; inp.disabled = true; snd.disabled = true;
-    showTyping();
-    var body = { clientId: clientId, messages: msgs, language: cfg.language, booking: { captured: bookingCaptured(), faltan: faltanAntes }, reservationContext: CORE.buildReservationContext(activeReservation) };
-    if (previewToken) body.previewToken = previewToken;
-    fetch(API + '/api/client-chat', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        hideTyping();
-        var interp = (d && d.interpretation) || null;
-        var entities = interp ? interp.entities : null;
-        var t = correctionSourceText || '';
-
-        if (entities) {
-          var sanitized = CORE.sanitizeBookingEntities(entities, cfg, cfg.businessHours, cfg.language, t);
-          var mergeResult = CORE.mergeBookingEntities(bookingData, sanitized, cfg.businessHours);
-          // Cambio explícito de servicio dentro del flujo: se recuerda para
-          // la próxima reserva también. [Objetivo 4]
-          if (sanitized.servicio) selectedService = sanitized.servicio;
-
-          // Preferencias que el cliente dice en su propio mensaje ("prefiero
-          // una habitación silenciosa"): DOS fuentes ahora, sin duplicar —
-          // el respaldo regex de siempre (extractNotasUsuario, sin tocar)
-          // MÁS lo que la IA extrajo como "notes"; fusionarNotas() ya
-          // deduplica si ambas capturan lo mismo.
-          var notasU = CORE.extractNotasUsuario(t, cfg);
-          if (notasU.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasU);
-          if (sanitized.notes) bookingData.notes = CORE.fusionarNotas(bookingData.notes, [sanitized.notes]);
-          recordFoodRequest(t, lang);
-
-          // Antes se exigía "nada se extrajo en este mensaje" para aceptar el
-          // texto libre como respuesta al dato pendiente. Si el cliente
-          // repetía un dato YA capturado en la misma frase donde contestaba
-          // lo que se le pedía, esa repetición SÍ se detectaba, así que la
-          // respuesta real quedaba descartada. Ahora solo importa si el dato
-          // pendiente EN SÍ sigue sin capturarse. [BUG-MEMORIA-REPETIDA]
-          var pendienteSinCapturar = pendienteAntes && mergeResult.traidos.indexOf(pendienteAntes) === -1;
-          var campoCorreccionDetectado = CORE.campoCorreccion(t);
-          if (campoCorreccionDetectado && mergeResult.traidos.indexOf(campoCorreccionDetectado) === -1) {
-            pedirCorreccion(campoCorreccionDetectado, lang);
-            return;
-          } else if (pendienteSinCapturar && CORRECCION_RE.test(t)) {
-            // Sin campo mencionado, "prefiero"/"mejor" es la respuesta al campo pendiente, no una corrección vacía. [BUG-CORRECCION-PENDIENTE]
-            if (BARE_OK[pendienteAntes] && !bookingData[pendienteAntes] && CORE.valorValido(pendienteAntes, t)) {
-              bookingData[pendienteAntes] = pendienteAntes === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
-            }
-          } else if (pendienteSinCapturar && BARE_OK[pendienteAntes] &&
-                     !bookingData[pendienteAntes] && CORE.valorValido(pendienteAntes, t)) {
-            bookingData[pendienteAntes] = pendienteAntes === 'specialRequests' && CORE.esSinPeticionEspecial(t) ? '' : t;
-          }
-
-          if (mergeResult.fueraDeHorario) { rechazarHoraFueraDeHorario(lang); return; }
-          if (mergeResult.ambigua) { preguntarHoraAmbigua(mergeResult.ambigua, lang); return; }
-        }
-
-        save();
-
-        // Con bookingData ya actualizado por las entities de este turno, se
-        // recalcula qué falta AHORA (determinista, igual que siempre). Si
-        // este mensaje acaba de completar la reserva o llevó al siguiente
-        // campo a un atajo local, no hace falta usar el texto de la IA.
-        var faltanAhora = bookingFaltan();
-        if (tryLocalBookingShortcut(lang, faltanAhora)) return;
-
-        // Caso normal: se usa el texto conversacional de ESTA MISMA llamada
-        // — no se pide una segunda respuesta al modelo. [PASO 5 — una sola
-        // llamada, ETAPA 1, extendido a este turno en la ETAPA 2]
-        var raw = (d && d.text) || '';
-        // Notas: el modelo también puede marcar algo con [NOTA: ...] en el
-        // texto libre (respaldo anterior a "entities.notes" — se conserva
-        // por si la IA lo usa en vez del campo estructurado).
-        var nx = CORE.extractNotas(raw);
-        if (nx.notas.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, nx.notas);
-        var txt = raw ? CORE.limpiarMarcadores(nx.limpio) : '';
-        if (!txt) txt = (lang === 'en' ? 'Could you share your ' : '¿Me compartes tu ') + (lang === 'en' ? (BOOKING_FIELD_LABEL_EN[faltanAhora[0]] || faltanAhora[0]) : faltanAhora[0]) + '?';
-        addMsg('bot', txt);
-        // Se persiste el texto ya saneado (lo mismo que se mostró): así ni el
-        // cliente ni DeepSeek vuelven a ver marcadores al recargar el historial.
-        msgs.push({ role: 'assistant', content: txt });
-        if (d && Array.isArray(d.slots) && d.slots.length > 0) {
-          renderSlotButtons(d.slots, lang);
-        }
-        save();
-      })
-      .catch(function (err) {
-        captureWidgetError(err, 'chat');
-        hideTyping();
-        addMsg('bot', lang === 'en' ? "Sorry, that didn't go through 😅 Mind trying again?" : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
-      })
-      .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
-  }
-
-  function seguirDesdeLoQueFalta(lang) { askBookingTurn(lang); }
-
-
-  function pedirCorreccion(campo, lang) {
-    if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
-    resumenBotones = null;
-    delete bookingData[campo];
-    bookingStep = 1;
-    bookingPending = campo;
-    bookingReview = false;
-    var etiqueta = CORE.summaryLabel(cfg, campo, lang).toLowerCase();
-    addMsg('bot', lang === 'en'
-      ? 'Sure 😊 What is the correct ' + etiqueta + '?'
-      : 'Claro 😊 ¿cuál es el dato correcto de ' + etiqueta + '?');
-    save();
-  }
-
-  // Revisar antes de guardar: un dedazo en el teléfono o la fecha se corrige
-  // aquí, no cuando el dueño intenta llamar y el número no existe.
-  function showBookingSummary() {
-    var lang = cfg.language === 'en' ? 'en' : 'es';
-    // Si el mensaje del cliente no fue ni una confirmación clara ni una
-    // corrección reconocida (ej. "todo está correcto" antes de ampliar
-    // CONFIRMACIONES), el flujo caía aquí de nuevo con el resumen ya visible
-    // y su par de botones aún en pantalla: se agregaba un SEGUNDO resumen con
-    // un SEGUNDO par de botones, sin quitar el primero. Se quita el anterior
-    // antes de mostrar uno nuevo para que solo exista un botón real a la vez.
-    // [BUG-RESUMEN-DUPLICADO]
-    if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
-
-    var lineas = CORE.summaryFields(cfg).concat(['contacto'])
-      .filter(function (k) { return bookingData[k]; })
-      .map(function (k) { return RESUMEN_ICONOS[k] + ' ' + CORE.summaryLabel(cfg, k, lang) + ': ' + bookingData[k]; });
-
-    var quien = bookingData.nombre ? ' ' + String(bookingData.nombre).split(/\s+/)[0] : '';
-    addMsg('bot', (lang === 'en'
-        ? 'Perfect' + quien + ' 😊 let\'s check everything before confirming:\n\n'
-        : 'Perfecto' + quien + ' 😊 revisemos que todo esté correcto antes de confirmar:\n\n') +
-      lineas.join('\n') + (lang === 'en' ? '\n\nAll good? 😄' : '\n\n¿Todo correcto? 😄'));
-
-    var wrap = document.createElement('div');
-    wrap.className = 'jbw-quick';
-    resumenBotones = wrap;
-    [{ label: lang === 'en' ? '✅ Yes, confirm it' : '✅ Sí, confirmar cita', ok: true },
-     { label: lang === 'en' ? '✏️ I want to change something' : '✏️ Quiero cambiar algo', ok: false }
-    ].forEach(function (a, i) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'jbw-quick-btn';
-      b.textContent = a.label;
-      b.style.animationDelay = (i * 60) + 'ms';
-      b.addEventListener('click', function () {
-        wrap.remove();
-        if (resumenBotones === wrap) resumenBotones = null;
-        addMsg('user', a.label);
-        if (a.ok) { submitBooking(); return; }
-        bookingStep = 1;
-        bookingPending = null;
-        bookingReview = false;
-        addMsg('bot', lang === 'en' ? 'What would you like to change? Your other reservation details will stay the same.' : '¿Qué quieres cambiar? Tus demás datos de reserva se conservarán.');
-      });
-      wrap.appendChild(b);
-    });
-    msgsEl.appendChild(wrap);
-    // Mismo bug que la galería: el resumen (potencialmente varias líneas) ya
-    // hizo crecer el contenedor antes de que estos botones se agreguen, así
-    // que el scroll "inteligente" podía negarse a bajar y dejar el botón
-    // real de confirmación fuera de vista. Reacción directa al mensaje del
-    // cliente: siempre debe forzar. [BUG-SCROLL-GALERIA]
-    CORE.irAlFondo(msgsEl, true);
-    bookingReview = true;   // solo el botón "✅ Sí, confirmar cita" crea la reserva
-    save();
-  }
-
-  var slotButtonsWrap = null;
-  function renderSlotButtons(slots, lang) {
+  function renderAvailabilitySlots(slots, lang) {
     if (!Array.isArray(slots) || !slots.length) return;
-    if (slotButtonsWrap && slotButtonsWrap.parentNode) slotButtonsWrap.remove();
-
     var wrap = document.createElement('div');
     wrap.className = 'jbw-quick';
-    slotButtonsWrap = wrap;
-
     slots.forEach(function (slot, i) {
       var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'jbw-quick-btn';
-      b.textContent = '⏰ ' + slot;
+      b.type = 'button'; b.className = 'jbw-quick-btn'; b.textContent = '⏰ ' + slot;
       b.style.animationDelay = (i * 40) + 'ms';
-      b.addEventListener('click', function () {
-        if (inp.disabled) return;
-        wrap.remove();
-        if (slotButtonsWrap === wrap) slotButtonsWrap = null;
-        var msgText = lang === 'en' ? 'at ' + slot : 'a las ' + slot;
-        send(msgText);
-      });
+      b.addEventListener('click', function () { wrap.remove(); send(lang === 'en' ? 'at ' + slot : 'a las ' + slot); });
       wrap.appendChild(b);
     });
-
-    msgsEl.appendChild(wrap);
-    CORE.irAlFondo(msgsEl, true);
+    msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
   }
-
-  function submitBooking() {
-    if (submitting) return;        // evita envíos duplicados
-    submitting = true;
-    bookingReview = false;
-    var lang = cfg.language === 'en' ? 'en' : 'es';
-    if (!bookingData.idempotencyKey) bookingData.idempotencyKey = CORE.genIdempotencyKey();
-    busy = true; inp.disabled = true; snd.disabled = true;
-    addMsg('bot', lang === 'en' ? 'Checking availability…' : 'Revisando disponibilidad…');
-    fetch(API + '/api/reservations', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(Object.assign({ clientId: clientId }, bookingData, { language: lang })),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d && d.ok === false && d.motivo) {
-          // Redacción centralizada por idioma y plantilla — el backend sigue
-          // siendo la única autoridad sobre motivo/alternativa, esto solo
-          // decide cómo se dice. [auditoría — tono frío / mensajes centralizados]
-          var msg = CORE.motivoDisponibilidadMensaje(d.motivo, cfg, lang, d.alternativa);
-          addMsg('bot', msg);
-          msgs = msgs.filter(function (m) { return m.role !== 'assistant' || !/pendiente|confirmad[ao]|equipo.*revis/i.test(m.content); });
-          save();
-          delete bookingData.hora;
-          bookingStep = 1;
-          return;
-        }
-        if (d && d.ok) {   // éxito: creada nueva o reconocida idempotente (duplicate)
-          activeReservation = {
-            reservationId: d.reservationId || (activeReservation && activeReservation.reservationId) || null,
-            actionToken: d.actionToken || (activeReservation && activeReservation.actionToken) || null,
-            fecha: bookingData.fecha, hora: bookingData.hora,
-            personas: bookingData.partySize || bookingData.personas || '',
-            servicio: bookingData.servicio || '', specialRequests: bookingData.specialRequests || '',
-            estado: d.status || 'confirmada', confirmedAt: Date.now(), language: lang,
-            // Estado real del correo (nunca inferido): lo que /api/client-chat
-            // reenvía a la IA como reservationContext.emailSent para que
-            // nunca afirme que se envió un correo que en realidad falló.
-            emailSent: !!(d.email && d.email.customer && d.email.customer.sent === true),
-          };
-          saveReserva();
-          addMsg('bot', d.duplicate ? CORE.reservaTextos(lang).duplicateActive : CORE.mensajeReservaGuardada(cfg, d, lang));
-          if (d.duplicate) offerReservationActions(lang);
-          // Reserva terminada con éxito: se olvida el servicio recordado, la
-          // próxima reserva empieza limpia. [Objetivo 4]
-          bookingStep = 0; bookingData = {}; bookingPending = null; dupAttempts = 0; selectedService = ''; preBookingMemory = {};
-          save();   // limpia BOOKING_SESS: sin esto una recarga reanudaría una reserva fantasma
-          return;
-        }
-        addMsg('bot', lang === 'en'
-          ? "We couldn't save your request 😕 Your details are still here — want to try again?"
-          : 'No pudimos guardar tu solicitud 😕 Tus datos siguen aquí, ¿lo intentamos de nuevo?');
-        showBookingSummary();
-      })
-      .catch(function (err) {
-        captureWidgetError(err, 'reservation_create');
-        addMsg('bot', lang === 'en'
-          ? "Sorry, that didn't go through 😅 Your details are still here — try again?"
-          : 'Uy, no se envió 😅 Tus datos siguen aquí, ¿lo intentamos otra vez?');
-        showBookingSummary();
-      })
-      .finally(function () {
-        submitting = false;
-        busy = false; inp.disabled = false; snd.disabled = false; inp.focus();
-      });
-  }
-
 
   // ── Reserva activa: acciones (idénticas a asistente.html vía chat-core) ──
   function offerReservationActions(lang) {
@@ -1420,84 +1105,31 @@
       return;
     }
 
-    // ── Active booking flow: collect next field ──────────────────────────
-    if (bookingStep > 0) {
-      if (/^(cancelar|cancel|salir|exit)$/i.test(t)) {
-        // [BUG-CANCELAR-SIN-SAVE, auditoría de reservas] esta rama reseteaba
-        // el estado en memoria pero nunca llamaba a save() — a diferencia de
-        // cualquier otro punto del flujo que toca bookingStep/bookingData.
-        // save() (más abajo) es quien borra BOOKING_SESS de sessionStorage
-        // cuando bookingStep vuelve a 0; sin la llamada, un refresh justo
-        // después de cancelar resucitaba la reserva "cancelada" tal cual
-        // estaba antes. bookingPending también se resetea aquí (igual que ya
-        // se hace tras una reserva confirmada con éxito, ver más abajo) para
-        // que no quede un valor obsoleto de esta reserva cancelada
-        // interfiriendo con el atajo local de la próxima reserva.
-        bookingStep = 0;
-        bookingData = {};
-        bookingReview = false;
-        bookingPending = null;
-        selectedService = '';   // cancelar el flujo olvida el servicio recordado [Objetivo 4]
-        preBookingMemory = {};
-        if (resumenBotones && resumenBotones.parentNode) resumenBotones.remove();
-        resumenBotones = null;
-        addMsg('user', t);
-        addMsg('bot', lang === 'en'
-          ? 'Reservation cancelled. Is there anything else I can help with?'
-          : 'Reserva cancelada. ¿Hay algo más en lo que pueda ayudarte?');
-        save();
-        return;
-      }
-      // La reserva SOLO se crea con el botón "✅ Sí, confirmar cita": ni un "sí"
-      // ni un "ok"/"confirm" escrito confirma por su cuenta (auditoría de
-      // reservas: antes SÍ llamaba a submitBooking() aquí, contradiciendo este
-      // mismo comentario — CORE.esConfirmacion() ya no decide nada en esta
-      // rama). Solo una corrección reconocida se atiende; cualquier otra cosa
-      // vuelve a mostrar el resumen con su botón. [BUG-CONFIRMACION-TEXTO]
-      if (bookingReview || (function () { try { return JSON.parse(sessionStorage.getItem(BOOKING_SESS) || '{}').awaitingConfirmation === true; } catch (e) { return false; } })()) {
-        addMsg('user', t);
-        if (CORE.campoCorreccion(t)) pedirCorreccion(CORE.campoCorreccion(t), lang);
-        else showBookingSummary();
-        return;
-      }
-      bookingReview = false;
+    if (bookingFlow) {
       addMsg('user', t);
-      msgs.push({ role: 'user', content: t });
-
-      // Nombre de una sola palabra en espera de confirmación: caso local,
-      // deterministo y acotado — se mantiene con CORE.extractBooking() a
-      // propósito (excepción explícita de la ETAPA 2, ver informe) en vez de
-      // esperar una llamada a la IA solo para decidir si el siguiente
-      // mensaje es un apellido o un dato distinto ya reconocible por marcador
-      // literal. CORE.confirmarNombreUnaPalabra() (compartida con
-      // asistente.html) evita anexar como apellido un correo/teléfono/fecha/
-      // hora/servicio/negación ya reconocido en este mismo mensaje.
-      // [auditoría — nombre corrupto]
-      if (bookingPending === 'nombre' && bookingData.nombre && !bookingData.__nombreConfirmado) {
-        var extraCampos = CORE.extractBooking(t, cfg.menu, cfg.businessHours, cfg.language, cfg);
-        bookingData = CORE.confirmarNombreUnaPalabra(bookingData, t, extraCampos, lang);
-        save();
-        askBookingTurn(lang);
+      var flowState = bookingFlow.getState();
+      if (flowState.step !== FLOW.STEPS.CUSTOMER_DATA) {
+        addMsg('bot', lang === 'en' ? 'Please use the booking options shown above.' : 'Usa las opciones de reserva mostradas arriba.');
         return;
       }
-
-      if (resolverHoraPendiente(t, lang)) return;
-
-      // ETAPA 2: la extracción de servicio/fecha/hora/nombre/email/teléfono/
-      // personas/notas de ESTE mensaje ya NO la hace CORE.extractBooking()
-      // (regex) — la hace la IA en la misma llamada que askBookingTurn() ya
-      // hacía para redactar la siguiente pregunta (ver askBookingTurn más
-      // abajo, que ahora también sanea y aplica interpretation.entities).
-      // Aquí solo queda lo 100% local/determinista: cancelar, resumen,
-      // confirmación de nombre corto y la respuesta a una hora ambigua.
-      save();
-      askBookingTurn(lang, t);
+      var customerParts = t.split(',').map(function (part) { return part.trim(); });
+      if (customerParts.length < 4 || !customerParts[0] || !customerParts[1] || !customerParts[2]) {
+        addMsg('bot', lang === 'en' ? 'Use: name, phone, email, special requests.' : 'Usa: nombre, teléfono, correo, peticiones especiales.');
+        return;
+      }
+      try {
+        bookingFlow.dispatch({ type: FLOW.EVENTS.SET_CUSTOMER_DATA,
+          customer: { name: customerParts[0], phone: customerParts[1], email: customerParts[2] }, specialRequests: customerParts.slice(3).join(','),
+          foodPreferences: widgetFlowIsRestaurant() ? CORE.applyFoodPreferences(bookingFlow.getState().foodPreferences, customerParts.slice(3).join(','), cfg) : null });
+        bookingFlow.dispatch({ type: FLOW.EVENTS.SHOW_SUMMARY });
+      } catch (error) {
+        addMsg('bot', error.message || (lang === 'en' ? 'Please check your details.' : 'Revisa tus datos.'));
+      }
       return;
     }
 
     // ── [MIGRACIÓN 1 — intención por IA] Detección de intención inicial ──
-    // Único punto que decide, para un mensaje nuevo (bookingStep === 0, sin
-    // reserva ya en curso), si es booking/reschedule/cancellation/otro. La
+    // Único punto que decide si es booking/reschedule/cancellation/otro. La
     // decisión ya no la toman BOOKING_TRIGGERS/MODIFY_TRIGGERS/
     // CANCEL_TRIGGERS/CORE.pareceReserva() evaluados aquí en el navegador:
     // viaja en interpretation.intent, calculado por el modelo en
@@ -1505,13 +1137,11 @@
     // en la MISMA llamada que ya se hacía para el chat libre — no se agrega
     // una segunda petición al modelo para el caso de pregunta general.
     //
-    // ETAPA 2: interpretation.entities (misma llamada) reemplaza a
-    // CORE.extractBooking() como fuente de servicio/fecha/hora/nombre/email/
-    // teléfono/personas/notas — CORE.sanitizeBookingEntities() es quien
-    // decide qué se acepta antes de tocar bookingData (ver más abajo).
-    // CORE.extractBooking() sigue existiendo solo para 2 casos locales
-    // acotados (nombre de una sola palabra, modo "Modificar" explícito) —
-    // ver informe de la ETAPA 2 para la justificación de cada uno.
+    // Nueva reserva: el frontend inicia chat-flow.js, que solicita opciones
+    // controladas y crea la reserva mediante reservations API. Las entities no
+    // precargan la nueva reserva. Para una reserva activa, las entities pasan
+    // por CORE.buildModifyUpdateFromEntities(); el modo "Modificar" explícito
+    // conserva CORE.extractBooking() como parser local.
     //
     // Fail-closed (PASO 3): si el backend no devuelve una interpretación
     // válida, se trata como intent "unknown" — nunca se asume booking/
@@ -1585,29 +1215,6 @@
           return;
         }
 
-        // Se recuerda el servicio aunque este mensaje NO inicie una reserva
-        // (chat libre, tarjeta, catálogo): así "quiero reservar" más
-        // adelante no vuelve a preguntar un servicio ya mencionado.
-        // [Objetivo 4]
-        //
-        // ETAPA 2: preExtraido ya no viene de CORE.extractBooking() (regex)
-        // — viene de interpretation.entities, la MISMA interpretación de la
-        // IA que ya se pidió en esta llamada para decidir `intent` (una sola
-        // llamada, sin red adicional). CORE.sanitizeBookingEntities() es
-        // quien decide qué se acepta.
-        var preExtraido = featureOn('reservations') && interp
-          ? CORE.sanitizeBookingEntities(interp.entities, cfg, cfg.businessHours, cfg.language, t)
-          : {};
-        if (preExtraido.servicio) selectedService = preExtraido.servicio;
-        // [BUG-DATO-PERDIDO-ANTES-DE-BOOKING] se acumula TODO lo que se haya
-        // extraído en chat libre (no solo el servicio) para no perderlo si
-        // la reserva arranca en un turno posterior. mergeBookingEntities ya
-        // filtra una hora fuera de horario, así que nunca se recuerda un
-        // dato inválido.
-        if (!activeReservation && featureOn('reservations') && intent !== 'booking') {
-          CORE.mergeBookingEntities(preBookingMemory, preExtraido, cfg.businessHours);
-        }
-
         if (!activeReservation && featureOn('reservations') && intent === 'booking') {
           // client-config comparte este estado con el backend. No iniciamos una
           // captura que /api/reservations necesariamente rechazará al final.
@@ -1620,29 +1227,10 @@
             save();
             return;
           }
-          msgs.push({ role: 'user', content: t });
-          save();
-          bookingStep = 1;          // en modo reserva; el modelo conduce
-          bookingData = {};
-
-          // Primero lo recordado de turnos casuales previos, luego lo de
-          // ESTE mensaje encima (gana el dato más reciente si se repite).
-          CORE.mergeBookingEntities(bookingData, preBookingMemory, cfg.businessHours);
-          preBookingMemory = {};
-          var mergeInicial = CORE.mergeBookingEntities(bookingData, preExtraido, cfg.businessHours);
-          // bookingData.servicio || selectedService: si este mensaje no vuelve a
-          // nombrar el servicio, se usa el que ya se había elegido antes. [Objetivo 4]
-          bookingData.servicio = CORE.resolveServicio(bookingData, selectedService);
-
-          var notasIni = CORE.extractNotasUsuario(t, cfg);
-          if (notasIni.length) bookingData.notes = CORE.fusionarNotas(bookingData.notes, notasIni);
-          if (preExtraido.notes) bookingData.notes = CORE.fusionarNotas(bookingData.notes, [preExtraido.notes]);
-          recordFoodRequest(t, lang);
-
-          if (mergeInicial.fueraDeHorario) { rechazarHoraFueraDeHorario(lang); return; }
-          if (mergeInicial.ambigua) { preguntarHoraAmbigua(mergeInicial.ambigua, lang); return; }
-          save();
-          askBookingTurn(lang);
+          if (startWidgetBookingFlowV2(lang)) return;
+          addMsg('bot', lang === 'en'
+            ? 'We could not start the booking flow. Please try again in a moment.'
+            : 'No pudimos iniciar la reserva. Inténtalo de nuevo en un momento.');
           return;
         }
 
@@ -1684,7 +1272,7 @@
           // historial va solo lo que realmente se mostró, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: shownTexts.join('\n\n') });
           if (d && Array.isArray(d.slots) && d.slots.length > 0) {
-            renderSlotButtons(d.slots, lang);
+            renderAvailabilitySlots(d.slots, lang);
           }
           save();
         } else {

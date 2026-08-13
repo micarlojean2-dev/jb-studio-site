@@ -59,11 +59,6 @@ check(CORE.foodPreferencesToSpecialRequests(food('without cheese'), 'en') === 'N
 check(CORE.extractBooking('cambiar hamburguesa por pizza', menu, null, 'es', restaurant).servicio === 'Pizza', 'last dish named wins');
 const englishBooking = CORE.extractBooking('I want Classic Burger for 2 people on August 5 at 1 PM. My name is QA English', [{ nombre: 'Classic Burger' }], null, 'en', restaurant);
 check(englishBooking.servicio === 'Classic Burger' && englishBooking.personas === '2' && englishBooking.hora === '1:00 PM' && englishBooking.nombre === 'QA English', 'English booking fields are extracted');
-// CORE.pareceReserva() se eliminó en la ETAPA 2 (chat-core.js): quedó sin
-// ningún caller real en widget.js ni asistente.html tras migrar la
-// detección de intención inicial de AMBAS superficies a
-// interpretation.intent (antes, solo widget.js lo tenía desde la ETAPA 1).
-check(CORE.summaryFields(restaurant).includes('servicio'), 'restaurant summary includes dish');
 
 for (const text of ['Soy alérgico al queso', 'Tengo intolerancia a la lactosa', 'Soy celíaco', 'Cross contamination', "I'm allergic to dairy", "I'm lactose intolerant", 'I have celiac disease', "I'm allergic to peanuts"]) {
   check(CORE.isFoodMedical(text, restaurant), `medical warning trigger: ${text}`);
@@ -71,16 +66,15 @@ for (const text of ['Soy alérgico al queso', 'Tengo intolerancia a la lactosa',
 
 const chatApi = readFileSync(new URL('../api/client-chat.js', import.meta.url), 'utf8');
 check(!chatApi.includes('no puedes confirmarlo y que el equipo del restaurante'), 'old normal-preference rejection removed');
-check(chatApi.includes('function restaurantNormalPreference'), 'normal restaurant preferences have a deterministic response');
-check(chatApi.includes('I will note that preference'), 'English normal preference response is explicit');
-check(chatApi.includes('I cannot guarantee the absence of allergens'), 'English medical disclaimer is explicit');
+check(!chatApi.includes('booking.captured'), 'legacy sequential booking payload is removed');
+check(!chatApi.includes('bookingActive'), 'legacy active-booking chat mode is removed');
 check(chatApi.includes('messages.length > 60'), 'chat accepts more than 40 messages');
 const assistant = readFileSync(new URL('../asistente.html', import.meta.url), 'utf8');
 const widget = readFileSync(new URL('../widget.js', import.meta.url), 'utf8');
 for (const source of [assistant, widget]) {
-  check(source.includes('bookingData.foodPreferences'), 'frontend keeps normalized food preferences');
-  check(source.includes("BOOKING_SESS"), 'frontend persists booking state');
-  check(source.includes("What would you like to change?"), 'edit action preserves booking state');
+  check(source.includes('foodPreferences: state.foodPreferences'), 'V2 frontend sends normalized food preferences');
+  check(source.includes('tablePreference: state.tablePreference'), 'V2 frontend sends optional table preference');
+  check(!source.includes('BOOKING_SESS'), 'frontend no longer persists legacy booking state');
 }
 
 console.log(`Food preference adversarial matrix passed: ${count} assertions`);
