@@ -1025,6 +1025,100 @@ window.JBChatCore = (function () {
              /^(popular|destacado|favorito)$/i.test(String(item.etiqueta || '').trim());
     }
 
+  // ── Extracción y validación determinista de datos del cliente ────────────
+  var PHONE_AMBIGUOUS_RE = /\b(?:de\s+mi\s+(?:esposa|esposo|amigo|amiga|jefe|mam[aá]|pap[aá]|herman[oa]|hijo|hija)|creo\s+que|es\s+el\s+de|pertenece\s+a|en\s+nombre\s+de)\b/i;
+
+  function extractEmail(text) {
+    if (!text) return null;
+    var m = String(text).match(EMAIL_RE2);
+    return m ? m[0].trim() : null;
+  }
+
+  function extractPhone(text, isStructured) {
+    if (!text) return null;
+    var s = String(text).trim();
+    if (PHONE_AMBIGUOUS_RE.test(s)) return null;
+
+    var clean = s.replace(EMAIL_RE2, '');
+    var matches = clean.match(/\+?\d[\d\s().-]{5,}\d/g);
+    if (!matches) return null;
+
+    var isPurePhone = /^\s*\+?\d[\d\s().-]{5,}\d\s*$/.test(clean);
+    var isExplicitMention = /\b(?:mi\s+(?:tel[eé]fono|celular|cel|num|n[uú]mero)(?:\s+es)?)\b/i.test(clean);
+
+    if (!isPurePhone && !isStructured && !isExplicitMention) {
+      var wordCount = clean.replace(/[^a-zA-ZáéíóúñÁÉÍÓÚÑ\s]/g, '').trim().split(/\s+/).filter(Boolean).length;
+      if (wordCount > 3) return null;
+    }
+
+    for (var i = 0; i < matches.length; i++) {
+      var digits = matches[i].replace(/\D/g, '');
+      if (digits.length >= 7 && digits.length <= 15) return digits;
+    }
+    return null;
+  }
+
+  function extractNameHighConfidence(text) {
+    if (!text) return null;
+    var s = String(text).trim();
+    if (!s) return null;
+
+    var explicitMatch = s.match(/\b(?:me\s+llamo|soy|mi\s+nombre\s+es)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ' -]{1,50})/i);
+    if (explicitMatch && explicitMatch[1]) {
+      var candExplicit = explicitMatch[1].trim();
+      if (valorValido('nombre', candExplicit) && candExplicit.split(/\s+/).length <= 4) return candExplicit;
+    }
+
+    var residual = s.replace(EMAIL_RE2, '').replace(/\+?\d[\d\s().-]{5,}\d/g, '').replace(/[,;]/g, ' ').trim();
+    residual = residual.replace(/\b(?:mi\s+correo\s+es|mi\s+email\s+es|correo|email|mi\s+tel[eé]fono\s+es|tel[eé]fono|celular|m[oó]vil|y|es)\b/gi, ' ').trim();
+    residual = residual.replace(/\s+/g, ' ');
+
+    if (!residual || residual.length < 2 || residual.length > 50) return null;
+    if (/\d|[?¿!¡]/.test(residual)) return null;
+    if (residual.split(' ').length > 4) return null;
+    if (!valorValido('nombre', residual)) return null;
+
+    return residual;
+  }
+
+  function parseCustomerDraft(rawText, previousDraft) {
+    var draft = {
+      name: (previousDraft && previousDraft.name) || null,
+      phone: (previousDraft && previousDraft.phone) || null,
+      email: (previousDraft && previousDraft.email) || null,
+    };
+
+    var emailFound = extractEmail(rawText);
+    if (emailFound) draft.email = emailFound;
+
+    var isStructured = Boolean(emailFound || (rawText && rawText.includes(',')));
+
+    var phoneFound = extractPhone(rawText, isStructured);
+    if (phoneFound) draft.phone = phoneFound;
+
+    if (!draft.name) {
+      var nameFound = extractNameHighConfidence(rawText);
+      if (nameFound) draft.name = nameFound;
+    }
+
+    return draft;
+  }
+
+  function missingCustomerField(draft) {
+    if (!draft || !draft.name) return 'name';
+    if (!draft.phone) return 'phone';
+    if (!draft.email) return 'email';
+    return null;
+  }
+
+  function askMissingCustomerField(field, lang) {
+    var en = lang === 'en';
+    if (field === 'name') return en ? 'What is your full name?' : '¿Cuál es tu nombre completo?';
+    if (field === 'phone') return en ? 'What is your phone number?' : '¿Cuál es tu número de teléfono de contacto?';
+    if (field === 'email') return en ? 'What is your email address for confirmation?' : '¿Cuál es tu correo electrónico para la confirmación?';
+    return '';
+  }
+
   // ── Copys del catálogo (tarjetas de servicio + galería general) ───────────
   // Única fuente para el texto que widget.js y asistente.html renderizan;
   // evita que las dos copias del DOM diverjan en el wording (como pasó con
@@ -1316,6 +1410,12 @@ window.JBChatCore = (function () {
     applyFoodPreferences: applyFoodPreferences,
     foodPreferencesToSpecialRequests: foodPreferencesToSpecialRequests,
     valorValido: valorValido,
+    extractEmail: extractEmail,
+    extractPhone: extractPhone,
+    extractNameHighConfidence: extractNameHighConfidence,
+    parseCustomerDraft: parseCustomerDraft,
+    missingCustomerField: missingCustomerField,
+    askMissingCustomerField: askMissingCustomerField,
     isPopular: isPopular,
     galleryHeading: galleryHeading,
     bookServiceLabel: bookServiceLabel,

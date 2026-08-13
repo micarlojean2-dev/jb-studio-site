@@ -377,6 +377,42 @@
   var bookingFlowActions = null;
   var bookingFlowIdempotencyKey = '';
   var autoSelectingService = false;
+  var DRAFT_SESS = SESS + '_customer_draft_v2';
+  var customerDraft = { name: null, phone: null, email: null };
+  var specialRequestsAsked = false;
+
+  function resetCustomerDraft() {
+    customerDraft = { name: null, phone: null, email: null };
+    specialRequestsAsked = false;
+    try { sessionStorage.removeItem(DRAFT_SESS); } catch (e) {}
+  }
+
+  function saveCustomerDraft() {
+    try { sessionStorage.setItem(DRAFT_SESS, JSON.stringify(customerDraft)); } catch (e) {}
+  }
+
+  function syncCustomerDraftFromState(state) {
+    try {
+      var savedDraft = sessionStorage.getItem(DRAFT_SESS);
+      if (savedDraft) {
+        var parsed = JSON.parse(savedDraft);
+        if (parsed && typeof parsed === 'object') {
+          customerDraft = { name: parsed.name || null, phone: parsed.phone || null, email: parsed.email || null };
+          return;
+        }
+      }
+    } catch (e) {}
+    if (state && state.customer && (state.customer.name || state.customer.phone || state.customer.email)) {
+      customerDraft = {
+        name: state.customer.name || null,
+        phone: state.customer.phone || null,
+        email: state.customer.email || null,
+      };
+    } else {
+      resetCustomerDraft();
+    }
+  }
+
   var LANGUAGE_SESS = SESS + '_language';
 
   // Selector explícito de idioma (Objetivo 1): nunca depende de
@@ -730,7 +766,16 @@
       });
       return;
     } else if (state.step === window.JBChatFlow.STEPS.CUSTOMER_DATA) {
-      addMsg('bot', lang === 'en' ? 'Enter your name, phone, email, and any special requests separated by commas.' : 'Escribe tu nombre, teléfono, correo y peticiones especiales separados por comas.');
+      if (bookingFlowActions && bookingFlowActions.parentNode) bookingFlowActions.remove();
+      var missingField = CORE.missingCustomerField(customerDraft);
+      if (missingField) {
+        addMsg('bot', CORE.askMissingCustomerField(missingField, lang));
+      } else if (!specialRequestsAsked) {
+        addMsg('bot', lang === 'en'
+          ? 'Do you have any allergies, preferences, or special requests? (Type "None" or "No" if you have none).'
+          : '¿Tienes alguna alergia, preferencia o petición especial? (Escribe "Ninguna" o "No" si no tienes ninguna).');
+        specialRequestsAsked = true;
+      }
       if (bookingFlowIsRestaurant()) {
         addMsg('bot', lang === 'en' ? 'Optional table preference:' : 'Preferencia de mesa opcional:');
         [['Terrace', 'Terraza'], ['Window', 'Ventana'], ['Inside', 'Interior'], ['No preference', 'Sin preferencia']].forEach(function (choice) {
@@ -802,6 +847,7 @@
           if (name && (name.toLowerCase() === reqLow || reqLow.indexOf(name.toLowerCase()) !== -1 || name.toLowerCase().indexOf(reqLow) !== -1)) matched = name;
         });
       }
+      resetCustomerDraft();
       bookingFlow = window.JBChatFlow.createBookingFlow({
         config: { clientId: clientId, templateId: cfg.templateId || cfg.vertical, staff: bookingFlowStaff(), storageNamespace: 'jba' }, storage: sessionStorage,
         render: { render: renderBookingFlow },
@@ -809,6 +855,8 @@
         onMessage: function (state, event) {
           console.debug('[booking-flow-v2] transition', event.type, state.step);
           if (event.type === window.JBChatFlow.EVENTS.START_BOOKING) captureBookingV2Event('start', state);
+          if (event.type === window.JBChatFlow.EVENTS.RESET_FLOW || event.type === window.JBChatFlow.EVENTS.CONFIRM_BOOKING) resetCustomerDraft();
+          if (event.type === window.JBChatFlow.EVENTS.EDIT_CUSTOMER) syncCustomerDraftFromState(state);
         },
       });
       if (matched) {
@@ -839,7 +887,8 @@
         onMessage: function (state, event) { console.debug('[booking-flow-v2] transition', event.type, state.step); },
       });
       var restored = bookingFlow.init();
-      if (restored.step === window.JBChatFlow.STEPS.CHAT) { bookingFlow = null; return false; }
+      if (restored.step === window.JBChatFlow.STEPS.CHAT) { resetCustomerDraft(); bookingFlow = null; return false; }
+      syncCustomerDraftFromState(restored);
       bookingFlowIdempotencyKey = CORE.genIdempotencyKey();
       captureBookingV2Event('restore', restored);
       return true;
@@ -1294,17 +1343,28 @@
         addMsg('bot', lang === 'en' ? 'Please use the booking options shown above.' : 'Usa las opciones de reserva mostradas arriba.');
         return;
       }
-      var customerParts = t.split(',').map(function (part) { return part.trim(); });
-      if (customerParts.length < 4 || !customerParts[0] || !customerParts[1] || !customerParts[2]) {
-        addMsg('bot', lang === 'en' ? 'Use: name, phone, email, special requests.' : 'Usa: nombre, teléfono, correo, peticiones especiales.');
+      var missingBefore = CORE.missingCustomerField(customerDraft);
+      if (missingBefore) {
+        customerDraft = CORE.parseCustomerDraft(t, customerDraft);
+        saveCustomerDraft();
+        var missingAfter = CORE.missingCustomerField(customerDraft);
+        if (missingAfter) {
+          addMsg('bot', CORE.askMissingCustomerField(missingAfter, lang));
+          return;
+        }
+        addMsg('bot', lang === 'en'
+          ? 'Do you have any allergies, preferences, or special requests? (Type "None" or "No" if you have none).'
+          : '¿Tienes alguna alergia, preferencia o petición especial? (Escribe "Ninguna" or "No" si no tienes ninguna).');
+        specialRequestsAsked = true;
         return;
       }
       try {
+        var specReq = CORE.esSinPeticionEspecial(t) ? 'No' : t.trim();
         bookingFlow.dispatch({
           type: window.JBChatFlow.EVENTS.SET_CUSTOMER_DATA,
-          customer: { name: customerParts[0], phone: customerParts[1], email: customerParts[2] },
-          specialRequests: customerParts.slice(3).join(','),
-          foodPreferences: bookingFlowIsRestaurant() ? CORE.applyFoodPreferences(bookingFlow.getState().foodPreferences, customerParts.slice(3).join(','), cfg) : null,
+          customer: customerDraft,
+          specialRequests: specReq,
+          foodPreferences: bookingFlowIsRestaurant() ? CORE.applyFoodPreferences(flowState.foodPreferences, t, cfg) : null,
         });
         bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SHOW_SUMMARY });
       } catch (error) {
