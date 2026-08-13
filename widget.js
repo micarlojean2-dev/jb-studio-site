@@ -817,7 +817,19 @@
       card.addEventListener('click', function () {
         if (inp.disabled) return;
         if (wrap.parentNode) wrap.remove();
-        send(CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant'));
+        var userMsg = CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant');
+        if (activeReservation && featureOn('reservations')) {
+          addMsg('user', userMsg);
+          handleWidgetDuplicateAttempt(cfg.language);
+          return;
+        }
+        addMsg('user', userMsg);
+        if (!startWidgetBookingFlowV2(cfg.language, { service: item.nombre })) {
+          var lang = cfg.language === 'en' ? 'en' : 'es';
+          addMsg('bot', lang === 'en'
+            ? 'I cannot confirm appointments right now, but I can help with information about the business.'
+            : 'No puedo confirmar citas en este momento, pero puedo ayudarte con información del negocio.');
+        }
       });
 
       row.appendChild(card);
