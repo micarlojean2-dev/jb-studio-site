@@ -683,7 +683,8 @@ export default async function handler(req, res) {
     // fuera del flujo de captura quedaba sin ninguna instrucción sobre el
     // resultado real de una reserva. [auditoría de reservas — falso éxito]
     systemPrompt += reservationTruthBlock(isEnglish, sanitizeReservationContext(reservationContext));
-    systemPrompt += await availabilityContextBlock(client, clientId, messages, isEnglish);
+    const availabilityRes = await availabilityContextBlock(client, clientId, messages, isEnglish);
+    systemPrompt += availabilityRes.promptText;
 
     // Modo reserva: el frontend manda el estado estructurado (lo capturado y
     // lo que falta) y el modelo genera la respuesta conversacional. Así la
