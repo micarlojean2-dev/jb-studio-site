@@ -673,9 +673,26 @@
     });
   }
 
-  function startWidgetBookingFlowV2() {
+  function startWidgetBookingFlowV2(lang, initialEntities) {
     if (!FLOW || typeof FLOW.createBookingFlow !== 'function' || !widgetFlowServices().length) return false;
-    try { bookingFlowIdempotencyKey = CORE.genIdempotencyKey(); bookingFlow = createWidgetBookingFlow(); bookingFlow.startBooking(); return true; }
+    try {
+      bookingFlowIdempotencyKey = CORE.genIdempotencyKey();
+      bookingFlow = createWidgetBookingFlow();
+      bookingFlow.startBooking();
+      var reqService = initialEntities && (initialEntities.service || initialEntities.servicio);
+      if (reqService) {
+        var matched = null;
+        var reqLow = String(reqService).toLowerCase().trim();
+        widgetFlowServices().forEach(function (s) {
+          var name = typeof s === 'string' ? s : (s && s.nombre ? s.nombre : '');
+          if (name && (name.toLowerCase() === reqLow || reqLow.indexOf(name.toLowerCase()) !== -1 || name.toLowerCase().indexOf(reqLow) !== -1)) matched = name;
+        });
+        if (matched) {
+          bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_SERVICE, service: matched });
+        }
+      }
+      return true;
+    }
     catch (error) { captureWidgetError(error, 'booking_v2_start'); captureWidgetBookingV2Event('fallback', null, 'start_failed'); bookingFlow = null; return false; }
   }
 
@@ -1227,7 +1244,7 @@
             save();
             return;
           }
-          if (startWidgetBookingFlowV2(lang)) return;
+          if (startWidgetBookingFlowV2(lang, interp ? interp.entities : null)) return;
           addMsg('bot', lang === 'en'
             ? 'We could not start the booking flow. Please try again in a moment.'
             : 'No pudimos iniciar la reserva. Inténtalo de nuevo en un momento.');

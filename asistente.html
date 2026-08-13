@@ -779,7 +779,7 @@
     msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
   }
 
-  function startBookingFlowV2(lang) {
+  function startBookingFlowV2(lang, initialEntities) {
     if (!window.JBChatFlow || typeof window.JBChatFlow.createBookingFlow !== 'function' || !bookingFlowServices().length) {
       console.error('[booking-flow-v2] unavailable flow or service contract');
       return false;
@@ -796,6 +796,18 @@
         },
       });
       bookingFlow.startBooking();
+      var reqService = initialEntities && (initialEntities.service || initialEntities.servicio);
+      if (reqService) {
+        var matched = null;
+        var reqLow = String(reqService).toLowerCase().trim();
+        bookingFlowServices().forEach(function (s) {
+          var name = bookingFlowServiceName(s);
+          if (name && (name.toLowerCase() === reqLow || reqLow.indexOf(name.toLowerCase()) !== -1 || name.toLowerCase().indexOf(reqLow) !== -1)) matched = name;
+        });
+        if (matched) {
+          bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_SERVICE, service: matched });
+        }
+      }
       return true;
     } catch (error) {
       console.error('[booking-flow-v2] start failed', error);
@@ -1401,7 +1413,7 @@
             save();
             return;
           }
-          if (startBookingFlowV2(lang)) return;
+          if (startBookingFlowV2(lang, interp ? interp.entities : null)) return;
           addMsg('bot', lang === 'en'
             ? 'We could not start the booking flow. Please try again in a moment.'
             : 'No pudimos iniciar la reserva. Inténtalo de nuevo en un momento.');

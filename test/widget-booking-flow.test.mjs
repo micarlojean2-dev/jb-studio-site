@@ -29,10 +29,10 @@ function readyFlow(config, confirmBooking) {
 console.log('1. Cableado widget v2');
 ok(source.includes("flow.src = API + '/chat-flow.js'"), 'widget carga chat-flow.js');
 ok(source.includes("storageNamespace: 'jbw'"), 'widget usa namespace jbw');
-ok(source.includes('function startWidgetBookingFlowV2()'), 'widget define inicio v2');
+ok(source.includes('function startWidgetBookingFlowV2('), 'widget define inicio v2');
 ok(source.includes('function restoreWidgetBookingFlowV2()'), 'widget define restore v2');
 ok(source.includes("request: { availableDates: widgetFlowRequestDates, slots: widgetFlowRequestSlots, confirmBooking: widgetFlowConfirmBooking }"), 'widget conecta los tres adaptadores backend');
-ok(source.includes('if (startWidgetBookingFlowV2(lang)) return;'), 'nueva reserva intenta v2 antes de fallback');
+ok(source.includes('if (startWidgetBookingFlowV2(lang'), 'nueva reserva intenta v2 antes de fallback');
 ok(source.includes('barberPreference: state.barberPreference'), 'widget envía la preferencia de barbero a disponibilidad y creación');
 ok(source.includes('foodPreferences: state.foodPreferences') && source.includes('tablePreference: state.tablePreference'), 'widget envía preferencias opcionales de restaurante');
 ok(source.includes('function renderAvailabilitySlots('), 'widget separa slots de disponibilidad general del renderer legacy');
@@ -71,7 +71,7 @@ console.log('\n4. Retirada legacy');
 console.log('\n5. Inicio V2 sin fallback');
 {
   const bookingIntent = source.slice(source.indexOf("intent === 'booking'"), source.indexOf('// Pregunta general'));
-  ok(bookingIntent.includes('if (startWidgetBookingFlowV2(lang)) return;'), 'una reserva nueva intenta únicamente V2');
+  ok(bookingIntent.includes('if (startWidgetBookingFlowV2(lang'), 'una reserva nueva intenta únicamente V2');
   ok(!bookingIntent.includes('askBookingTurn('), 'fallo de inicio V2 no entra al motor legacy');
   ok(bookingIntent.includes('No pudimos iniciar la reserva'), 'fallo de inicio V2 muestra un error recuperable');
 }
