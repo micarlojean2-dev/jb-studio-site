@@ -374,7 +374,9 @@
   var msgs = [];
   var busy = false;
   var bookingFlow = null;
+  var bookingFlowActions = null;
   var bookingFlowIdempotencyKey = '';
+  var autoSelectingService = false;
   var LANGUAGE_SESS = SESS + '_language';
 
   // Selector explícito de idioma (Objetivo 1): nunca depende de
@@ -669,9 +671,12 @@
   }
 
   function renderBookingFlow(state) {
+    if (bookingFlowActions && bookingFlowActions.parentNode) bookingFlowActions.remove();
+    bookingFlowActions = null;
     var lang = cfg.language === 'en' ? 'en' : 'es';
     var wrap = document.createElement('div');
     wrap.className = 'a-quick';
+    bookingFlowActions = wrap;
     function button(label, handler) {
       var element = document.createElement('button');
       element.type = 'button'; element.className = 'a-quick-btn'; element.textContent = label;
@@ -679,6 +684,7 @@
       return element;
     }
     if (state.step === window.JBChatFlow.STEPS.SERVICE_SELECTION) {
+      if (autoSelectingService) return;
       addMsg('bot', lang === 'en' ? 'Choose a service.' : 'Elige un servicio.');
       bookingFlowServices().forEach(function (service) {
         var name = bookingFlowServiceName(service);
@@ -716,6 +722,7 @@
           element.addEventListener('click', function () { slotsWrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_TIME, time: slot.value }); });
           slotsWrap.appendChild(element);
         });
+        bookingFlowActions = slotsWrap;
         msgsEl.appendChild(slotsWrap); CORE.irAlFondo(msgsEl, true);
       }).catch(function (error) {
         console.error('[booking-flow-v2] slots failed', error);
@@ -786,6 +793,15 @@
     }
     try {
       bookingFlowIdempotencyKey = CORE.genIdempotencyKey();
+      var reqService = initialEntities && (initialEntities.service || initialEntities.servicio);
+      var matched = null;
+      if (reqService) {
+        var reqLow = String(reqService).toLowerCase().trim();
+        bookingFlowServices().forEach(function (s) {
+          var name = bookingFlowServiceName(s);
+          if (name && (name.toLowerCase() === reqLow || reqLow.indexOf(name.toLowerCase()) !== -1 || name.toLowerCase().indexOf(reqLow) !== -1)) matched = name;
+        });
+      }
       bookingFlow = window.JBChatFlow.createBookingFlow({
         config: { clientId: clientId, templateId: cfg.templateId || cfg.vertical, staff: bookingFlowStaff(), storageNamespace: 'jba' }, storage: sessionStorage,
         render: { render: renderBookingFlow },
@@ -795,21 +811,17 @@
           if (event.type === window.JBChatFlow.EVENTS.START_BOOKING) captureBookingV2Event('start', state);
         },
       });
-      bookingFlow.startBooking();
-      var reqService = initialEntities && (initialEntities.service || initialEntities.servicio);
-      if (reqService) {
-        var matched = null;
-        var reqLow = String(reqService).toLowerCase().trim();
-        bookingFlowServices().forEach(function (s) {
-          var name = bookingFlowServiceName(s);
-          if (name && (name.toLowerCase() === reqLow || reqLow.indexOf(name.toLowerCase()) !== -1 || name.toLowerCase().indexOf(reqLow) !== -1)) matched = name;
-        });
-        if (matched) {
-          bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_SERVICE, service: matched });
-        }
+      if (matched) {
+        autoSelectingService = true;
+        bookingFlow.startBooking();
+        bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_SERVICE, service: matched });
+        autoSelectingService = false;
+      } else {
+        bookingFlow.startBooking();
       }
       return true;
     } catch (error) {
+      autoSelectingService = false;
       console.error('[booking-flow-v2] start failed', error);
       captureBookingV2Event('fallback', null, 'start_failed');
       bookingFlow = null;
