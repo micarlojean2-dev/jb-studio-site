@@ -194,6 +194,8 @@
   var greeted = false;
   var bookingFlow = null;
   var bookingFlowIdempotencyKey = '';
+  var widgetFlowActions = null;
+  var autoSelectingService = false;
 
   // ── Sincronización apertura ↔ config (condición de carrera) ─────────────
   // Antes, el clic decidía selector-vs-saludo con cfg.languages tal cual
@@ -598,14 +600,18 @@
   }
 
   function renderWidgetBookingFlow(state) {
+    if (widgetFlowActions && widgetFlowActions.parentNode) widgetFlowActions.remove();
+    widgetFlowActions = null;
     var lang = cfg.language === 'en' ? 'en' : 'es';
     var wrap = document.createElement('div'); wrap.className = 'jbw-quick';
+    widgetFlowActions = wrap;
     function button(label, handler) {
       var element = document.createElement('button');
       element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = label;
       element.addEventListener('click', handler); wrap.appendChild(element); return element;
     }
     if (state.step === FLOW.STEPS.SERVICE_SELECTION) {
+      if (autoSelectingService) return;
       addMsg('bot', lang === 'en' ? 'Choose a service.' : 'Elige un servicio.');
       widgetFlowServices().forEach(function (service) { var name = widgetFlowServiceName(service); if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_SERVICE, service: name }); }); });
     } else if (state.step === FLOW.STEPS.BARBER_SELECTION) {
@@ -629,6 +635,7 @@
         var slotWrap = document.createElement('div'); slotWrap.className = 'jbw-quick';
         if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date.' : 'No hay horarios disponibles para esa fecha.'); return; }
         slots.forEach(function (slot) { var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = slot.label; element.addEventListener('click', function () { slotWrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_TIME, time: slot.value }); }); slotWrap.appendChild(element); });
+        widgetFlowActions = slotWrap;
         msgsEl.appendChild(slotWrap); CORE.irAlFondo(msgsEl, true);
       }).catch(function (error) { captureWidgetError(error, 'booking_v2_slots'); addMsg('bot', lang === 'en' ? 'We could not load times. Please try again.' : 'No pudimos cargar horarios. Inténtalo de nuevo.'); });
       return;
@@ -677,23 +684,27 @@
     if (!FLOW || typeof FLOW.createBookingFlow !== 'function' || !widgetFlowServices().length) return false;
     try {
       bookingFlowIdempotencyKey = CORE.genIdempotencyKey();
-      bookingFlow = createWidgetBookingFlow();
-      bookingFlow.startBooking();
       var reqService = initialEntities && (initialEntities.service || initialEntities.servicio);
+      var matched = null;
       if (reqService) {
-        var matched = null;
         var reqLow = String(reqService).toLowerCase().trim();
         widgetFlowServices().forEach(function (s) {
-          var name = typeof s === 'string' ? s : (s && s.nombre ? s.nombre : '');
+          var name = widgetFlowServiceName(s);
           if (name && (name.toLowerCase() === reqLow || reqLow.indexOf(name.toLowerCase()) !== -1 || name.toLowerCase().indexOf(reqLow) !== -1)) matched = name;
         });
-        if (matched) {
-          bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_SERVICE, service: matched });
-        }
+      }
+      bookingFlow = createWidgetBookingFlow();
+      if (matched) {
+        autoSelectingService = true;
+        bookingFlow.startBooking();
+        bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_SERVICE, service: matched });
+        autoSelectingService = false;
+      } else {
+        bookingFlow.startBooking();
       }
       return true;
     }
-    catch (error) { captureWidgetError(error, 'booking_v2_start'); captureWidgetBookingV2Event('fallback', null, 'start_failed'); bookingFlow = null; return false; }
+    catch (error) { autoSelectingService = false; captureWidgetError(error, 'booking_v2_start'); captureWidgetBookingV2Event('fallback', null, 'start_failed'); bookingFlow = null; return false; }
   }
 
   function restoreWidgetBookingFlowV2() {
