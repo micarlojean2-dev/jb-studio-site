@@ -1327,6 +1327,7 @@ window.JBChatCore = (function () {
     accionesRapidas: accionesRapidas,
     featureOn: featureOn,
     templateId: templateId,
+    configuredStaff: configuredStaff,
     estaAlFondo: estaAlFondo,
     irAlFondo: irAlFondo,
   };
