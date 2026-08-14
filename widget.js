@@ -195,6 +195,11 @@
   var bookingFlow = null;
   var bookingFlowIdempotencyKey = '';
   var widgetFlowActions = null;
+  var widgetDateConfirmation = null;
+  var widgetDateOptions = [];
+  var widgetDateMonth = '';
+  var widgetDateOptionsLoaded = false;
+  var widgetDatePendingText = '';
   var autoSelectingService = false;
   var DRAFT_SESS = SESS + '_customer_draft_v2';
   var customerDraft = { name: null, phone: null, email: null };
@@ -202,10 +207,12 @@
 
   function updateWidgetBookingInputState(step) {
     var lang = cfg.language === 'en' ? 'en' : 'es';
-    if (!step || step === FLOW.STEPS.CHAT || step === FLOW.STEPS.CUSTOMER_DATA) {
+    if (!step || step === FLOW.STEPS.CHAT || step === FLOW.STEPS.DATE_SELECTION || step === FLOW.STEPS.CUSTOMER_DATA) {
       inp.disabled = false;
       snd.disabled = false;
-      inp.placeholder = lang === 'en' ? 'Type a message…' : 'Escribe un mensaje…';
+      inp.placeholder = step === FLOW.STEPS.DATE_SELECTION
+        ? (lang === 'en' ? 'Type a date, for example next Thursday' : 'Escribe una fecha, por ejemplo el próximo jueves')
+        : (lang === 'en' ? 'Type a message…' : 'Escribe un mensaje…');
     } else {
       inp.disabled = true;
       snd.disabled = true;
@@ -431,6 +438,11 @@
     '.jbw-quick-btn:active{transform:translateY(0) scale(.98);}',
     '@media(prefers-reduced-motion:reduce){.jbw-quick-btn{animation:none;opacity:1;}}',
     '@media(prefers-reduced-motion:reduce){.jbw-card{animation:none;opacity:1;}}',
+    '.jbw-date-calendar{width:100%;max-width:304px;margin-left:34px;padding:12px;border:1px solid rgba(0,0,0,.08);border-radius:15px;background:#fff;box-shadow:0 3px 14px rgba(0,0,0,.05);}',
+    '.jbw-date-calendar-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}.jbw-date-calendar-title{font-size:12.5px;font-weight:750;text-transform:capitalize;color:#16181d;}',
+    '.jbw-date-calendar-nav{width:27px;height:27px;border:0;border-radius:8px;background:#f2f3f5;color:#16181d;cursor:pointer;font:inherit;}.jbw-date-calendar-nav:disabled{opacity:.35;cursor:default;}',
+    '.jbw-date-calendar-weekdays,.jbw-date-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;}.jbw-date-calendar-weekdays{margin-bottom:4px;color:#8a8f98;font-size:9.5px;font-weight:700;}',
+    '.jbw-date-calendar-day{min-height:32px;border:0;border-radius:8px;background:transparent;color:#a8acb3;font:inherit;font-size:11.5px;}.jbw-date-calendar-day[data-available="true"]{background:color-mix(in srgb,var(--jbw-color,#1a4a2e) 11%,white);color:var(--jbw-color,#1a4a2e);cursor:pointer;font-weight:750;}.jbw-date-calendar-day[data-available="true"]:hover{background:var(--jbw-color,#1a4a2e);color:#fff;}.jbw-date-calendar-day:disabled{cursor:default;}',
 
   ].join('');
   document.head.appendChild(css);
@@ -628,6 +640,84 @@
       .then(function (data) { if (!data || !data.ok || !Array.isArray(data.slots)) throw new Error('slots contract invalid'); return data.slots; });
   }
 
+  function widgetDateLabel(value, lang) {
+    return new Intl.DateTimeFormat(lang === 'en' ? 'en-US' : 'es-ES', {
+      timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long',
+    }).format(new Date(value + 'T12:00:00Z'));
+  }
+
+  function selectWidgetBookingDate(value) {
+    if (widgetDateConfirmation) widgetDateConfirmation.remove();
+    widgetDateConfirmation = null;
+    if (widgetFlowActions) widgetFlowActions.remove();
+    bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_DATE, date: value });
+  }
+
+  function renderWidgetDateCalendar(wrap, lang) {
+    var available = {};
+    widgetDateOptions.forEach(function (date) { available[date.value] = true; });
+    var months = widgetDateOptions.map(function (date) { return date.value.slice(0, 7); }).filter(function (value, index, values) { return values.indexOf(value) === index; }).sort();
+    if (!months.length) return;
+    if (months.indexOf(widgetDateMonth) === -1) widgetDateMonth = months[0];
+
+    var monthIndex = months.indexOf(widgetDateMonth);
+    var parts = widgetDateMonth.split('-').map(Number);
+    var year = parts[0], month = parts[1] - 1;
+    var calendar = document.createElement('div'); calendar.className = 'jbw-date-calendar';
+    var head = document.createElement('div'); head.className = 'jbw-date-calendar-head';
+    function nav(label, direction) {
+      var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-date-calendar-nav'; element.textContent = label;
+      element.disabled = monthIndex + direction < 0 || monthIndex + direction >= months.length;
+      element.addEventListener('click', function () { widgetDateMonth = months[monthIndex + direction]; renderWidgetDateCalendar(wrap, lang); });
+      return element;
+    }
+    head.appendChild(nav('◀', -1));
+    var title = document.createElement('div'); title.className = 'jbw-date-calendar-title'; title.textContent = new Intl.DateTimeFormat(lang === 'en' ? 'en-US' : 'es-ES', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(Date.UTC(year, month, 1))); head.appendChild(title);
+    head.appendChild(nav('▶', 1)); calendar.appendChild(head);
+    var weekdays = document.createElement('div'); weekdays.className = 'jbw-date-calendar-weekdays';
+    (lang === 'en' ? ['M', 'T', 'W', 'T', 'F', 'S', 'S'] : ['L', 'M', 'X', 'J', 'V', 'S', 'D']).forEach(function (label) { var day = document.createElement('span'); day.textContent = label; weekdays.appendChild(day); });
+    calendar.appendChild(weekdays);
+    var grid = document.createElement('div'); grid.className = 'jbw-date-calendar-grid';
+    var firstDay = (new Date(Date.UTC(year, month, 1)).getUTCDay() + 6) % 7;
+    var days = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    for (var blank = 0; blank < firstDay; blank++) grid.appendChild(document.createElement('span'));
+    for (var dayNumber = 1; dayNumber <= days; dayNumber++) {
+      var value = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(dayNumber).padStart(2, '0');
+      var dayButton = document.createElement('button'); dayButton.type = 'button'; dayButton.className = 'jbw-date-calendar-day'; dayButton.textContent = dayNumber;
+      dayButton.disabled = !available[value]; dayButton.dataset.available = available[value] ? 'true' : 'false';
+      if (available[value]) dayButton.addEventListener('click', (function (dateValue) { return function () { selectWidgetBookingDate(dateValue); }; })(value));
+      grid.appendChild(dayButton);
+    }
+    calendar.appendChild(grid); wrap.replaceChildren(calendar); msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
+  }
+
+  function handleWidgetBookingDateText(text, alreadyShown) {
+    var lang = cfg.language === 'en' ? 'en' : 'es';
+    if (!alreadyShown) addMsg('user', text);
+    if (!widgetDateOptionsLoaded) {
+      widgetDatePendingText = text;
+      addMsg('bot', lang === 'en' ? 'Give me a second, I am checking availability.' : 'Dame un segundo, estoy revisando la disponibilidad...');
+      return;
+    }
+    var parsed = CORE.resolveBookingDate(text, lang, cfg.timezone);
+    if (parsed.status !== 'unique') {
+      addMsg('bot', lang === 'en' ? 'I could not understand the date clearly. Choose it from the calendar.' : 'No logré entender bien la fecha 😅 Elígela en el calendario.');
+      return;
+    }
+    var option = widgetDateOptions.find(function (date) { return date.value === parsed.date; });
+    if (!option) {
+      addMsg('bot', lang === 'en' ? 'That date is not available. Choose another one from the calendar.' : 'Esa fecha no está disponible. Elige otra en el calendario.');
+      return;
+    }
+    if (widgetDateConfirmation) widgetDateConfirmation.remove();
+    widgetDateConfirmation = document.createElement('div'); widgetDateConfirmation.className = 'jbw-quick';
+    addMsg('bot', (lang === 'en' ? 'Is ' : '¿') + widgetDateLabel(option.value, lang) + (lang === 'en' ? ' the date you want?' : '?'));
+    function confirmButton(label, handler) { var button = document.createElement('button'); button.type = 'button'; button.className = 'jbw-quick-btn'; button.textContent = label; button.addEventListener('click', handler); widgetDateConfirmation.appendChild(button); }
+    confirmButton(lang === 'en' ? 'Yes, that date' : 'Sí, esa', function () { selectWidgetBookingDate(option.value); });
+    confirmButton(lang === 'en' ? 'No, choose another' : 'No, elegir otra', function () { widgetDateConfirmation.remove(); widgetDateConfirmation = null; addMsg('bot', lang === 'en' ? 'Choose another date from the calendar.' : 'Elige otra fecha en el calendario.'); });
+    msgsEl.appendChild(widgetDateConfirmation); CORE.irAlFondo(msgsEl, true);
+  }
+
   function widgetFlowConfirmBooking(state) {
     var body = { clientId: clientId, nombre: state.customer.name, telefono: state.customer.phone, email: state.customer.email,
       servicio: state.service, fecha: state.date, hora: state.time, specialRequests: state.specialRequests,
@@ -651,7 +741,9 @@
   function renderWidgetBookingFlow(state) {
     updateWidgetBookingInputState(state.step);
     if (widgetFlowActions && widgetFlowActions.parentNode) widgetFlowActions.remove();
+    if (widgetDateConfirmation && widgetDateConfirmation.parentNode) widgetDateConfirmation.remove();
     widgetFlowActions = null;
+    widgetDateConfirmation = null;
     var lang = cfg.language === 'en' ? 'en' : 'es';
     var wrap = document.createElement('div'); wrap.className = 'jbw-quick';
     widgetFlowActions = wrap;
@@ -672,11 +764,21 @@
       addMsg('bot', lang === 'en' ? 'For how many people?' : '¿Para cuántas personas?');
       [1, 2, 3, 4, 5, 6].forEach(function (people) { button(String(people), function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_PEOPLE, people: people }); }); });
     } else if (state.step === FLOW.STEPS.DATE_SELECTION) {
-      addMsg('bot', lang === 'en' ? 'Loading available dates...' : 'Buscando fechas disponibles...');
+      addMsg('bot', lang === 'en' ? 'What day would you like to come?' : '¿Qué día te gustaría venir?');
+      widgetDateOptions = [];
+      widgetDateOptionsLoaded = false;
+      widgetDatePendingText = '';
       bookingFlow.requestAvailableDates().then(function (dates) {
         if (!dates.length) { addMsg('bot', lang === 'en' ? 'There are no available dates right now.' : 'No hay fechas disponibles en este momento.'); return; }
-        dates.forEach(function (date) { button(date.label, function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_DATE, date: date.value }); }); });
-        msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
+        widgetDateOptions = dates;
+        widgetDateOptionsLoaded = true;
+        widgetDateMonth = dates[0].value.slice(0, 7);
+        renderWidgetDateCalendar(wrap, lang);
+        if (widgetDatePendingText) {
+          var pendingText = widgetDatePendingText;
+          widgetDatePendingText = '';
+          handleWidgetBookingDateText(pendingText, true);
+        }
       }).catch(function (error) { captureWidgetError(error, 'booking_v2_dates'); addMsg('bot', lang === 'en' ? 'We could not load dates. Please try again.' : 'No pudimos cargar fechas. Inténtalo de nuevo.'); });
       return;
     } else if (state.step === FLOW.STEPS.TIME_SELECTION) {
@@ -1221,6 +1323,10 @@
 
     if (bookingFlow) {
       var flowState = bookingFlow.getState();
+      if (flowState.step === FLOW.STEPS.DATE_SELECTION) {
+        handleWidgetBookingDateText(t);
+        return;
+      }
       if (flowState.step !== FLOW.STEPS.CUSTOMER_DATA) {
         return;
       }

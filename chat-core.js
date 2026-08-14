@@ -160,6 +160,83 @@ window.JBChatCore = (function () {
     return '';
   }
 
+  function bookingDateBase(timezone) {
+    try {
+      var parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(new Date());
+      var value = Object.fromEntries(parts.filter(function (part) { return part.type !== 'literal'; }).map(function (part) { return [part.type, part.value]; }));
+      return new Date(Date.UTC(+value.year, +value.month - 1, +value.day, 12));
+    } catch (e) {
+      return new Date();
+    }
+  }
+
+  function bookingDateIso(year, month, day) {
+    var candidate = new Date(Date.UTC(year, month, day));
+    return candidate.getUTCFullYear() === year && candidate.getUTCMonth() === month && candidate.getUTCDate() === day
+      ? candidate.toISOString().slice(0, 10) : '';
+  }
+
+  // Para DATE_SELECTION la fecha debe ser canónica y única. Reutiliza los
+  // patrones de extraerFecha(), pero rechaza dos menciones en vez de elegir una.
+  function resolveBookingDate(texto, lang, timezone) {
+    var source = enmascararNoFecha(texto).replace(HORA_DE_LA_MANANA_RE, ' ');
+    var mentions = source.match(new RegExp(FECHA_TEXTO_RE.source + '|' + FECHA_ISO_RE.source + '|' + FECHA_NUM_RE.source, 'gi')) || [];
+    if (mentions.length > 1) return { status: 'ambiguous' };
+
+    var raw = extraerFecha(source, lang);
+    if (!raw || !mentions.length) return { status: 'invalid' };
+
+    var txt = raw.toLowerCase().trim();
+    var base = bookingDateBase(timezone);
+    var addDays = function (days) { var next = new Date(base); next.setUTCDate(next.getUTCDate() + days); return next.toISOString().slice(0, 10); };
+    if (/\bpasado\s+ma(ñ|n)ana\b|\bday\s+after\s+tomorrow\b/.test(txt)) return { status: 'unique', date: addDays(2) };
+    if (/\bhoy\b|\btoday\b/.test(txt)) return { status: 'unique', date: addDays(0) };
+    if (/\bma(ñ|n)ana\b|\btomorrow\b/.test(txt)) return { status: 'unique', date: addDays(1) };
+
+    var iso = txt.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (iso) {
+      var isoValue = bookingDateIso(+iso[1], +iso[2] - 1, +iso[3]);
+      return isoValue ? { status: 'unique', date: isoValue } : { status: 'invalid' };
+    }
+
+    var monthDay = txt.match(/^(\d{1,2})\s*(?:de\s+)?([a-záéíóú]+)$/i) || txt.match(/^([a-záéíóú]+)\s+(\d{1,2})$/i);
+    if (monthDay) {
+      var isDayFirst = /^\d/.test(txt);
+      var day = +(isDayFirst ? monthDay[1] : monthDay[2]);
+      var month = MESES[(isDayFirst ? monthDay[2] : monthDay[1]).toLowerCase()];
+      if (!month) return { status: 'invalid' };
+      var year = base.getUTCFullYear();
+      var monthValue = bookingDateIso(year, month - 1, day);
+      if (!monthValue) return { status: 'invalid' };
+      if (monthValue < base.toISOString().slice(0, 10)) monthValue = bookingDateIso(year + 1, month - 1, day);
+      return monthValue ? { status: 'unique', date: monthValue } : { status: 'invalid' };
+    }
+
+    var numeric = txt.match(/^(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2,4}))?$/);
+    if (numeric) {
+      var a = +numeric[1], b = +numeric[2], yearNumber = numeric[3] ? +numeric[3] : base.getUTCFullYear();
+      if (yearNumber < 100) yearNumber += 2000;
+      var dateDay = a > 12 ? a : (b > 12 ? b : (lang === 'en' ? b : a));
+      var dateMonth = a > 12 ? b : (b > 12 ? a : (lang === 'en' ? a : b));
+      var numericValue = bookingDateIso(yearNumber, dateMonth - 1, dateDay);
+      return numericValue ? { status: 'unique', date: numericValue } : { status: 'invalid' };
+    }
+
+    var weekdays = { domingo: 0, lunes: 1, martes: 2, 'miercoles': 3, 'miércoles': 3, jueves: 4, viernes: 5, 'sabado': 6, 'sábado': 6,
+      sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+    for (var name in weekdays) {
+      if (new RegExp('\\b' + name + '\\b').test(txt)) {
+        var delta = (weekdays[name] - base.getUTCDay() + 7) % 7;
+        if (delta === 0) delta = 7;
+        if (/\bpróximo\b|\bproximo\b|\bnext\b|\bque\s+viene\b/.test(txt)) delta += 7;
+        return { status: 'unique', date: addDays(delta) };
+      }
+    }
+    return { status: 'invalid' };
+  }
+
   var ICON_RULES = [
       [/masaj|spa|relaj|facial|belle|est[eé]t/i, '💆'],
       [/pelo|corte|barb|peluqu|cabello|afeit/i,  '✂️'],
@@ -1399,6 +1476,7 @@ window.JBChatCore = (function () {
     motivoDisponibilidadMensaje: motivoDisponibilidadMensaje,
     emailActionContextoMensaje: emailActionContextoMensaje,
     extractBooking: extractBooking,
+    resolveBookingDate: resolveBookingDate,
     sanitizeBookingEntities: sanitizeBookingEntities,
     buildReservationContext: buildReservationContext,
     resolverHora: resolverHora,
