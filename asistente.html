@@ -381,10 +381,24 @@
   var customerDraft = { name: null, phone: null, email: null };
   var specialRequestsAsked = false;
 
+  function updateBookingInputState(step) {
+    var lang = cfg.language === 'en' ? 'en' : 'es';
+    if (!step || step === window.JBChatFlow.STEPS.CHAT || step === window.JBChatFlow.STEPS.CUSTOMER_DATA) {
+      inp.disabled = false;
+      snd.disabled = false;
+      inp.placeholder = lang === 'en' ? 'Type a message…' : 'Escribe un mensaje…';
+    } else {
+      inp.disabled = true;
+      snd.disabled = true;
+      inp.placeholder = lang === 'en' ? 'Please use the options above' : 'Usa las opciones de arriba';
+    }
+  }
+
   function resetCustomerDraft() {
     customerDraft = { name: null, phone: null, email: null };
     specialRequestsAsked = false;
     try { sessionStorage.removeItem(DRAFT_SESS); } catch (e) {}
+    if (window.JBChatFlow) updateBookingInputState(window.JBChatFlow.STEPS.CHAT);
   }
 
   function saveCustomerDraft() {
@@ -707,6 +721,7 @@
   }
 
   function renderBookingFlow(state) {
+    updateBookingInputState(state.step);
     if (bookingFlowActions && bookingFlowActions.parentNode) bookingFlowActions.remove();
     bookingFlowActions = null;
     var lang = cfg.language === 'en' ? 'en' : 'es';
@@ -1314,7 +1329,7 @@
   }
 
   function send(text) {
-    if (busy || !text.trim()) return;
+    if (busy || inp.disabled || !text.trim()) return;
     var t = text.trim();
     // El idioma ya quedó fijado por el selector inicial (o client.language
     // como fallback): nunca se vuelve a detectar aquí. [Objetivo 1, regla 7]
@@ -1337,12 +1352,11 @@
     }
 
     if (bookingFlow) {
-      addMsg('user', t);
       var flowState = bookingFlow.getState();
       if (flowState.step !== window.JBChatFlow.STEPS.CUSTOMER_DATA) {
-        addMsg('bot', lang === 'en' ? 'Please use the booking options shown above.' : 'Usa las opciones de reserva mostradas arriba.');
         return;
       }
+      addMsg('user', t);
       var missingBefore = CORE.missingCustomerField(customerDraft);
       if (missingBefore) {
         customerDraft = CORE.parseCustomerDraft(t, customerDraft);
@@ -1554,7 +1568,10 @@
         addMsg('bot', cfg.language === 'en' ? "Sorry, that didn't go through 😅 Mind trying again?" : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
       })
       .finally(function () {
-        busy = false; inp.disabled = false; snd.disabled = false; inp.focus();
+        busy = false;
+        if (!bookingFlow || bookingFlow.getState().step === window.JBChatFlow.STEPS.CUSTOMER_DATA) {
+          inp.disabled = false; snd.disabled = false; inp.focus();
+        }
       });
   }
 

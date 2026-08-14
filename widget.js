@@ -200,10 +200,24 @@
   var customerDraft = { name: null, phone: null, email: null };
   var specialRequestsAsked = false;
 
+  function updateWidgetBookingInputState(step) {
+    var lang = cfg.language === 'en' ? 'en' : 'es';
+    if (!step || step === FLOW.STEPS.CHAT || step === FLOW.STEPS.CUSTOMER_DATA) {
+      inp.disabled = false;
+      snd.disabled = false;
+      inp.placeholder = lang === 'en' ? 'Type a message…' : 'Escribe un mensaje…';
+    } else {
+      inp.disabled = true;
+      snd.disabled = true;
+      inp.placeholder = lang === 'en' ? 'Please use the options above' : 'Usa las opciones de arriba';
+    }
+  }
+
   function resetCustomerDraft() {
     customerDraft = { name: null, phone: null, email: null };
     specialRequestsAsked = false;
     try { sessionStorage.removeItem(DRAFT_SESS); } catch (e) {}
+    if (typeof FLOW !== 'undefined' && FLOW) updateWidgetBookingInputState(FLOW.STEPS.CHAT);
   }
 
   function saveCustomerDraft() {
@@ -635,6 +649,7 @@
   }
 
   function renderWidgetBookingFlow(state) {
+    updateWidgetBookingInputState(state.step);
     if (widgetFlowActions && widgetFlowActions.parentNode) widgetFlowActions.remove();
     widgetFlowActions = null;
     var lang = cfg.language === 'en' ? 'en' : 'es';
@@ -1205,12 +1220,11 @@
     }
 
     if (bookingFlow) {
-      addMsg('user', t);
       var flowState = bookingFlow.getState();
       if (flowState.step !== FLOW.STEPS.CUSTOMER_DATA) {
-        addMsg('bot', lang === 'en' ? 'Please use the booking options shown above.' : 'Usa las opciones de reserva mostradas arriba.');
         return;
       }
+      addMsg('user', t);
       var missingBefore = CORE.missingCustomerField(customerDraft);
       if (missingBefore) {
         customerDraft = CORE.parseCustomerDraft(t, customerDraft);
@@ -1403,9 +1417,11 @@
       })
       .finally(function () {
         busy = false;
-        inp.disabled = false;
-        snd.disabled = false;
-        inp.focus();
+        if (!bookingFlow || bookingFlow.getState().step === FLOW.STEPS.CUSTOMER_DATA) {
+          inp.disabled = false;
+          snd.disabled = false;
+          inp.focus();
+        }
       });
   }
 
