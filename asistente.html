@@ -386,7 +386,6 @@
   var busy = false;
   var bookingFlow = null;
   var bookingFlowActions = null;
-  var bookingSlotLoadingMessage = null;
   var bookingTimeQuestionMessage = null;
   var bookingDateConfirmation = null;
   var bookingDateOptions = [];
@@ -395,13 +394,16 @@
   var bookingDatePendingText = '';
   var bookingFlowIdempotencyKey = '';
   var autoSelectingService = false;
+  var galleryInputLocked = false;
+  var renderingServicePhotoGallery = false;
+  var BOT_MESSAGE_DELAY_MS = 2000;
   var DRAFT_SESS = SESS + '_customer_draft_v2';
   var customerDraft = { name: null, phone: null, email: null };
   var specialRequestsAsked = false;
 
   function updateBookingInputState(step) {
     var lang = cfg.language === 'en' ? 'en' : 'es';
-    if (!step || step === window.JBChatFlow.STEPS.CHAT || step === window.JBChatFlow.STEPS.DATE_SELECTION || step === window.JBChatFlow.STEPS.CUSTOMER_DATA) {
+    if (!galleryInputLocked && (!step || step === window.JBChatFlow.STEPS.CHAT || step === window.JBChatFlow.STEPS.DATE_SELECTION || step === window.JBChatFlow.STEPS.CUSTOMER_DATA)) {
       inp.disabled = false;
       snd.disabled = false;
       inp.placeholder = step === window.JBChatFlow.STEPS.DATE_SELECTION
@@ -411,6 +413,20 @@
       inp.disabled = true;
       snd.disabled = true;
       inp.placeholder = lang === 'en' ? 'Please use the options above' : 'Usa las opciones de arriba';
+    }
+  }
+
+  function setGalleryInputLocked(locked) {
+    galleryInputLocked = locked;
+    if (locked) {
+      inp.disabled = true;
+      snd.disabled = true;
+      inp.placeholder = cfg.language === 'en' ? 'Choose a service or continue chatting' : 'Elige un servicio o sigue conversando';
+    } else if (!busy && !bookingFlow) {
+      inp.disabled = false;
+      snd.disabled = false;
+      inp.placeholder = cfg.language === 'en' ? 'Type a message…' : 'Escribe un mensaje…';
+      inp.focus();
     }
   }
 
@@ -631,7 +647,7 @@
         if (!bub.isConnected) return;
         bub.classList.remove('a-ty');
         bub.textContent = text;
-      }, 2000);
+      }, BOT_MESSAGE_DELAY_MS);
     } else {
       bub.textContent = text;
       bub.style.background = cfg.color;
@@ -640,11 +656,6 @@
     msgsEl.appendChild(row);
     CORE.irAlFondo(msgsEl, role === 'user');   // tu propio mensaje siempre te lleva abajo
     return row;
-  }
-
-  function removeBookingSlotLoadingMessage() {
-    if (bookingSlotLoadingMessage && bookingSlotLoadingMessage.parentNode) bookingSlotLoadingMessage.remove();
-    bookingSlotLoadingMessage = null;
   }
 
   function selectBookingTime(time, lang) {
@@ -872,6 +883,7 @@
       button(lang === 'en' ? 'Any available barber' : 'Cualquiera', function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_BARBER, barberPreference: null }); });
       bookingFlowStaff().forEach(function (staff) { var name = staff && (staff.name || staff.nombre || staff.id); if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_BARBER, barberPreference: name }); }); });
     } else if (state.step === window.JBChatFlow.STEPS.DATE_SELECTION) {
+      var datePromptStartedAt = Date.now();
       addMsg('bot', lang === 'en' ? 'What day would you like to come by?' : '¿Qué día te gustaría venir?');
       bookingDateOptions = [];
       bookingDateOptionsLoaded = false;
@@ -881,12 +893,14 @@
         bookingDateOptions = dates;
         bookingDateOptionsLoaded = true;
         bookingDateMonth = dates[0].value.slice(0, 7);
-        renderBookingDateCalendar(wrap, lang);
-        if (bookingDatePendingText) {
-          var pendingText = bookingDatePendingText;
-          bookingDatePendingText = '';
-          handleBookingDateText(pendingText, true);
-        }
+        setTimeout(function () {
+          renderBookingDateCalendar(wrap, lang);
+          if (bookingDatePendingText) {
+            var pendingText = bookingDatePendingText;
+            bookingDatePendingText = '';
+            handleBookingDateText(pendingText, true);
+          }
+        }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - datePromptStartedAt)));
       }).catch(function () {
         addMsg('bot', lang === 'en' ? 'Sorry, we could not load the dates. Please try again.' : 'Perdón, no pudimos cargar las fechas. Inténtalo de nuevo.');
       });
@@ -897,22 +911,22 @@
         button(String(people), function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_PEOPLE, people: people }); });
       });
     } else if (state.step === window.JBChatFlow.STEPS.TIME_SELECTION) {
-      bookingSlotLoadingMessage = addMsg('bot', lang === 'en' ? 'Just a moment, I am finding the available times.' : 'Un momentito, estoy buscando los horarios disponibles.');
+      var timePromptStartedAt = Date.now();
+      bookingTimeQuestionMessage = addMsg('bot', lang === 'en' ? 'What time would work best for you?' : '¿Qué horario te acomodaría mejor?');
       bookingFlow.requestSlots().then(function (slots) {
-        var slotsWrap = document.createElement('div'); slotsWrap.className = 'a-quick';
-        removeBookingSlotLoadingMessage();
-        if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date. Please choose another day.' : 'No hay horarios disponibles para esa fecha. Elige otro día, por favor.'); return; }
-        bookingTimeQuestionMessage = addMsg('bot', lang === 'en' ? 'What time would work best for you?' : '¿Qué horario te acomodaría mejor?');
-        slots.forEach(function (slot) {
-          var element = document.createElement('button');
-          element.type = 'button'; element.className = 'a-quick-btn'; element.textContent = slot.label;
-          element.addEventListener('click', function () { slotsWrap.remove(); selectBookingTime(slot.value, lang); });
-          slotsWrap.appendChild(element);
-        });
-        bookingFlowActions = slotsWrap;
-        msgsEl.appendChild(slotsWrap); CORE.irAlFondo(msgsEl, true);
+        setTimeout(function () {
+          var slotsWrap = document.createElement('div'); slotsWrap.className = 'a-quick';
+          if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date. Please choose another day.' : 'No hay horarios disponibles para esa fecha. Elige otro día, por favor.'); return; }
+          slots.forEach(function (slot) {
+            var element = document.createElement('button');
+            element.type = 'button'; element.className = 'a-quick-btn'; element.textContent = slot.label;
+            element.addEventListener('click', function () { slotsWrap.remove(); selectBookingTime(slot.value, lang); });
+            slotsWrap.appendChild(element);
+          });
+          bookingFlowActions = slotsWrap;
+          msgsEl.appendChild(slotsWrap); CORE.irAlFondo(msgsEl, true);
+        }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - timePromptStartedAt)));
       }).catch(function (error) {
-        removeBookingSlotLoadingMessage();
         console.error('[booking-flow-v2] slots failed', error);
         addMsg('bot', lang === 'en' ? 'Sorry, we could not load the times. Please try again.' : 'Perdón, no pudimos cargar los horarios. Inténtalo de nuevo.');
       });
@@ -978,6 +992,7 @@
     } else if (state.step === window.JBChatFlow.STEPS.CONFIRMED) {
       captureBookingV2Event('completed', state);
       addMsg('bot', lang === 'en' ? 'Your reservation is confirmed! ✅' : '¡Tu reserva quedó confirmada! ✅');
+      addMsg('bot', lang === 'en' ? 'For last-minute changes (cancel or reschedule), use the link in your confirmation email 📧' : 'Para cambios de último momento (cancelar o reagendar), usa el enlace de tu correo de confirmación 📧');
       return;
     }
     msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
@@ -1082,6 +1097,7 @@
   // "Popular" sale del dato del negocio, nunca se inventa: decirle a un
   // cliente real que algo es popular sin que lo sea es una afirmación falsa.
   function renderMenu() {
+    var galleryMode = renderingServicePhotoGallery;
     var items = Array.isArray(cfg.menu) ? cfg.menu : [];
     if (!items.length) return;
 
@@ -1146,8 +1162,9 @@
       // Todo el bloque es el botón: tocar en cualquier punto continúa la
       // conversación sin que el cliente escriba nada.
       card.addEventListener('click', function () {
-        if (inp.disabled) return;
+        if (inp.disabled && !galleryMode) return;
         if (wrap.parentNode) wrap.remove();
+        if (galleryMode) setGalleryInputLocked(false);
         var userMsg = CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant');
         if (activeReservation && featureOn('reservations')) {
           addMsg('user', userMsg);
@@ -1167,6 +1184,14 @@
     });
 
     wrap.appendChild(row);
+    if (galleryMode) {
+      var continueChat = document.createElement('button');
+      continueChat.type = 'button';
+      continueChat.className = 'a-gallery-more';
+      continueChat.textContent = cfg.language === 'en' ? 'Continue chatting' : 'Seguir conversando';
+      continueChat.addEventListener('click', function () { wrap.remove(); setGalleryInputLocked(false); });
+      wrap.appendChild(continueChat);
+    }
     msgsEl.appendChild(wrap);
     // "estaAlFondo" mide contra el scrollHeight actual: justo tras crecer con
     // este bloque, el usuario que ya estaba al fondo del mensaje de texto
@@ -1182,7 +1207,10 @@
   // catálogo y ocultaba el resto, justo lo que el Objetivo 2 prohíbe. Ahora
   // es el mismo catálogo completo de renderMenu(). [Objetivo 2]
   function renderServicesWithPhotos() {
+    setGalleryInputLocked(true);
+    renderingServicePhotoGallery = true;
     renderMenu();
+    renderingServicePhotoGallery = false;
   }
 
   function renderGallery() {
@@ -1734,7 +1762,7 @@
       })
       .finally(function () {
         busy = false;
-        if (!bookingFlow || bookingFlow.getState().step === window.JBChatFlow.STEPS.CUSTOMER_DATA) {
+        if (!galleryInputLocked && (!bookingFlow || bookingFlow.getState().step === window.JBChatFlow.STEPS.CUSTOMER_DATA)) {
           inp.disabled = false; snd.disabled = false; inp.focus();
         }
       });

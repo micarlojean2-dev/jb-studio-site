@@ -195,7 +195,6 @@
   var bookingFlow = null;
   var bookingFlowIdempotencyKey = '';
   var widgetFlowActions = null;
-  var widgetSlotLoadingMessage = null;
   var widgetTimeQuestionMessage = null;
   var widgetDateConfirmation = null;
   var widgetDateOptions = [];
@@ -203,13 +202,16 @@
   var widgetDateOptionsLoaded = false;
   var widgetDatePendingText = '';
   var autoSelectingService = false;
+  var galleryInputLocked = false;
+  var renderingServicePhotoGallery = false;
+  var BOT_MESSAGE_DELAY_MS = 2000;
   var DRAFT_SESS = SESS + '_customer_draft_v2';
   var customerDraft = { name: null, phone: null, email: null };
   var specialRequestsAsked = false;
 
   function updateWidgetBookingInputState(step) {
     var lang = cfg.language === 'en' ? 'en' : 'es';
-    if (!step || step === FLOW.STEPS.CHAT || step === FLOW.STEPS.DATE_SELECTION || step === FLOW.STEPS.CUSTOMER_DATA) {
+    if (!galleryInputLocked && (!step || step === FLOW.STEPS.CHAT || step === FLOW.STEPS.DATE_SELECTION || step === FLOW.STEPS.CUSTOMER_DATA)) {
       inp.disabled = false;
       snd.disabled = false;
       inp.placeholder = step === FLOW.STEPS.DATE_SELECTION
@@ -219,6 +221,20 @@
       inp.disabled = true;
       snd.disabled = true;
       inp.placeholder = lang === 'en' ? 'Please use the options above' : 'Usa las opciones de arriba';
+    }
+  }
+
+  function setWidgetGalleryInputLocked(locked) {
+    galleryInputLocked = locked;
+    if (locked) {
+      inp.disabled = true;
+      snd.disabled = true;
+      inp.placeholder = cfg.language === 'en' ? 'Choose a service or continue chatting' : 'Elige un servicio o sigue conversando';
+    } else if (!busy && !bookingFlow) {
+      inp.disabled = false;
+      snd.disabled = false;
+      inp.placeholder = cfg.language === 'en' ? 'Type a message…' : 'Escribe un mensaje…';
+      inp.focus();
     }
   }
 
@@ -606,7 +622,7 @@
         if (!bub.isConnected) return;
         bub.classList.remove('jbw-ty');
         bub.textContent = text;
-      }, 2000);
+      }, BOT_MESSAGE_DELAY_MS);
     } else {
       bub.textContent = text;
       bub.style.background = cfg.color;
@@ -615,11 +631,6 @@
     msgsEl.appendChild(row);
     CORE.irAlFondo(msgsEl, role === 'user');   // tu propio mensaje siempre te lleva abajo
     return row;
-  }
-
-  function removeWidgetSlotLoadingMessage() {
-    if (widgetSlotLoadingMessage && widgetSlotLoadingMessage.parentNode) widgetSlotLoadingMessage.remove();
-    widgetSlotLoadingMessage = null;
   }
 
   function selectWidgetBookingTime(time, lang) {
@@ -791,6 +802,7 @@
       addMsg('bot', lang === 'en' ? 'For how many people?' : '¿Para cuántas personas?');
       [1, 2, 3, 4, 5, 6].forEach(function (people) { button(String(people), function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_PEOPLE, people: people }); }); });
     } else if (state.step === FLOW.STEPS.DATE_SELECTION) {
+      var datePromptStartedAt = Date.now();
       addMsg('bot', lang === 'en' ? 'What day would you like to come by?' : '¿Qué día te gustaría venir?');
       widgetDateOptions = [];
       widgetDateOptionsLoaded = false;
@@ -800,25 +812,28 @@
         widgetDateOptions = dates;
         widgetDateOptionsLoaded = true;
         widgetDateMonth = dates[0].value.slice(0, 7);
-        renderWidgetDateCalendar(wrap, lang);
-        if (widgetDatePendingText) {
-          var pendingText = widgetDatePendingText;
-          widgetDatePendingText = '';
-          handleWidgetBookingDateText(pendingText, true);
-        }
+        setTimeout(function () {
+          renderWidgetDateCalendar(wrap, lang);
+          if (widgetDatePendingText) {
+            var pendingText = widgetDatePendingText;
+            widgetDatePendingText = '';
+            handleWidgetBookingDateText(pendingText, true);
+          }
+        }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - datePromptStartedAt)));
       }).catch(function (error) { captureWidgetError(error, 'booking_v2_dates'); addMsg('bot', lang === 'en' ? 'Sorry, we could not load the dates. Please try again.' : 'Perdón, no pudimos cargar las fechas. Inténtalo de nuevo.'); });
       return;
     } else if (state.step === FLOW.STEPS.TIME_SELECTION) {
-      widgetSlotLoadingMessage = addMsg('bot', lang === 'en' ? 'Just a moment, I am finding the available times.' : 'Un momentito, estoy buscando los horarios disponibles.');
+      var timePromptStartedAt = Date.now();
+      widgetTimeQuestionMessage = addMsg('bot', lang === 'en' ? 'What time would work best for you?' : '¿Qué horario te acomodaría mejor?');
       bookingFlow.requestSlots().then(function (slots) {
-        var slotWrap = document.createElement('div'); slotWrap.className = 'jbw-quick';
-        removeWidgetSlotLoadingMessage();
-        if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date. Please choose another day.' : 'No hay horarios disponibles para esa fecha. Elige otro día, por favor.'); return; }
-        widgetTimeQuestionMessage = addMsg('bot', lang === 'en' ? 'What time would work best for you?' : '¿Qué horario te acomodaría mejor?');
-        slots.forEach(function (slot) { var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = slot.label; element.addEventListener('click', function () { slotWrap.remove(); selectWidgetBookingTime(slot.value, lang); }); slotWrap.appendChild(element); });
-        widgetFlowActions = slotWrap;
-        msgsEl.appendChild(slotWrap); CORE.irAlFondo(msgsEl, true);
-      }).catch(function (error) { removeWidgetSlotLoadingMessage(); captureWidgetError(error, 'booking_v2_slots'); addMsg('bot', lang === 'en' ? 'Sorry, we could not load the times. Please try again.' : 'Perdón, no pudimos cargar los horarios. Inténtalo de nuevo.'); });
+        setTimeout(function () {
+          var slotWrap = document.createElement('div'); slotWrap.className = 'jbw-quick';
+          if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date. Please choose another day.' : 'No hay horarios disponibles para esa fecha. Elige otro día, por favor.'); return; }
+          slots.forEach(function (slot) { var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = slot.label; element.addEventListener('click', function () { slotWrap.remove(); selectWidgetBookingTime(slot.value, lang); }); slotWrap.appendChild(element); });
+          widgetFlowActions = slotWrap;
+          msgsEl.appendChild(slotWrap); CORE.irAlFondo(msgsEl, true);
+        }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - timePromptStartedAt)));
+      }).catch(function (error) { captureWidgetError(error, 'booking_v2_slots'); addMsg('bot', lang === 'en' ? 'Sorry, we could not load the times. Please try again.' : 'Perdón, no pudimos cargar los horarios. Inténtalo de nuevo.'); });
       return;
     } else if (state.step === FLOW.STEPS.CUSTOMER_DATA) {
       if (widgetFlowActions && widgetFlowActions.parentNode) widgetFlowActions.remove();
@@ -857,7 +872,7 @@
           saveReserva(); captureWidgetBookingV2Event('confirmation_success', confirmed); wrap.remove();
         }).catch(function (error) { captureWidgetError(error, 'booking_v2_confirm'); captureWidgetBookingV2Event('confirmation_failed', bookingFlow.getState(), 'network'); addMsg('bot', lang === 'en' ? 'We could not confirm your reservation. Please try again.' : 'No pudimos confirmar tu reserva. Inténtalo de nuevo.'); confirmButton.disabled = false; });
       });
-    } else if (state.step === FLOW.STEPS.CONFIRMED) { captureWidgetBookingV2Event('completed', state); addMsg('bot', lang === 'en' ? 'Your reservation is confirmed! ✅' : '¡Tu reserva quedó confirmada! ✅'); return; }
+    } else if (state.step === FLOW.STEPS.CONFIRMED) { captureWidgetBookingV2Event('completed', state); addMsg('bot', lang === 'en' ? 'Your reservation is confirmed! ✅' : '¡Tu reserva quedó confirmada! ✅'); addMsg('bot', lang === 'en' ? 'For last-minute changes (cancel or reschedule), use the link in your confirmation email 📧' : 'Para cambios de último momento (cancelar o reagendar), usa el enlace de tu correo de confirmación 📧'); return; }
     msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
   }
 
@@ -961,6 +976,7 @@
 
   // ── Render menu card carousel ─────────────────────────────────────────────
   function renderMenu() {
+    var galleryMode = renderingServicePhotoGallery;
     var items = Array.isArray(cfg.menu) ? cfg.menu : [];
     if (!items.length) return;
 
@@ -1023,8 +1039,9 @@
       card.appendChild(cta);
 
       card.addEventListener('click', function () {
-        if (inp.disabled) return;
+        if (inp.disabled && !galleryMode) return;
         if (wrap.parentNode) wrap.remove();
+        if (galleryMode) setWidgetGalleryInputLocked(false);
         var userMsg = CORE.bookServiceMessage(item.nombre, cfg.language, cfg.templateId === 'restaurant');
         if (activeReservation && featureOn('reservations')) {
           addMsg('user', userMsg);
@@ -1044,6 +1061,14 @@
     });
 
     wrap.appendChild(row);
+    if (galleryMode) {
+      var continueChat = document.createElement('button');
+      continueChat.type = 'button';
+      continueChat.className = 'jbw-gallery-more';
+      continueChat.textContent = cfg.language === 'en' ? 'Continue chatting' : 'Seguir conversando';
+      continueChat.addEventListener('click', function () { wrap.remove(); setWidgetGalleryInputLocked(false); });
+      wrap.appendChild(continueChat);
+    }
     msgsEl.appendChild(wrap);
     // "estaAlFondo" mide contra el scrollHeight actual: justo tras crecer con
     // este bloque, el usuario que ya estaba al fondo del mensaje de texto
@@ -1060,7 +1085,10 @@
   // Objetivo 2 prohíbe. Ahora es el mismo catálogo completo de renderMenu()
   // — una sola fuente, sin dos listas que puedan divergir. [Objetivo 2]
   function renderServicesWithPhotos() {
+    setWidgetGalleryInputLocked(true);
+    renderingServicePhotoGallery = true;
     renderMenu();
+    renderingServicePhotoGallery = false;
   }
 
   function renderGallery() {
@@ -1576,7 +1604,7 @@
       })
       .finally(function () {
         busy = false;
-        if (!bookingFlow || bookingFlow.getState().step === FLOW.STEPS.CUSTOMER_DATA) {
+        if (!galleryInputLocked && (!bookingFlow || bookingFlow.getState().step === FLOW.STEPS.CUSTOMER_DATA)) {
           inp.disabled = false;
           snd.disabled = false;
           inp.focus();
