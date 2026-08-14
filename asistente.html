@@ -387,6 +387,7 @@
   var bookingFlow = null;
   var bookingFlowActions = null;
   var bookingSlotLoadingMessage = null;
+  var bookingTimeQuestionMessage = null;
   var bookingDateConfirmation = null;
   var bookingDateOptions = [];
   var bookingDateMonth = '';
@@ -646,6 +647,19 @@
     bookingSlotLoadingMessage = null;
   }
 
+  function selectBookingTime(time, lang) {
+    if (bookingTimeQuestionMessage && bookingTimeQuestionMessage.parentNode) bookingTimeQuestionMessage.remove();
+    bookingTimeQuestionMessage = null;
+    addMsg('bot', (lang === 'en' ? 'Perfect, ' : 'Perfecto, ') + time + ' ✅');
+    bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_TIME, time: time });
+  }
+
+  function bookingSummaryText(state, lang) {
+    var en = lang === 'en';
+    return (en ? '📋 Your reservation summary' : '📋 Resumen de tu reserva') + '\n' +
+      '💆 ' + state.service + '\n📅 ' + state.date + '\n🕐 ' + state.time + '\n👤 ' + state.customer.name + '\n📞 ' + state.customer.phone + '\n✉️ ' + state.customer.email;
+  }
+
   function bookingFlowServices() {
     var services = Array.isArray(cfg.services) && cfg.services.length ? cfg.services : cfg.menu;
     return Array.isArray(services) ? services : [];
@@ -888,10 +902,11 @@
         var slotsWrap = document.createElement('div'); slotsWrap.className = 'a-quick';
         removeBookingSlotLoadingMessage();
         if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date.' : 'No hay horarios disponibles para esa fecha.'); return; }
+        bookingTimeQuestionMessage = addMsg('bot', lang === 'en' ? 'What time would you like to come?' : '¿A qué hora te gustaría venir?');
         slots.forEach(function (slot) {
           var element = document.createElement('button');
           element.type = 'button'; element.className = 'a-quick-btn'; element.textContent = slot.label;
-          element.addEventListener('click', function () { slotsWrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_TIME, time: slot.value }); });
+          element.addEventListener('click', function () { slotsWrap.remove(); selectBookingTime(slot.value, lang); });
           slotsWrap.appendChild(element);
         });
         bookingFlowActions = slotsWrap;
@@ -922,7 +937,7 @@
       }
       return;
     } else if (state.step === window.JBChatFlow.STEPS.SUMMARY) {
-      addMsg('bot', (lang === 'en' ? 'Review: ' : 'Resumen: ') + [state.service, state.date, state.time, state.customer.name, state.customer.phone, state.customer.email].join(' · ') + '.');
+      addMsg('bot', bookingSummaryText(state, lang));
       button(lang === 'en' ? 'Continue' : 'Continuar', function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.REQUEST_CONFIRMATION }); });
       button(lang === 'en' ? 'Change service' : 'Cambiar servicio', function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.EDIT_SERVICE }); });
       button(lang === 'en' ? 'Change date' : 'Cambiar fecha', function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.EDIT_DATE }); });
@@ -993,7 +1008,7 @@
           console.debug('[booking-flow-v2] transition', event.type, state.step);
           if (event.type === window.JBChatFlow.EVENTS.START_BOOKING) captureBookingV2Event('start', state);
           if (event.type === window.JBChatFlow.EVENTS.RESET_FLOW || event.type === window.JBChatFlow.EVENTS.CONFIRM_BOOKING) resetCustomerDraft();
-          if (event.type === window.JBChatFlow.EVENTS.EDIT_CUSTOMER) syncCustomerDraftFromState(state);
+          if (event.type === window.JBChatFlow.EVENTS.EDIT_CUSTOMER) { resetCustomerDraft(); renderBookingFlow(state); }
         },
       });
       if (matched) {

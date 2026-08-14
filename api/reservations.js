@@ -771,7 +771,7 @@ function getAvailableSlots(client, fechaISO, servicio, people, reservas, now) {
 function getAvailableDates(client, servicio, people, reservas, now) {
   const base = now ? new Date(now) : nowEnZona(client && client.timezone);
   const dates = [];
-  for (let offset = 0; offset < 14; offset++) {
+  for (let offset = 0; offset < 60; offset++) {
     const candidate = new Date(base);
     candidate.setUTCDate(candidate.getUTCDate() + offset);
     const value = candidate.toISOString().slice(0, 10);

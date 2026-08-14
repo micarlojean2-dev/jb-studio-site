@@ -196,6 +196,7 @@
   var bookingFlowIdempotencyKey = '';
   var widgetFlowActions = null;
   var widgetSlotLoadingMessage = null;
+  var widgetTimeQuestionMessage = null;
   var widgetDateConfirmation = null;
   var widgetDateOptions = [];
   var widgetDateMonth = '';
@@ -621,6 +622,19 @@
     widgetSlotLoadingMessage = null;
   }
 
+  function selectWidgetBookingTime(time, lang) {
+    if (widgetTimeQuestionMessage && widgetTimeQuestionMessage.parentNode) widgetTimeQuestionMessage.remove();
+    widgetTimeQuestionMessage = null;
+    addMsg('bot', (lang === 'en' ? 'Perfect, ' : 'Perfecto, ') + time + ' ✅');
+    bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_TIME, time: time });
+  }
+
+  function widgetBookingSummaryText(state, lang) {
+    var en = lang === 'en';
+    return (en ? '📋 Your reservation summary' : '📋 Resumen de tu reserva') + '\n' +
+      '💆 ' + state.service + '\n📅 ' + state.date + '\n🕐 ' + state.time + '\n👤 ' + state.customer.name + '\n📞 ' + state.customer.phone + '\n✉️ ' + state.customer.email;
+  }
+
   function widgetFlowServices() {
     var services = Array.isArray(cfg.services) && cfg.services.length ? cfg.services : cfg.menu;
     return Array.isArray(services) ? services : [];
@@ -800,7 +814,8 @@
         var slotWrap = document.createElement('div'); slotWrap.className = 'jbw-quick';
         removeWidgetSlotLoadingMessage();
         if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date.' : 'No hay horarios disponibles para esa fecha.'); return; }
-        slots.forEach(function (slot) { var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = slot.label; element.addEventListener('click', function () { slotWrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_TIME, time: slot.value }); }); slotWrap.appendChild(element); });
+        widgetTimeQuestionMessage = addMsg('bot', lang === 'en' ? 'What time would you like to come?' : '¿A qué hora te gustaría venir?');
+        slots.forEach(function (slot) { var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = slot.label; element.addEventListener('click', function () { slotWrap.remove(); selectWidgetBookingTime(slot.value, lang); }); slotWrap.appendChild(element); });
         widgetFlowActions = slotWrap;
         msgsEl.appendChild(slotWrap); CORE.irAlFondo(msgsEl, true);
       }).catch(function (error) { removeWidgetSlotLoadingMessage(); captureWidgetError(error, 'booking_v2_slots'); addMsg('bot', lang === 'en' ? 'We could not load times. Please try again.' : 'No pudimos cargar horarios. Inténtalo de nuevo.'); });
@@ -825,7 +840,7 @@
       }
       return;
     } else if (state.step === FLOW.STEPS.SUMMARY) {
-      addMsg('bot', (lang === 'en' ? 'Review: ' : 'Resumen: ') + [state.service, state.date, state.time, state.customer.name, state.customer.phone, state.customer.email].join(' · ') + '.');
+      addMsg('bot', widgetBookingSummaryText(state, lang));
       button(lang === 'en' ? 'Continue' : 'Continuar', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.REQUEST_CONFIRMATION }); });
       button(lang === 'en' ? 'Change service' : 'Cambiar servicio', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_SERVICE }); });
       button(lang === 'en' ? 'Change date' : 'Cambiar fecha', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_DATE }); });
@@ -855,7 +870,7 @@
         console.debug('[widget-booking-v2] transition', event.type, state.step);
         if (event.type === FLOW.EVENTS.START_BOOKING) captureWidgetBookingV2Event('start', state);
         if (event.type === FLOW.EVENTS.RESET_FLOW || event.type === FLOW.EVENTS.CONFIRM_BOOKING) resetCustomerDraft();
-        if (event.type === FLOW.EVENTS.EDIT_CUSTOMER) syncCustomerDraftFromState(state);
+        if (event.type === FLOW.EVENTS.EDIT_CUSTOMER) { resetCustomerDraft(); renderWidgetBookingFlow(state); }
       },
     });
   }
