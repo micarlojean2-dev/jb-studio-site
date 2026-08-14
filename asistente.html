@@ -631,7 +631,7 @@
         if (!bub.isConnected) return;
         bub.classList.remove('a-ty');
         bub.textContent = text;
-      }, 350);
+      }, 2000);
     } else {
       bub.textContent = text;
       bub.style.background = cfg.color;
@@ -650,7 +650,7 @@
   function selectBookingTime(time, lang) {
     if (bookingTimeQuestionMessage && bookingTimeQuestionMessage.parentNode) bookingTimeQuestionMessage.remove();
     bookingTimeQuestionMessage = null;
-    addMsg('bot', (lang === 'en' ? 'Perfect, ' : 'Perfecto, ') + time + ' ✅');
+    addMsg('bot', (lang === 'en' ? 'Perfect, ' : '¡Perfecto, ') + time + ' ✅');
     bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_TIME, time: time });
   }
 
@@ -773,25 +773,25 @@
     if (!alreadyShown) addMsg('user', text);
     if (!bookingDateOptionsLoaded) {
       bookingDatePendingText = text;
-      addMsg('bot', lang === 'en' ? 'Give me a second, I am checking availability.' : 'Dame un segundo, estoy revisando la disponibilidad...');
+      addMsg('bot', lang === 'en' ? 'Just a moment, I am checking availability for you.' : 'Un momentito, estoy revisando la disponibilidad para ti.');
       return;
     }
     var parsed = CORE.resolveBookingDate(text, lang, cfg.timezone);
     if (parsed.status !== 'unique') {
-      addMsg('bot', lang === 'en' ? 'I could not understand the date clearly. Choose it from the calendar.' : 'No logré entender bien la fecha 😅 Elígela en el calendario.');
+      addMsg('bot', lang === 'en' ? 'I could not quite understand the date 😅 Please choose it from the calendar.' : 'No pude entender bien la fecha 😅 Elígela en el calendario.');
       return;
     }
     var option = bookingDateOptions.find(function (date) { return date.value === parsed.date; });
     if (!option) {
-      addMsg('bot', lang === 'en' ? 'That date is not available. Choose another one from the calendar.' : 'Esa fecha no está disponible. Elige otra en el calendario.');
+      addMsg('bot', lang === 'en' ? 'That date is not available 😅 Please choose another one from the calendar.' : 'Esa fecha no está disponible 😅 Elige otra en el calendario.');
       return;
     }
     if (bookingDateConfirmation) bookingDateConfirmation.remove();
     bookingDateConfirmation = document.createElement('div'); bookingDateConfirmation.className = 'a-quick';
-    addMsg('bot', (lang === 'en' ? 'Is ' : '¿') + bookingDateLabel(option.value, lang) + (lang === 'en' ? ' the date you want?' : '?'));
+    addMsg('bot', (lang === 'en' ? 'Would you like to come on ' : '¿Te gustaría venir el ') + bookingDateLabel(option.value, lang) + '?');
     function confirmButton(label, handler) { var button = document.createElement('button'); button.type = 'button'; button.className = 'a-quick-btn'; button.textContent = label; button.addEventListener('click', handler); bookingDateConfirmation.appendChild(button); }
     confirmButton(lang === 'en' ? 'Yes, that date' : 'Sí, esa', function () { selectBookingDate(option.value); });
-    confirmButton(lang === 'en' ? 'No, choose another' : 'No, elegir otra', function () { bookingDateConfirmation.remove(); bookingDateConfirmation = null; addMsg('bot', lang === 'en' ? 'Choose another date from the calendar.' : 'Elige otra fecha en el calendario.'); });
+    confirmButton(lang === 'en' ? 'No, choose another' : 'No, elegir otra', function () { bookingDateConfirmation.remove(); bookingDateConfirmation = null; addMsg('bot', lang === 'en' ? 'Of course, please choose another date from the calendar.' : 'Claro, elige otra fecha en el calendario.'); });
     msgsEl.appendChild(bookingDateConfirmation); CORE.irAlFondo(msgsEl, true);
   }
 
@@ -826,11 +826,11 @@
   function bookingFlowRecover(result, lang) {
     var motivo = result && result.motivo;
     if (motivo === 'duplicada') {
-      addMsg('bot', lang === 'en' ? 'You already have a reservation with these details.' : 'Ya existe una reserva con estos datos.');
+      addMsg('bot', lang === 'en' ? 'It looks like you already have a reservation with these details.' : 'Veo que ya tienes una reserva con estos datos.');
       return;
     }
     if (motivo === 'needs_setup' || motivo === 'reservas_desactivadas') {
-      addMsg('bot', (result && result.mensaje) || (lang === 'en' ? 'Reservations are unavailable right now.' : 'Las reservas no están disponibles ahora.'));
+      addMsg('bot', (result && result.mensaje) || (lang === 'en' ? 'Reservations are not available right now. Please try again a little later.' : 'Las reservas no están disponibles ahora. Inténtalo de nuevo un poco más tarde.'));
       return;
     }
     if (motivo === 'servicio_invalido') {
@@ -872,12 +872,12 @@
       button(lang === 'en' ? 'Any available barber' : 'Cualquiera', function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_BARBER, barberPreference: null }); });
       bookingFlowStaff().forEach(function (staff) { var name = staff && (staff.name || staff.nombre || staff.id); if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_BARBER, barberPreference: name }); }); });
     } else if (state.step === window.JBChatFlow.STEPS.DATE_SELECTION) {
-      addMsg('bot', lang === 'en' ? 'What day would you like to come?' : '¿Qué día te gustaría venir?');
+      addMsg('bot', lang === 'en' ? 'What day would you like to come by?' : '¿Qué día te gustaría venir?');
       bookingDateOptions = [];
       bookingDateOptionsLoaded = false;
       bookingDatePendingText = '';
       bookingFlow.requestAvailableDates().then(function (dates) {
-        if (!dates.length) { addMsg('bot', lang === 'en' ? 'There are no available dates right now.' : 'No hay fechas disponibles en este momento.'); return; }
+        if (!dates.length) { addMsg('bot', lang === 'en' ? 'There are no available dates right now. Please check back soon.' : 'Por ahora no hay fechas disponibles. Vuelve a revisar pronto.'); return; }
         bookingDateOptions = dates;
         bookingDateOptionsLoaded = true;
         bookingDateMonth = dates[0].value.slice(0, 7);
@@ -888,7 +888,7 @@
           handleBookingDateText(pendingText, true);
         }
       }).catch(function () {
-        addMsg('bot', lang === 'en' ? 'We could not load dates. Please try again.' : 'No pudimos cargar fechas. Inténtalo de nuevo.');
+        addMsg('bot', lang === 'en' ? 'Sorry, we could not load the dates. Please try again.' : 'Perdón, no pudimos cargar las fechas. Inténtalo de nuevo.');
       });
       return;
     } else if (state.step === window.JBChatFlow.STEPS.PEOPLE_SELECTION) {
@@ -897,12 +897,12 @@
         button(String(people), function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_PEOPLE, people: people }); });
       });
     } else if (state.step === window.JBChatFlow.STEPS.TIME_SELECTION) {
-      bookingSlotLoadingMessage = addMsg('bot', lang === 'en' ? 'Loading available times...' : 'Buscando horarios disponibles...');
+      bookingSlotLoadingMessage = addMsg('bot', lang === 'en' ? 'Just a moment, I am finding the available times.' : 'Un momentito, estoy buscando los horarios disponibles.');
       bookingFlow.requestSlots().then(function (slots) {
         var slotsWrap = document.createElement('div'); slotsWrap.className = 'a-quick';
         removeBookingSlotLoadingMessage();
-        if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date.' : 'No hay horarios disponibles para esa fecha.'); return; }
-        bookingTimeQuestionMessage = addMsg('bot', lang === 'en' ? 'What time would you like to come?' : '¿A qué hora te gustaría venir?');
+        if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date. Please choose another day.' : 'No hay horarios disponibles para esa fecha. Elige otro día, por favor.'); return; }
+        bookingTimeQuestionMessage = addMsg('bot', lang === 'en' ? 'What time would work best for you?' : '¿Qué horario te acomodaría mejor?');
         slots.forEach(function (slot) {
           var element = document.createElement('button');
           element.type = 'button'; element.className = 'a-quick-btn'; element.textContent = slot.label;
@@ -914,7 +914,7 @@
       }).catch(function (error) {
         removeBookingSlotLoadingMessage();
         console.error('[booking-flow-v2] slots failed', error);
-        addMsg('bot', lang === 'en' ? 'We could not load times. Please try again.' : 'No pudimos cargar horarios. Inténtalo de nuevo.');
+        addMsg('bot', lang === 'en' ? 'Sorry, we could not load the times. Please try again.' : 'Perdón, no pudimos cargar los horarios. Inténtalo de nuevo.');
       });
       return;
     } else if (state.step === window.JBChatFlow.STEPS.CUSTOMER_DATA) {
@@ -924,8 +924,8 @@
         addMsg('bot', CORE.askMissingCustomerField(missingField, lang));
       } else if (!specialRequestsAsked) {
         addMsg('bot', lang === 'en'
-          ? 'Do you have any allergies, preferences, or special requests? (Type "None" or "No" if you have none).'
-          : '¿Tienes alguna alergia, preferencia o petición especial? (Escribe "Ninguna" o "No" si no tienes ninguna).');
+          ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
+          : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
         specialRequestsAsked = true;
       }
       if (bookingFlowIsRestaurant()) {
@@ -944,7 +944,7 @@
       button(lang === 'en' ? 'Change time' : 'Cambiar hora', function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.EDIT_TIME }); });
       button(lang === 'en' ? 'Change details' : 'Cambiar datos', function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.EDIT_CUSTOMER }); });
     } else if (state.step === window.JBChatFlow.STEPS.CONFIRMATION) {
-      addMsg('bot', lang === 'en' ? 'Ready to confirm your reservation?' : '¿Listo para confirmar tu reserva?');
+      addMsg('bot', lang === 'en' ? 'Everything looks good. Ready to confirm your reservation?' : 'Todo se ve bien. ¿Listo para confirmar tu reserva?');
       var confirmButton = button(lang === 'en' ? 'Confirm' : 'Confirmar', function () {
         confirmButton.disabled = true;
         bookingFlow.confirmBooking().then(function (result) {
@@ -977,7 +977,7 @@
       });
     } else if (state.step === window.JBChatFlow.STEPS.CONFIRMED) {
       captureBookingV2Event('completed', state);
-      addMsg('bot', lang === 'en' ? 'Your reservation is confirmed.' : 'Tu reserva está confirmada.');
+      addMsg('bot', lang === 'en' ? 'Your reservation is confirmed! ✅' : '¡Tu reserva quedó confirmada! ✅');
       return;
     }
     msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
@@ -1009,6 +1009,9 @@
           if (event.type === window.JBChatFlow.EVENTS.START_BOOKING) captureBookingV2Event('start', state);
           if (event.type === window.JBChatFlow.EVENTS.RESET_FLOW || event.type === window.JBChatFlow.EVENTS.CONFIRM_BOOKING) resetCustomerDraft();
           if (event.type === window.JBChatFlow.EVENTS.EDIT_CUSTOMER) { resetCustomerDraft(); renderBookingFlow(state); }
+          if (event.type === window.JBChatFlow.EVENTS.SELECT_TIME && !CORE.missingCustomerField(customerDraft) && specialRequestsAsked) {
+            bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SHOW_SUMMARY });
+          }
         },
       });
       if (matched) {
@@ -1521,8 +1524,8 @@
           return;
         }
         addMsg('bot', lang === 'en'
-          ? 'Do you have any allergies, preferences, or special requests? (Type "None" or "No" if you have none).'
-          : '¿Tienes alguna alergia, preferencia o petición especial? (Escribe "Ninguna" or "No" si no tienes ninguna).');
+          ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
+          : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
         specialRequestsAsked = true;
         return;
       }
@@ -1607,7 +1610,7 @@
       .then(function (d) {
         hideTyping();
         if (d.error === 'inactive') {
-          addMsg('bot', d.message || (cfg.language === 'en' ? 'This assistant is temporarily out of service. Please contact the business directly.' : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio.'));
+          addMsg('bot', d.message || (cfg.language === 'en' ? 'This assistant is temporarily out of service. Please contact the business directly for help.' : 'Este asistente se encuentra temporalmente fuera de servicio. Comunícate directamente con el negocio para recibir ayuda.'));
           return;
         }
         if (d.preview === true) marcarModoPrueba();
@@ -1650,8 +1653,8 @@
         // autorizan una cancelación.
         if (!activeReservation && featureOn('cancellation') && intent === 'cancellation') {
           addMsg('bot', lang === 'en'
-            ? 'To cancel securely, open the reservation link from your confirmation email.'
-            : 'Para cancelar de forma segura, abre el enlace de reserva de tu correo de confirmación.');
+            ? 'To cancel securely, please open the reservation link from your confirmation email.'
+            : 'Para cancelar de forma segura, abre el enlace de reserva que está en tu correo de confirmación.');
           return;
         }
 
@@ -1722,12 +1725,12 @@
           }
           save();
         } else {
-          addMsg('bot', cfg.language === 'en' ? "Sorry, I didn't catch that 😅 Could you say it again?" : 'Perdona, no te entendí bien 😅 ¿Me lo repites?');
+          addMsg('bot', cfg.language === 'en' ? "I did not quite catch that 😅 Could you say it again?" : 'No te entendí del todo 😅 ¿Me lo repites?');
         }
       })
       .catch(function () {
         hideTyping();
-        addMsg('bot', cfg.language === 'en' ? "Sorry, that didn't go through 😅 Mind trying again?" : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
+        addMsg('bot', cfg.language === 'en' ? "That did not come through 😅 Would you mind trying again?" : 'Uy, no me llegó tu mensaje 😅 ¿Lo intentas otra vez?');
       })
       .finally(function () {
         busy = false;
@@ -1767,7 +1770,7 @@
       });
       bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SHOW_SUMMARY });
     } catch (error) {
-      addMsg('bot', error.message || (language === 'en' ? 'Please check your details.' : 'Revisa tus datos.'));
+      addMsg('bot', error.message || (language === 'en' ? 'Please take a moment to check your details.' : 'Por favor, revisa tus datos un momento.'));
     }
   }
 
