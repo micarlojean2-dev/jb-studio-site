@@ -195,6 +195,7 @@
   var bookingFlow = null;
   var bookingFlowIdempotencyKey = '';
   var widgetFlowActions = null;
+  var widgetSlotLoadingMessage = null;
   var widgetDateConfirmation = null;
   var widgetDateOptions = [];
   var widgetDateMonth = '';
@@ -592,20 +593,32 @@
 
     var bub = document.createElement('div');
     bub.className   = 'jbw-b';
-    bub.textContent = text;
-
     if (role === 'bot') {
       var av = document.createElement('div');
       av.className   = 'jbw-ba';
       av.style.background = cfg.color;
       av.textContent = '✦';
       row.appendChild(av);
+      bub.classList.add('jbw-ty');
+      bub.innerHTML = '<i></i><i></i><i></i>';
+      setTimeout(function () {
+        if (!bub.isConnected) return;
+        bub.classList.remove('jbw-ty');
+        bub.textContent = text;
+      }, 350);
     } else {
+      bub.textContent = text;
       bub.style.background = cfg.color;
     }
     row.appendChild(bub);
     msgsEl.appendChild(row);
     CORE.irAlFondo(msgsEl, role === 'user');   // tu propio mensaje siempre te lleva abajo
+    return row;
+  }
+
+  function removeWidgetSlotLoadingMessage() {
+    if (widgetSlotLoadingMessage && widgetSlotLoadingMessage.parentNode) widgetSlotLoadingMessage.remove();
+    widgetSlotLoadingMessage = null;
   }
 
   function widgetFlowServices() {
@@ -782,14 +795,15 @@
       }).catch(function (error) { captureWidgetError(error, 'booking_v2_dates'); addMsg('bot', lang === 'en' ? 'We could not load dates. Please try again.' : 'No pudimos cargar fechas. Inténtalo de nuevo.'); });
       return;
     } else if (state.step === FLOW.STEPS.TIME_SELECTION) {
-      addMsg('bot', lang === 'en' ? 'Loading available times...' : 'Buscando horarios disponibles...');
+      widgetSlotLoadingMessage = addMsg('bot', lang === 'en' ? 'Loading available times...' : 'Buscando horarios disponibles...');
       bookingFlow.requestSlots().then(function (slots) {
         var slotWrap = document.createElement('div'); slotWrap.className = 'jbw-quick';
+        removeWidgetSlotLoadingMessage();
         if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date.' : 'No hay horarios disponibles para esa fecha.'); return; }
         slots.forEach(function (slot) { var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = slot.label; element.addEventListener('click', function () { slotWrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_TIME, time: slot.value }); }); slotWrap.appendChild(element); });
         widgetFlowActions = slotWrap;
         msgsEl.appendChild(slotWrap); CORE.irAlFondo(msgsEl, true);
-      }).catch(function (error) { captureWidgetError(error, 'booking_v2_slots'); addMsg('bot', lang === 'en' ? 'We could not load times. Please try again.' : 'No pudimos cargar horarios. Inténtalo de nuevo.'); });
+      }).catch(function (error) { removeWidgetSlotLoadingMessage(); captureWidgetError(error, 'booking_v2_slots'); addMsg('bot', lang === 'en' ? 'We could not load times. Please try again.' : 'No pudimos cargar horarios. Inténtalo de nuevo.'); });
       return;
     } else if (state.step === FLOW.STEPS.CUSTOMER_DATA) {
       if (widgetFlowActions && widgetFlowActions.parentNode) widgetFlowActions.remove();
@@ -1333,11 +1347,24 @@
       addMsg('user', t);
       var missingBefore = CORE.missingCustomerField(customerDraft);
       if (missingBefore) {
+        var draftBefore = JSON.stringify(customerDraft);
         customerDraft = CORE.parseCustomerDraft(t, customerDraft);
         saveCustomerDraft();
         var missingAfter = CORE.missingCustomerField(customerDraft);
         if (missingAfter) {
-          addMsg('bot', CORE.askMissingCustomerField(missingAfter, lang));
+          if (draftBefore !== JSON.stringify(customerDraft) || !Object.values(customerDraft).some(Boolean)) {
+            addMsg('bot', CORE.askMissingCustomerField(missingAfter, lang));
+            return;
+          }
+          classifyWidgetCustomerCorrection(t).then(function (correction) {
+            if (correction) {
+              customerDraft[correction.campo] = null;
+              saveCustomerDraft();
+              addMsg('bot', CORE.askMissingCustomerField(correction.campo, lang));
+              return;
+            }
+            addMsg('bot', CORE.askMissingCustomerField(missingAfter, lang));
+          }).catch(function () { addMsg('bot', CORE.askMissingCustomerField(missingAfter, lang)); });
           return;
         }
         addMsg('bot', lang === 'en'
@@ -1346,18 +1373,20 @@
         specialRequestsAsked = true;
         return;
       }
-      try {
-        var specReq = CORE.esSinPeticionEspecial(t) ? 'No' : t.trim();
-        bookingFlow.dispatch({
-          type: FLOW.EVENTS.SET_CUSTOMER_DATA,
-          customer: customerDraft,
-          specialRequests: specReq,
-          foodPreferences: widgetFlowIsRestaurant() ? CORE.applyFoodPreferences(flowState.foodPreferences, t, cfg) : null,
-        });
-        bookingFlow.dispatch({ type: FLOW.EVENTS.SHOW_SUMMARY });
-      } catch (error) {
-        addMsg('bot', error.message || (lang === 'en' ? 'Please check your details.' : 'Revisa tus datos.'));
+      if (looksLikeWidgetContactCorrectionRequest(t)) {
+        classifyWidgetCustomerCorrection(t).then(function (correction) {
+          if (correction) {
+            customerDraft[correction.campo] = null;
+            saveCustomerDraft();
+            specialRequestsAsked = false;
+            addMsg('bot', CORE.askMissingCustomerField(correction.campo, lang));
+            return;
+          }
+          submitWidgetCustomerSpecialRequests(t, flowState, lang);
+        }).catch(function () { submitWidgetCustomerSpecialRequests(t, flowState, lang); });
+        return;
       }
+      submitWidgetCustomerSpecialRequests(t, flowState, lang);
       return;
     }
 
@@ -1476,6 +1505,12 @@
           var showGallery = /\[MOSTRAR_GALERIA\]/.test(d.text);
           var showServicePhotos = /\[MOSTRAR_SERVICIOS_CON_FOTOS\]/.test(d.text);
           var cleanText  = CORE.limpiarMarcadores(d.text);
+          if (d.serviceFacts) {
+            var facts = [];
+            if (d.serviceFacts.precio) facts.push((cfg.language === 'en' ? 'Price: ' : 'Precio: ') + d.serviceFacts.precio);
+            if (d.serviceFacts.duracion) facts.push((cfg.language === 'en' ? 'Duration: ' : 'Duración: ') + d.serviceFacts.duracion);
+            if (facts.length) cleanText = [cleanText, facts.join(' · ')].filter(Boolean).join('\n');
+          }
           var shownTexts = [];
           if (showMenu && !showServicePhotos) {
             // Determinista: nunca se confía en que el modelo haya sido
@@ -1529,6 +1564,40 @@
           inp.focus();
         }
       });
+  }
+
+  function classifyWidgetCustomerCorrection(text) {
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var timeout = controller ? setTimeout(function () { controller.abort(); }, 3000) : null;
+    return fetch(API + '/api/client-chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: clientId, action: 'classify_customer_correction', correctionText: text, language: cfg.language }),
+      signal: controller ? controller.signal : undefined,
+    }).then(function (response) {
+      if (!response.ok) throw new Error('correction classification failed');
+      return response.json();
+    }).then(function (data) {
+      var result = data && data.correction;
+      return result && result.esCorreccion === true && ['name', 'phone', 'email'].includes(result.campo) ? result : null;
+    }).finally(function () { if (timeout) clearTimeout(timeout); });
+  }
+
+  function looksLikeWidgetContactCorrectionRequest(text) {
+    return /\b(?:perd[oó]n|corregir|correcci[oó]n|cambiar|equivoqu[eé]|dato|nombre|correo|email|tel[eé]fono|celular)\b/i.test(text);
+  }
+
+  function submitWidgetCustomerSpecialRequests(text, state, language) {
+    try {
+      bookingFlow.dispatch({
+        type: FLOW.EVENTS.SET_CUSTOMER_DATA,
+        customer: customerDraft,
+        specialRequests: CORE.esSinPeticionEspecial(text) ? 'No' : text.trim(),
+        foodPreferences: widgetFlowIsRestaurant() ? CORE.applyFoodPreferences(state.foodPreferences, text, cfg) : null,
+      });
+      bookingFlow.dispatch({ type: FLOW.EVENTS.SHOW_SUMMARY });
+    } catch (error) {
+      addMsg('bot', error.message || (language === 'en' ? 'Please check your details.' : 'Revisa tus datos.'));
+    }
   }
 
   // ── Toggle open / close ──────────────────────────────────────────────────

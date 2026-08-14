@@ -236,6 +236,57 @@ function businessInfoBlock(client, activeLanguage) {
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 
+function serviceQuestionContext(client, messages) {
+  const last = [...messages].reverse().find(message => message?.role === 'user');
+  const question = String(last?.content || '');
+  if (!/[?¿]|\b(?:qué|que|incluye|duele|dura|precio|cuánto|how|what|include|hurt|long|price)\b/i.test(question)) return null;
+  const items = Array.isArray(client?.services) && client.services.length ? client.services : (client?.menu || []);
+  const normalizedQuestion = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const genericWords = new Set(['servicio', 'servicios', 'masaje', 'tratamiento', 'tratamientos', 'sesion', 'sesiones', 'service', 'services', 'treatment', 'treatments']);
+  const matches = items.filter(item => {
+    const name = String(item?.nombre || '').trim();
+    const normalizedName = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!name) return false;
+    if (normalizedQuestion.includes(normalizedName)) return true;
+    const distinctiveWords = normalizedName.match(/[a-z0-9]+/g)?.filter(word => word.length >= 4 && !genericWords.has(word)) || [];
+    return distinctiveWords.length >= 2 && distinctiveWords.every(word => normalizedQuestion.includes(word));
+  });
+  if (matches.length > 1) return { ambiguous: true };
+  const service = matches[0];
+  if (!service) return null;
+  return {
+    nombre: spaOneLine(service.nombre, 80),
+    descripcionLarga: String(service.descripcionLarga || '').replace(/[\r\n]+/g, '\n').trim().slice(0, 5000),
+    precio: spaOneLine(service.precio, 30),
+    duracion: spaOneLine(service.duracion, 30),
+  };
+}
+
+function serviceQuestionInstruction(service, isEnglish) {
+  const noDescription = isEnglish
+    ? 'There is no owner-written long description. Say only that you do not have further details.'
+    : 'No hay descripción larga escrita por el dueño. Di únicamente que no tienes más detalles.';
+  return `\n\n${isEnglish ? 'SERVICE QUESTION - STRICT SOURCE LIMIT' : 'PREGUNTA SOBRE SERVICIO - LÍMITE ESTRICTO DE FUENTES'}\n${isEnglish ? 'Answer only using the owner information below. If the information does not answer the question, say so honestly. Never invent or assume data, prices, benefits, results, ingredients, techniques, contraindications, or promises. Do not state price or duration in your prose; the interface adds those exact structured values. If there is no long description, offer to book the service.' : 'Responde únicamente usando la información del dueño a continuación. Si no alcanza para responder, dilo honestamente. Nunca inventes ni asumas datos, precios, beneficios, resultados, ingredientes, técnicas, contraindicaciones ni promesas. No escribas precio ni duración en tu texto; la interfaz agrega esos valores estructurados exactos. Si no hay descripción larga, ofrece agendar el servicio.'}\n${isEnglish ? 'Service' : 'Servicio'}: ${service.nombre}\n${isEnglish ? 'Owner long description' : 'Descripción larga del dueño'}: ${service.descripcionLarga || noDescription}\n`;
+}
+
+function serviceQuestionAmbiguityText(isEnglish) {
+  return isEnglish
+    ? 'I see more than one service in your question. Which one would you like to know about?'
+    : 'Veo más de un servicio en tu pregunta. ¿Sobre cuál te gustaría saber?';
+}
+
+function validCorrection(value) {
+  return value && value.esCorreccion === true && ['name', 'phone', 'email'].includes(value.campo)
+    ? { esCorreccion: true, campo: value.campo }
+    : { esCorreccion: false, campo: null };
+}
+
+async function classifyCustomerCorrection(text) {
+  const prompt = `El cliente está en medio de dar sus datos de contacto para una reserva. Este es su mensaje: ${JSON.stringify(String(text || '').slice(0, 500))}. ¿Está pidiendo corregir un dato que ya dio? Responde SOLO JSON válido: {"esCorreccion":true|false,"campo":"name"|"phone"|"email"|null}. La IA solo clasifica; nunca extrae ni propone valores.`;
+  const data = await callOpenAI([{ role: 'user', content: String(text || '') }], prompt, 80, undefined, 0);
+  return validCorrection(extractJsonFromText(data.choices?.[0]?.message?.content || ''));
+}
+
 // El header (personalidad/formato/límites/seguridad) estaba escrito en un
 // único idioma fijo: español. langDirective y la fecha/hora ya respondían a
 // activeLanguage, pero el resto del prompt no, así que un chat en inglés
@@ -606,18 +657,18 @@ export default async function handler(req, res) {
   if (!isTestBypass && !checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
 
-  const { clientId, messages, previewToken, language, reservationContext } = req.body || {};
+  const { clientId, messages, previewToken, language, reservationContext, action, correctionText } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
-  if (!Array.isArray(messages) || messages.length === 0)
+  if (action !== 'classify_customer_correction' && (!Array.isArray(messages) || messages.length === 0))
     return res.status(400).json({ error: 'messages must be a non-empty array' });
-  if (messages.length > 60)
+  if (Array.isArray(messages) && messages.length > 60)
     return res.status(400).json({ error: 'Too many messages in history' });
   if (language !== undefined && language !== 'es' && language !== 'en')
     return res.status(400).json({ error: 'Invalid language' });
 
-  for (const m of messages) {
+  for (const m of messages || []) {
     if (!m || typeof m.content !== 'string' || !['user', 'assistant'].includes(m.role))
       return res.status(400).json({ error: 'Invalid message format' });
     if (m.content.length > 2000)
@@ -627,6 +678,12 @@ export default async function handler(req, res) {
   try {
     const client = await redis.get(`client:${clientId}`);
     if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (action === 'classify_customer_correction') {
+      if (typeof correctionText !== 'string' || !correctionText.trim() || correctionText.length > 500) {
+        return res.status(400).json({ error: 'Invalid correction text' });
+      }
+      return res.status(200).json({ correction: await classifyCustomerCorrection(correctionText) });
+    }
     // El idioma que el cliente eligió en el selector inicial manda siempre;
     // sin él, cae a la detección previa y luego a client.language, igual que
     // antes de este cambio. [Objetivo 1]
@@ -672,6 +729,13 @@ export default async function handler(req, res) {
     systemPrompt += reservationTruthBlock(isEnglish, sanitizeReservationContext(reservationContext));
     const availabilityRes = await availabilityContextBlock(client, clientId, messages, isEnglish);
     systemPrompt += availabilityRes.promptText;
+    const serviceQuestion = serviceQuestionContext(client, messages);
+    if (serviceQuestion?.ambiguous) {
+      return res.status(200).json({
+        text: serviceQuestionAmbiguityText(isEnglish),
+      });
+    }
+    if (serviceQuestion) systemPrompt += serviceQuestionInstruction(serviceQuestion, isEnglish);
 
     if (necesitaSetup(client)) {
       systemPrompt += `
@@ -685,6 +749,7 @@ IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, d
     const responsePayload = interpretation
       ? { text, provider, model: getModel(req), preview: previewOk, interpretation }
       : { text, provider, model: getModel(req), preview: previewOk };
+    if (serviceQuestion) responsePayload.serviceFacts = { precio: serviceQuestion.precio, duracion: serviceQuestion.duracion };
 
     if (availabilityRes.slots && availabilityRes.slots.length > 0) {
       responsePayload.slots = availabilityRes.slots;
@@ -868,4 +933,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock, availabilityContextBlock };
+export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, serviceQuestionContext, serviceQuestionInstruction, serviceQuestionAmbiguityText, validCorrection, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock, availabilityContextBlock };

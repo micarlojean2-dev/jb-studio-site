@@ -4501,12 +4501,14 @@ LÍMITES ESTRICTOS:
           <input class="admin-input" placeholder="$15" style="grid-column:2;" value="${escHTML(svc.precio || '')}">
           <input class="admin-input" placeholder="Duración (ej: 30 min)" style="grid-column:1/3;" value="${escHTML(svc.duracion || '')}">
           <input class="admin-input" placeholder="Descripción breve" style="grid-column:1/3;" value="${escHTML(svc.descripcion || '')}">
+          <textarea class="admin-input svc2-long-description" placeholder="Descripción larga para responder preguntas del cliente (opcional)" style="grid-column:1/3;min-height:100px;resize:vertical">${escHTML(svc.descripcionLarga || '')}</textarea>
           <button type="button" class="svc2-remove-btn">✕ Eliminar</button>`;
         const inputs = row.querySelectorAll('input');
         inputs[0].addEventListener('input', e => editServices[idx].nombre = e.target.value);
         inputs[1].addEventListener('input', e => editServices[idx].precio = e.target.value);
         inputs[2].addEventListener('input', e => editServices[idx].duracion = e.target.value);
         inputs[3].addEventListener('input', e => editServices[idx].descripcion = e.target.value);
+        row.querySelector('.svc2-long-description').addEventListener('input', e => editServices[idx].descripcionLarga = e.target.value);
         row.querySelector('.svc2-remove-btn').addEventListener('click', () => {
           editServices.splice(idx, 1);
           renderEditServices();
@@ -4518,7 +4520,7 @@ LÍMITES ESTRICTOS:
 
     document.getElementById('e-svc-add').addEventListener('click', () => {
       if (editServices.length >= 20) return;
-      editServices.push({ nombre: '', precio: '', duracion: '', descripcion: '', imagen: '' });
+      editServices.push({ nombre: '', precio: '', duracion: '', descripcion: '', descripcionLarga: '', imagen: '' });
       renderEditServices();
     });
 
@@ -5465,7 +5467,8 @@ LÍMITES ESTRICTOS:
             <div class="svc-card-field"><label>Precio</label><input class="admin-input svc-precio" placeholder="$25" value="${esc(svc.precio)}"></div>
             <div class="svc-card-field"><label>Duración</label><input class="admin-input svc-duracion" placeholder="30 minutos" value="${esc(svc.duracion)}"></div>
           </div>
-          <div class="svc-card-field"><label>Descripción</label><input class="admin-input svc-desc" placeholder="Descripción breve" value="${esc(svc.descripcion)}"></div>
+          <div class="svc-card-field"><label>Descripción breve</label><input class="admin-input svc-desc" placeholder="Descripción breve" value="${esc(svc.descripcion)}"></div>
+          <div class="svc-card-field"><label>Descripción larga <span style="text-transform:none;font-weight:500;">(opcional, para responder preguntas del cliente)</span></label><textarea class="admin-input svc-long-desc" placeholder="Explica qué incluye el servicio, técnicas, cuidados u otros detalles que quieras comunicar." style="min-height:110px;resize:vertical">${esc(svc.descripcionLarga || '')}</textarea></div>
           <div class="svc-card-field"><label>Imagen <span style="text-transform:none;font-weight:500;">(opcional — URL)</span></label><input class="admin-input svc-imagen" placeholder="https://…" value="${esc(svc.imagen || '')}"></div>
           <div class="svc-card-actions">
             <button type="button" class="svc-dup-btn">Duplicar</button>
@@ -5475,6 +5478,7 @@ LÍMITES ESTRICTOS:
         card.querySelector('.svc-precio').addEventListener('input', e => state.services[idx].precio = e.target.value);
         card.querySelector('.svc-duracion').addEventListener('input', e => state.services[idx].duracion = e.target.value);
         card.querySelector('.svc-desc').addEventListener('input', e => state.services[idx].descripcion = e.target.value);
+        card.querySelector('.svc-long-desc').addEventListener('input', e => state.services[idx].descripcionLarga = e.target.value);
         card.querySelector('.svc-imagen').addEventListener('input', e => state.services[idx].imagen = e.target.value);
         card.querySelector('.svc-dup-btn').addEventListener('click', () => {
           // Nunca copiar `id`: son dos servicios distintos y cada uno debe
@@ -5496,7 +5500,7 @@ LÍMITES ESTRICTOS:
     }
 
     document.getElementById('w-svc-add').addEventListener('click', () => {
-      state.services.push({ nombre: '', precio: '', duracion: '', descripcion: '', imagen: '' });
+      state.services.push({ nombre: '', precio: '', duracion: '', descripcion: '', descripcionLarga: '', imagen: '' });
       formTouched = true;
       renderServices();
     });
@@ -5518,6 +5522,7 @@ LÍMITES ESTRICTOS:
           precio: parts[1] || '',
           duracion: parts[2] || '',
           descripcion: '',
+          descripcionLarga: '',
           imagen: '',
         });
       });
