@@ -388,6 +388,7 @@
   var bookingFlowActions = null;
   var bookingTimeQuestionMessage = null;
   var bookingDateConfirmation = null;
+  var nameConfirmationWrap = null;
   var bookingDateOptions = [];
   var bookingDateMonth = '';
   var bookingDateOptionsLoaded = false;
@@ -433,6 +434,8 @@
   function resetCustomerDraft() {
     customerDraft = { name: null, phone: null, email: null };
     specialRequestsAsked = false;
+    if (nameConfirmationWrap && nameConfirmationWrap.parentNode) nameConfirmationWrap.remove();
+    nameConfirmationWrap = null;
     try { sessionStorage.removeItem(DRAFT_SESS); } catch (e) {}
     if (window.JBChatFlow) updateBookingInputState(window.JBChatFlow.STEPS.CHAT);
   }
@@ -553,12 +556,23 @@
   }
 
   // Muestra el saludo normal, ya con cfg.language resuelto. [Objetivo 1]
+  // [FIX 2 — sincronizar saludo y botones] renderQuickActions() se retrasa
+  // hasta que termine el typing del saludo (BOT_MESSAGE_DELAY_MS): mismo
+  // patrón que datePromptStartedAt/timePromptStartedAt para fechas y horarios.
+  // Antes los botones aparecían al instante mientras la burbuja del saludo
+  // seguía con "···", y un clic durante esos 2 s ejecutaba el flujo del
+  // botón con el saludo todavía sin texto visible.
   function showGreetingNow() {
     var g = greeting();
+    var greetingPromptStartedAt = Date.now();
     addMsg('bot', g);
     msgs.push({ role: 'assistant', content: g });
     save();
-    if (!emailAction) renderQuickActions();
+    if (!emailAction) {
+      setTimeout(function () {
+        renderQuickActions();
+      }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - greetingPromptStartedAt)));
+    }
   }
 
   // Selector inicial de idioma: antes del saludo, cuando el negocio declara
@@ -609,7 +623,7 @@
       wrap.appendChild(b);
     });
     msgsEl.appendChild(wrap);
-    CORE.irAlFondo(msgsEl, );
+    CORE.irAlFondo(msgsEl, true);
   }
 
   function paint() {
@@ -1551,10 +1565,44 @@
           }).catch(function () { addMsg('bot', CORE.askMissingCustomerField(missingAfter, lang)); });
           return;
         }
+        // Este turno completó los 3 campos. Antes de avanzar a alergias,
+        // confirmamos el nombre con el cliente: parseCustomerDraft no distingue
+        // entre un nombre real y ruido pegado al mensaje, así que un "sí,
+        // adelante" final no impide que el nombre que llegó en el último turno
+        // sea otra cosa. [FIX 1 — confirmación de nombre]
+        if (nameConfirmationWrap) nameConfirmationWrap.remove();
+        nameConfirmationWrap = document.createElement('div');
+        nameConfirmationWrap.className = 'a-quick';
         addMsg('bot', lang === 'en'
-          ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
-          : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
-        specialRequestsAsked = true;
+          ? 'Is your name "' + customerDraft.name + '"?'
+          : '¿Tu nombre es "' + customerDraft.name + '"?');
+        function confirmNameButton(label, handler) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'a-quick-btn';
+          b.textContent = label;
+          b.addEventListener('click', handler);
+          nameConfirmationWrap.appendChild(b);
+        }
+        confirmNameButton(lang === 'en' ? '✅ Yes, correct' : '✅ Sí, correcto', function () {
+          nameConfirmationWrap.remove();
+          nameConfirmationWrap = null;
+          addMsg('bot', lang === 'en'
+            ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
+            : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
+          specialRequestsAsked = true;
+        });
+        confirmNameButton(lang === 'en' ? '❌ No, correct name' : '❌ No, corregir', function () {
+          nameConfirmationWrap.remove();
+          nameConfirmationWrap = null;
+          customerDraft.name = null;
+          saveCustomerDraft();
+          addMsg('bot', lang === 'en'
+            ? 'Got it. Please type ONLY your full name in this message (nothing else, no phone, no email).'
+            : 'Entendido. Por favor, escribí solo tu nombre (nada más, sin teléfono ni correo).');
+        });
+        msgsEl.appendChild(nameConfirmationWrap);
+        CORE.irAlFondo(msgsEl, true);
         return;
       }
       if (looksLikeContactCorrectionRequest(t)) {
@@ -1860,6 +1908,7 @@
       // idioma real de la reserva) se recupera con un lookup de solo lectura
       // por actionToken — nunca de un ?lang= manipulable ni de un saludo
       // genérico. [auditoría — idioma del reagendado / reagendado sin saludo]
+      var emailActionPromptStartedAt = Date.now();
       if (emailAction) {
         fetch(API + '/api/reservations', {
           method: 'POST',
@@ -1871,16 +1920,22 @@
             var reservation = d && d.found ? d.reservation : null;
             if (reservation && reservation.language) { cfg.language = reservation.language; paint(); }
             var lang = cfg.language === 'en' ? 'en' : 'es';
-            addMsg('bot', reservation
+            var msgText = reservation
               ? CORE.emailActionContextoMensaje(emailAction.action, cfg, lang, reservation)
-              : CORE.reservaTextos(lang).notFound);
+              : CORE.reservaTextos(lang).notFound;
+            setTimeout(function () {
+              addMsg('bot', msgText);
+            }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - emailActionPromptStartedAt)));
           })
           .catch(function () {
             // Fallback seguro: si el lookup falla, no deja el enlace bloqueado.
             var lang = cfg.language === 'en' ? 'en' : 'es';
-            addMsg('bot', emailAction.action === 'cancel'
+            var msgText = emailAction.action === 'cancel'
               ? (lang === 'en' ? 'Do you confirm that you want to cancel this reservation?' : '¿Confirmas que quieres cancelar esta reserva?')
-              : (lang === 'en' ? 'Tell me the new date and time you prefer.' : 'Indica la nueva fecha y hora que prefieres.'));
+              : (lang === 'en' ? 'Tell me the new date and time you prefer.' : 'Indica la nueva fecha y hora que prefieres.');
+            setTimeout(function () {
+              addMsg('bot', msgText);
+            }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - emailActionPromptStartedAt)));
           });
       }
       setTimeout(function () { inp.focus(); }, 200);

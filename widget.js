@@ -197,6 +197,7 @@
   var widgetFlowActions = null;
   var widgetTimeQuestionMessage = null;
   var widgetDateConfirmation = null;
+  var nameConfirmationWrap = null;
   var widgetDateOptions = [];
   var widgetDateMonth = '';
   var widgetDateOptionsLoaded = false;
@@ -241,6 +242,8 @@
   function resetCustomerDraft() {
     customerDraft = { name: null, phone: null, email: null };
     specialRequestsAsked = false;
+    if (nameConfirmationWrap && nameConfirmationWrap.parentNode) nameConfirmationWrap.remove();
+    nameConfirmationWrap = null;
     try { sessionStorage.removeItem(DRAFT_SESS); } catch (e) {}
     if (typeof FLOW !== 'undefined' && FLOW) updateWidgetBookingInputState(FLOW.STEPS.CHAT);
   }
@@ -1413,10 +1416,44 @@
           }).catch(function () { addMsg('bot', CORE.askMissingCustomerField(missingAfter, lang)); });
           return;
         }
+        // Este turno completó los 3 campos. Antes de avanzar a alergias,
+        // confirmamos el nombre con el cliente: parseCustomerDraft no distingue
+        // entre un nombre real y ruido pegado al mensaje, así que un "sí,
+        // adelante" final no impide que el nombre que llegó en el último turno
+        // sea otra cosa. [FIX 1 — confirmación de nombre]
+        if (nameConfirmationWrap) nameConfirmationWrap.remove();
+        nameConfirmationWrap = document.createElement('div');
+        nameConfirmationWrap.className = 'jbw-quick';
         addMsg('bot', lang === 'en'
-          ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
-          : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
-        specialRequestsAsked = true;
+          ? 'Is your name "' + customerDraft.name + '"?'
+          : '¿Tu nombre es "' + customerDraft.name + '"?');
+        function confirmNameButton(label, handler) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'jbw-quick-btn';
+          b.textContent = label;
+          b.addEventListener('click', handler);
+          nameConfirmationWrap.appendChild(b);
+        }
+        confirmNameButton(lang === 'en' ? '✅ Yes, correct' : '✅ Sí, correcto', function () {
+          nameConfirmationWrap.remove();
+          nameConfirmationWrap = null;
+          addMsg('bot', lang === 'en'
+            ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
+            : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
+          specialRequestsAsked = true;
+        });
+        confirmNameButton(lang === 'en' ? '❌ No, correct name' : '❌ No, corregir', function () {
+          nameConfirmationWrap.remove();
+          nameConfirmationWrap = null;
+          customerDraft.name = null;
+          saveCustomerDraft();
+          addMsg('bot', lang === 'en'
+            ? 'Got it. Please type ONLY your full name in this message (nothing else, no phone, no email).'
+            : 'Entendido. Por favor, escribí solo tu nombre (nada más, sin teléfono ni correo).');
+        });
+        msgsEl.appendChild(nameConfirmationWrap);
+        CORE.irAlFondo(msgsEl, true);
         return;
       }
       if (looksLikeWidgetContactCorrectionRequest(t)) {
@@ -1660,12 +1697,21 @@
   // Muestra el saludo normal (ya con cfg.language resuelto). Separado de la
   // apertura del panel para poder mostrar antes el selector de idioma
   // cuando corresponda. [Objetivo 1]
+  // [FIX 2 — sincronizar saludo y botones] renderQuickActions() se retrasa
+  // hasta que termine el typing del saludo (BOT_MESSAGE_DELAY_MS): mismo
+  // patrón que datePromptStartedAt/timePromptStartedAt para fechas y horarios.
+  // Antes los botones aparecían al instante mientras la burbuja del saludo
+  // seguía con "···", y un clic durante esos 2 s ejecutaba el flujo del
+  // botón con el saludo todavía sin texto visible.
   function showGreetingNow() {
     var g = greeting();
+    var greetingPromptStartedAt = Date.now();
     addMsg('bot', g);
     msgs.push({ role: 'assistant', content: g });
     save();
-    renderQuickActions();
+    setTimeout(function () {
+      renderQuickActions();
+    }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - greetingPromptStartedAt)));
   }
 
   // Selector inicial de idioma: antes del saludo, cuando el negocio declara
