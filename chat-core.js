@@ -1181,6 +1181,29 @@ window.JBChatCore = (function () {
     return draft;
   }
 
+  function isGeneralQuestionOrComment(t) {
+    if (!t) return false;
+    var str = String(t).trim();
+    if (!str) return false;
+
+    if (extractEmail(str)) return false;
+    if (extractPhone(str, false)) return false;
+    if (/\b(?:me\s+llamo|soy|mi\s+nombre\s+es|my\s+name\s+is|mi\s+correo|mi\s+email|mi\s+tel[eé]fono|mi\s+celular)\b/i.test(str)) return false;
+
+    if (/[?¿]/.test(str)) return true;
+
+    var qKeywords = /\b(?:qu[eé]|c[oó]mo|cu[aá]nto|cu[aá]ntos|cu[aá]ntas|d[oó]nde|por\s+qu[eé]|cu[aá]l|cu[aá]les|qui[eé]n|qui[eé]nes|cu[eé]ntame|hablame|h[aá]blame|dime|expl[ií]came|informaci[oó]n|info|detalles|mas|m[aá]s|servicio|servicios|precio|precios|costo|costos|horario|horarios|ubicaci[oó]n|direcci[oó]n|men[uú]|carta|plato|platos|what|how|much|many|where|why|which|who|tell|explain|more|info|details|service|services|price|prices|cost|hours|location|menu)\b/i;
+
+    return qKeywords.test(str);
+  }
+
+  function customerDataHoldMessage(lang) {
+    if (lang === 'en') {
+      return "We're finishing up your booking 😊 Once we're done, I'll gladly tell you more about the service.";
+    }
+    return "Estamos completando tu reserva 😊 Termina de darme tus datos y con gusto te cuento más sobre el servicio después.";
+  }
+
   function missingCustomerField(draft) {
     if (!draft || !draft.name) return 'name';
     if (!draft.phone) return 'phone';
@@ -1492,6 +1515,8 @@ window.JBChatCore = (function () {
     extractPhone: extractPhone,
     extractNameHighConfidence: extractNameHighConfidence,
     parseCustomerDraft: parseCustomerDraft,
+    isGeneralQuestionOrComment: isGeneralQuestionOrComment,
+    customerDataHoldMessage: customerDataHoldMessage,
     missingCustomerField: missingCustomerField,
     askMissingCustomerField: askMissingCustomerField,
     isPopular: isPopular,

@@ -1396,6 +1396,10 @@
       addMsg('user', t);
       var missingBefore = CORE.missingCustomerField(customerDraft);
       if (missingBefore) {
+        if (CORE.isGeneralQuestionOrComment(t)) {
+          addMsg('bot', CORE.customerDataHoldMessage(lang));
+          return;
+        }
         var draftBefore = JSON.stringify(customerDraft);
         customerDraft = CORE.parseCustomerDraft(t, customerDraft);
         saveCustomerDraft();
