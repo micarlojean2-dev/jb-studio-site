@@ -203,6 +203,9 @@
   var widgetDateOptionsLoaded = false;
   var widgetDatePendingText = '';
   var autoSelectingService = false;
+  // Aviso temprano de CAMBIO 3: solo una vez por reserva, no en cada
+  // re-entrada a SERVICE_SELECTION vía "Cambiar servicio" (EDIT_SERVICE).
+  var bookingIntroShown = false;
   var galleryInputLocked = false;
   var renderingServicePhotoGallery = false;
   var BOT_MESSAGE_DELAY_MS = 2000;
@@ -212,12 +215,13 @@
 
   function updateWidgetBookingInputState(step) {
     var lang = cfg.language === 'en' ? 'en' : 'es';
-    if (!galleryInputLocked && (!step || step === FLOW.STEPS.CHAT || step === FLOW.STEPS.DATE_SELECTION || step === FLOW.STEPS.CUSTOMER_DATA || step === FLOW.STEPS.CONFIRMATION)) {
+    // DATE_SELECTION ya no habilita texto libre: solo el calendario decide
+    // la fecha. [CAMBIO 2] SUMMARY se suma a CONFIRMATION como paso donde
+    // se puede preguntar con IA sin perder los botones de editar. [CAMBIO 3]
+    if (!galleryInputLocked && (!step || step === FLOW.STEPS.CHAT || step === FLOW.STEPS.CUSTOMER_DATA || step === FLOW.STEPS.SUMMARY || step === FLOW.STEPS.CONFIRMATION)) {
       inp.disabled = false;
       snd.disabled = false;
-      inp.placeholder = step === FLOW.STEPS.DATE_SELECTION
-        ? (lang === 'en' ? 'Type a date, for example next Thursday' : 'Escribe una fecha, por ejemplo el próximo jueves')
-        : (lang === 'en' ? 'Type a message…' : 'Escribe un mensaje…');
+      inp.placeholder = lang === 'en' ? 'Type a message…' : 'Escribe un mensaje…';
     } else {
       inp.disabled = true;
       snd.disabled = true;
@@ -544,8 +548,9 @@
       b.textContent = a.label;
       b.style.animationDelay = (i * 60) + 'ms';
       b.addEventListener('click', function () {
-        if (inp.disabled) return;
+        if (inp.disabled && !galleryInputLocked) return;
         wrap.remove();
+        setWidgetGalleryInputLocked(false);
         send(a.msg);
       });
       wrap.appendChild(b);
@@ -794,6 +799,19 @@
       element.addEventListener('click', handler); wrap.appendChild(element); return element;
     }
     if (state.step === FLOW.STEPS.SERVICE_SELECTION) {
+      // Aviso temprano: con CAMBIO 1/2 el teclado queda bloqueado en buena
+      // parte del flujo, así que se avisa desde el arranque que las dudas
+      // se resuelven en el resumen, no acá. Va antes del early-return de
+      // autoSelectingService para que se vea también cuando el servicio ya
+      // viene elegido (tarjeta de la galería). Solo una vez por reserva:
+      // "Cambiar servicio" (EDIT_SERVICE) reentra a este mismo paso y no
+      // debe repetirlo. [CAMBIO 3]
+      if (!bookingIntroShown) {
+        bookingIntroShown = true;
+        addMsg('bot', lang === 'en'
+          ? 'Any questions will be answered at the end, once everything is set 😊'
+          : 'Cualquier duda te la resuelvo al final, una vez que tengas todo listo 😊');
+      }
       if (autoSelectingService) return;
       addMsg('bot', lang === 'en' ? 'Choose a service.' : 'Elige un servicio.');
       widgetFlowServices().forEach(function (service) { var name = widgetFlowServiceName(service); if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_SERVICE, service: name }); }); });
@@ -864,6 +882,13 @@
       button(lang === 'en' ? 'Change date' : 'Cambiar fecha', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_DATE }); });
       button(lang === 'en' ? 'Change time' : 'Cambiar hora', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_TIME }); });
       button(lang === 'en' ? 'Change details' : 'Cambiar datos', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_CUSTOMER }); });
+      // Invitación a preguntar: el canal de IA de este paso vive en send()
+      // (handleWidgetBookingQuestion) y nunca toca este wrap, así que los 5
+      // botones de arriba siguen funcionando durante todo el intercambio.
+      // [CAMBIO 3]
+      addMsg('bot', lang === 'en'
+        ? 'Now, do you have any questions? Ask me anything. And if you want to change any of your details, use the buttons above 😊'
+        : 'Ahora sí, ¿tienes alguna duda? Preguntame lo que quieras. Y si quieres cambiar algo de tus datos, usa los botones de arriba 😊');
     } else if (state.step === FLOW.STEPS.CONFIRMATION) {
       addMsg('bot', lang === 'en' ? 'Any questions before confirming? Ask me anything 😊' : '¿Tienes alguna duda antes de confirmar? Preguntame lo que quieras 😊');
       addMsg('bot', lang === 'en' ? 'Everything looks good. Ready to confirm your reservation?' : 'Todo se ve bien. ¿Listo para confirmar tu reserva?');
@@ -901,6 +926,10 @@
     if (!FLOW || typeof FLOW.createBookingFlow !== 'function' || !widgetFlowServices().length) return false;
     try {
       resetCustomerDraft();
+      // Reserva genuinamente nueva (no una re-entrada a SERVICE_SELECTION
+      // por EDIT_SERVICE, que reutiliza este mismo bookingFlow): el aviso
+      // temprano se vuelve a habilitar. [CAMBIO 3]
+      bookingIntroShown = false;
       bookingFlowIdempotencyKey = CORE.genIdempotencyKey();
       var reqService = initialEntities && (initialEntities.service || initialEntities.servicio);
       var matched = null;
@@ -1338,6 +1367,51 @@
     offerReservationActions(lang);
   }
 
+  // Preguntas con IA durante SUMMARY/CONFIRMATION: canal aparte que nunca
+  // llama a bookingFlow.dispatch() ni a renderBookingFlow(), así que nunca
+  // toca bookingFlowActions — los botones de ese paso (editar, Continuar,
+  // Confirmar) quedan intactos en pantalla durante todo el intercambio.
+  // [CAMBIO 3]
+  function handleWidgetBookingQuestion(flowState, text, lang, fallbackMsg) {
+    addMsg('user', text);
+    busy = true; inp.disabled = true; snd.disabled = true;
+    showWidgetTyping();
+    var requestMsgs = msgs.concat([{ role: 'user', content: text }]);
+    var preConfirmationContext = {
+      preConfirmationStep: true,
+      summary: {
+        service: flowState.service,
+        date: flowState.date,
+        time: flowState.time,
+        people: flowState.people || 1,
+        name: customerDraft.name || (flowState.customer ? flowState.customer.name : null),
+        phone: customerDraft.phone || (flowState.customer ? flowState.customer.phone : null),
+        email: customerDraft.email || (flowState.customer ? flowState.customer.email : null),
+        specialRequests: flowState.specialRequests || ''
+      }
+    };
+    fetch(API + '/api/client-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(previewToken
+        ? { clientId: clientId, messages: requestMsgs, language: cfg.language, previewToken: previewToken, preConfirmationContext: preConfirmationContext }
+        : { clientId: clientId, messages: requestMsgs, language: cfg.language, preConfirmationContext: preConfirmationContext }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        hideWidgetTyping();
+        if (d && d.text) addMsg('bot', d.text);
+      })
+      .catch(function () {
+        hideWidgetTyping();
+        addMsg('bot', fallbackMsg);
+      })
+      .finally(function () {
+        busy = false;
+        if (!galleryInputLocked) { inp.disabled = false; snd.disabled = false; inp.focus(); }
+      });
+  }
+
   // ── Send message ─────────────────────────────────────────────────────────
   function send(text) {
     if (busy || inp.disabled || !text.trim()) return;
@@ -1390,50 +1464,19 @@
 
     if (bookingFlow) {
       var flowState = bookingFlow.getState();
-      if (flowState.step === FLOW.STEPS.DATE_SELECTION) {
-        handleWidgetBookingDateText(t);
+      // DATE_SELECTION ya no acepta texto libre (el input queda bloqueado
+      // por updateWidgetBookingInputState): solo el calendario avanza este
+      // paso. [CAMBIO 2]
+      if (flowState.step === FLOW.STEPS.SUMMARY) {
+        handleWidgetBookingQuestion(flowState, t, lang, lang === 'en'
+          ? 'I could not process your question. Please try again or use the buttons above to continue.'
+          : 'No pude procesar tu pregunta. Inténtalo de nuevo o usa los botones de arriba para continuar.');
         return;
       }
       if (flowState.step === FLOW.STEPS.CONFIRMATION) {
-        addMsg('user', t);
-        busy = true; inp.disabled = true; snd.disabled = true;
-        showWidgetTyping();
-        var requestMsgs = msgs.concat([{ role: 'user', content: t }]);
-        var preConfirmationContext = {
-          preConfirmationStep: true,
-          summary: {
-            service: flowState.service,
-            date: flowState.date,
-            time: flowState.time,
-            people: flowState.people || 1,
-            name: customerDraft.name || (flowState.customer ? flowState.customer.name : null),
-            phone: customerDraft.phone || (flowState.customer ? flowState.customer.phone : null),
-            email: customerDraft.email || (flowState.customer ? flowState.customer.email : null),
-            specialRequests: flowState.specialRequests || ''
-          }
-        };
-        fetch(API + '/api/client-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(previewToken
-            ? { clientId: clientId, messages: requestMsgs, language: cfg.language, previewToken: previewToken, preConfirmationContext: preConfirmationContext }
-            : { clientId: clientId, messages: requestMsgs, language: cfg.language, preConfirmationContext: preConfirmationContext }),
-        })
-          .then(function (r) { return r.json(); })
-          .then(function (d) {
-            hideWidgetTyping();
-            if (d && d.text) addMsg('bot', d.text);
-          })
-          .catch(function () {
-            hideWidgetTyping();
-            addMsg('bot', lang === 'en'
-              ? 'I could not process your question. Please try again or click Confirm to complete your booking.'
-              : 'No pude procesar tu pregunta. Inténtalo de nuevo o toca Confirmar para completar tu reserva.');
-          })
-          .finally(function () {
-            busy = false;
-            if (!galleryInputLocked) { inp.disabled = false; snd.disabled = false; inp.focus(); }
-          });
+        handleWidgetBookingQuestion(flowState, t, lang, lang === 'en'
+          ? 'I could not process your question. Please try again or click Confirm to complete your booking.'
+          : 'No pude procesar tu pregunta. Inténtalo de nuevo o toca Confirmar para completar tu reserva.');
         return;
       }
       if (flowState.step !== FLOW.STEPS.CUSTOMER_DATA) {
@@ -1768,6 +1811,11 @@
     save();
     setTimeout(function () {
       renderQuickActions();
+      // El saludo obliga a elegir uno de los 3 botones: nada de texto
+      // libre acá. Se reutiliza el mismo bloqueo que la galería de
+      // servicios porque es el mismo caso — pantalla con botones
+      // clickeables donde escribir no lleva a nada. [CAMBIO 1]
+      setWidgetGalleryInputLocked(true);
     }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - greetingPromptStartedAt)));
   }
 
