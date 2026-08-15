@@ -1031,9 +1031,8 @@ export default async function handler(req, res) {
   const isTestBypass = testBypassSecret !== '' && (queryBypass === testBypassSecret || headerVal === testBypassSecret);
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
-  // TEMPORAL: desactivado para pruebas - REACTIVAR ANTES DE TERMINAR.
-  // if (!isTestBypass && !checkRateLimit(ip))
-  //   return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
+  if (!isTestBypass && !checkRateLimit(ip))
+    return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
   const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, selectedReservationId, idempotencyKey, language, previewToken, service, date, people } = req.body || {};
 
