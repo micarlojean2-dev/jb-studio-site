@@ -1088,6 +1088,9 @@
   // catálogo (los que sí tenían foto) y ocultaba el resto, justo lo que el
   // Objetivo 2 prohíbe. Ahora es el mismo catálogo completo de renderMenu()
   // — una sola fuente, sin dos listas que puedan divergir. [Objetivo 2]
+  // También es el punto de entrada para MOSTRAR_MENU (no solo para el
+  // marcador "con fotos"): ambos renderizan las mismas tarjetas clickeables,
+  // así que ambos deben bloquear el teclado igual. [BUG-GALERIA-MENU]
   function renderServicesWithPhotos() {
     setWidgetGalleryInputLocked(true);
     renderingServicePhotoGallery = true;
@@ -1337,7 +1340,7 @@
 
   // ── Send message ─────────────────────────────────────────────────────────
   function send(text) {
-    if (busy || !text.trim()) return;
+    if (busy || inp.disabled || !text.trim()) return;
 
     var t    = text.trim();
     // El idioma ya quedó fijado por el selector inicial (o por client.language
@@ -1428,7 +1431,8 @@
               : 'No pude procesar tu pregunta. Inténtalo de nuevo o toca Confirmar para completar tu reserva.');
           })
           .finally(function () {
-            busy = false; inp.disabled = false; snd.disabled = false; inp.focus();
+            busy = false;
+            if (!galleryInputLocked) { inp.disabled = false; snd.disabled = false; inp.focus(); }
           });
         return;
       }
@@ -1485,7 +1489,7 @@
         confirmNameButton(lang === 'en' ? '✅ Yes, correct' : '✅ Sí, correcto', function () {
           nameConfirmationWrap.remove();
           nameConfirmationWrap = null;
-          inp.disabled = false; snd.disabled = false; inp.focus();
+          if (!galleryInputLocked) { inp.disabled = false; snd.disabled = false; inp.focus(); }
           addMsg('bot', lang === 'en'
             ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
             : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
@@ -1496,7 +1500,7 @@
           nameConfirmationWrap = null;
           customerDraft.name = null;
           saveCustomerDraft();
-          inp.disabled = false; snd.disabled = false; inp.focus();
+          if (!galleryInputLocked) { inp.disabled = false; snd.disabled = false; inp.focus(); }
           addMsg('bot', lang === 'en'
             ? 'Got it. Please type ONLY your full name in this message (nothing else, no phone, no email).'
             : 'Entendido. Por favor, escribí solo tu nombre (nada más, sin teléfono ni correo).');
@@ -1666,8 +1670,12 @@
           }
           // Pedir fotos ya no fuerza el catálogo completo: cada marcador
           // controla solo su propio bloque. [BUG-FOTOS-GALERIA]
+          // MOSTRAR_MENU y MOSTRAR_SERVICIOS_CON_FOTOS renderizan las mismas
+          // tarjetas clickeables (ambos vía renderServicesWithPhotos), así
+          // que ambos bloquean el teclado igual mientras se muestran.
+          // [BUG-GALERIA-MENU]
           if (showServicePhotos) renderServicesWithPhotos();
-          else { if (showMenu) renderMenu(); if (showGallery) renderGallery(); }
+          else { if (showMenu) renderServicesWithPhotos(); if (showGallery) renderGallery(); }
           // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
           // historial va solo lo que realmente se mostró, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: shownTexts.join('\n\n') });
