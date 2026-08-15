@@ -2800,9 +2800,8 @@ LÍMITES ESTRICTOS:
               </div>
               <div class="form-group">
                 <label>Plan</label>
-                <select id="w-b-plan" class="admin-input">
-                  <option value="basic">Básico</option>
-                  <option value="pro">Pro</option>
+                <select id="w-b-plan" class="admin-input" disabled>
+                  <option value="pro" selected>Pro</option>
                 </select>
               </div>
               <div class="form-group">
@@ -4977,7 +4976,7 @@ LÍMITES ESTRICTOS:
     function freshState() {
       return {
         business: {
-          name: '', type: '', plan: 'basic',
+          name: '', type: '', plan: 'pro',
           languages: ['es'], primaryLanguage: 'es',
           address: '',
           businessHours: freshBusinessHours(),
@@ -4986,7 +4985,7 @@ LÍMITES ESTRICTOS:
         },
         design:   { logoPreview: '', coverPreview: '', primaryColor: '#1a4a2e', secondaryColor: '#f0f7f4', style: '' },
         services: [],
-        features: Object.assign({}, PLAN_FEATURES.basic),
+        features: Object.assign({}, PLAN_FEATURES.pro),
       };
     }
 
