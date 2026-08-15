@@ -1582,6 +1582,22 @@
       .then(function (d) {
         hideTyping();
         if (d && d.text) addMsg('bot', d.text);
+        // La respuesta se agregó después del wrap de botones (SUMMARY/
+        // CONFIRMATION), que ya estaba en el DOM desde antes: se reubica al
+        // final para que siga la conversación en vez de quedar arriba,
+        // fuera de vista, tras cada pregunta. Se reinserta el mismo nodo
+        // (no uno nuevo) para no perder los event listeners de los botones.
+        // [FIX 1 — botones siguen la conversación]
+        if (bookingFlowActions) { msgsEl.appendChild(bookingFlowActions); CORE.irAlFondo(msgsEl, true); }
+        // addMsg('bot', ...) solo agrega la burbuja con los puntos de
+        // "escribiendo…" — el texto real (que la agranda) se escribe recién
+        // BOT_MESSAGE_DELAY_MS después, dentro de su propio setTimeout. El
+        // reposicionamiento de arriba corre antes de ese crecimiento, así
+        // que queda corto; se repite acá, ya con la burbuja en su alto
+        // final. [FIX 1 — corrección de timing]
+        setTimeout(function () {
+          if (bookingFlowActions) { msgsEl.appendChild(bookingFlowActions); CORE.irAlFondo(msgsEl, true); }
+        }, BOT_MESSAGE_DELAY_MS);
       })
       .catch(function () {
         hideTyping();

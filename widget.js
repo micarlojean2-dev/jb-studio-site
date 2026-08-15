@@ -1368,9 +1368,9 @@
   }
 
   // Preguntas con IA durante SUMMARY/CONFIRMATION: canal aparte que nunca
-  // llama a bookingFlow.dispatch() ni a renderBookingFlow(), así que nunca
-  // toca bookingFlowActions — los botones de ese paso (editar, Continuar,
-  // Confirmar) quedan intactos en pantalla durante todo el intercambio.
+  // llama a bookingFlow.dispatch() ni a renderWidgetBookingFlow(), así que
+  // nunca recrea widgetFlowActions — los botones de ese paso (editar,
+  // Continuar, Confirmar) quedan intactos durante todo el intercambio.
   // [CAMBIO 3]
   function handleWidgetBookingQuestion(flowState, text, lang, fallbackMsg) {
     addMsg('user', text);
@@ -1401,6 +1401,22 @@
       .then(function (d) {
         hideWidgetTyping();
         if (d && d.text) addMsg('bot', d.text);
+        // La respuesta se agregó después del wrap de botones (SUMMARY/
+        // CONFIRMATION), que ya estaba en el DOM desde antes: se reubica al
+        // final para que siga la conversación en vez de quedar arriba,
+        // fuera de vista, tras cada pregunta. Se reinserta el mismo nodo
+        // (no uno nuevo) para no perder los event listeners de los botones.
+        // [FIX 1 — botones siguen la conversación]
+        if (widgetFlowActions) { msgsEl.appendChild(widgetFlowActions); CORE.irAlFondo(msgsEl, true); }
+        // addMsg('bot', ...) solo agrega la burbuja con los puntos de
+        // "escribiendo…" — el texto real (que la agranda) se escribe recién
+        // BOT_MESSAGE_DELAY_MS después, dentro de su propio setTimeout. El
+        // reposicionamiento de arriba corre antes de ese crecimiento, así
+        // que queda corto; se repite acá, ya con la burbuja en su alto
+        // final. [FIX 1 — corrección de timing]
+        setTimeout(function () {
+          if (widgetFlowActions) { msgsEl.appendChild(widgetFlowActions); CORE.irAlFondo(msgsEl, true); }
+        }, BOT_MESSAGE_DELAY_MS);
       })
       .catch(function () {
         hideWidgetTyping();
