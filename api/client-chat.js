@@ -448,6 +448,42 @@ function reservationTruthBlock(isEnglish, ctx) {
   return `\n${rule} No hay ninguna reserva confirmada registrada ahora mismo. Si preguntan si se concretó, di que no puedes confirmarlo desde aquí — señala el botón "Sí, confirmar" del resumen, o sugiere contactar al negocio directamente.\n`;
 }
 
+function sanitizePreConfirmationContext(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (raw.preConfirmationStep !== true) return null;
+  const s = raw.summary && typeof raw.summary === 'object' ? raw.summary : {};
+  return {
+    preConfirmationStep: true,
+    summary: {
+      service: typeof s.service === 'string' ? s.service.slice(0, 200) : '',
+      date: typeof s.date === 'string' ? s.date.slice(0, 60) : '',
+      time: typeof s.time === 'string' ? s.time.slice(0, 30) : '',
+      name: typeof s.name === 'string' ? s.name.slice(0, 100) : '',
+      phone: typeof s.phone === 'string' ? s.phone.slice(0, 40) : '',
+      email: typeof s.email === 'string' ? s.email.slice(0, 100) : '',
+    },
+  };
+}
+
+function preConfirmationTruthBlock(isEnglish, ctx) {
+  if (isEnglish) {
+    let summaryText = '';
+    if (ctx && ctx.summary) {
+      const s = ctx.summary;
+      summaryText = ` (Current summary shown on interface: Service: "${s.service || ''}", Date: "${s.date || ''}", Time: "${s.time || ''}", Name: "${s.name || ''}", Phone: "${s.phone || ''}", Email: "${s.email || ''}")`;
+    }
+    return `\nPRE-CONFIRMATION STEP (FINAL BOOKING REVIEW): The customer is at the final step reviewing their reservation details before clicking Confirm. The reservation HAS NOT BEEN CREATED YET.${summaryText}\n` +
+      `STRICT INSTRUCTION: If the customer asks to change the service, date, time, or their contact details (name, phone, email): NEVER say or imply that the change has been made or will be made when clicking Confirm. Explicitly inform them that you cannot make changes from chat in this screen, and tell them to use the edit buttons above (Change service / Change date / Change time / Change details) BEFORE clicking Confirm, because clicking Confirm will save exactly what is currently shown in their summary without any changes.\n`;
+  }
+  let summaryText = '';
+  if (ctx && ctx.summary) {
+    const s = ctx.summary;
+    summaryText = ` (Resumen actual mostrado en pantalla: Servicio: "${s.service || ''}", Fecha: "${s.date || ''}", Hora: "${s.time || ''}", Nombre: "${s.name || ''}", Teléfono: "${s.phone || ''}", Correo: "${s.email || ''}")`;
+  }
+  return `\nPASO DE PRE-CONFIRMACIÓN (REVISIÓN FINAL DE RESERVA): El cliente está en el paso final revisando los detalles de su reserva antes de presionar el botón Confirmar. La reserva TODAVÍA NO se ha creado.${summaryText}\n` +
+    `INSTRUCCIÓN ESTRICTA: Si el cliente pide cambiar servicio, fecha, hora o sus datos de contacto (nombre, teléfono, correo): NUNCA digas ni insinúes que el cambio ya se hizo o que se aplicará al confirmar. Decile explícitamente que no puedes hacer cambios directamente desde el chat en este paso, y que debe usar los botones de arriba (Cambiar servicio / Cambiar fecha / Cambiar hora / Cambiar datos) ANTES de tocar Confirmar, ya que confirmar guardará exactamente lo que está en el resumen actual, sin cambios.\n`;
+}
+
 async function availabilityContextBlock(client, clientId, messages, isEnglish) {
   if (!client || !messages || !messages.length) return { promptText: '', slots: null };
   const lastUserMsg = [...messages].reverse().find((m) => m && m.role === 'user')?.content || '';
@@ -657,7 +693,7 @@ export default async function handler(req, res) {
   if (!isTestBypass && !checkRateLimit(ip))
     return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
 
-  const { clientId, messages, previewToken, language, reservationContext, action, correctionText } = req.body || {};
+  const { clientId, messages, previewToken, language, reservationContext, action, correctionText, preConfirmationContext } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -727,6 +763,10 @@ export default async function handler(req, res) {
     // fuera del flujo de captura quedaba sin ninguna instrucción sobre el
     // resultado real de una reserva. [auditoría de reservas — falso éxito]
     systemPrompt += reservationTruthBlock(isEnglish, sanitizeReservationContext(reservationContext));
+    const preConfCtx = sanitizePreConfirmationContext(preConfirmationContext);
+    if (preConfCtx) {
+      systemPrompt += preConfirmationTruthBlock(isEnglish, preConfCtx);
+    }
     const availabilityRes = await availabilityContextBlock(client, clientId, messages, isEnglish);
     systemPrompt += availabilityRes.promptText;
     const serviceQuestion = serviceQuestionContext(client, messages);

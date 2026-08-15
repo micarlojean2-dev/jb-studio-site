@@ -1396,12 +1396,25 @@
         busy = true; inp.disabled = true; snd.disabled = true;
         showWidgetTyping();
         var requestMsgs = msgs.concat([{ role: 'user', content: t }]);
+        var preConfirmationContext = {
+          preConfirmationStep: true,
+          summary: {
+            service: flowState.service,
+            date: flowState.date,
+            time: flowState.time,
+            people: flowState.people || 1,
+            name: customerDraft.name || (flowState.customer ? flowState.customer.name : null),
+            phone: customerDraft.phone || (flowState.customer ? flowState.customer.phone : null),
+            email: customerDraft.email || (flowState.customer ? flowState.customer.email : null),
+            specialRequests: flowState.specialRequests || ''
+          }
+        };
         fetch(API + '/api/client-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(previewToken
-            ? { clientId: clientId, messages: requestMsgs, language: cfg.language, previewToken: previewToken }
-            : { clientId: clientId, messages: requestMsgs, language: cfg.language }),
+            ? { clientId: clientId, messages: requestMsgs, language: cfg.language, previewToken: previewToken, preConfirmationContext: preConfirmationContext }
+            : { clientId: clientId, messages: requestMsgs, language: cfg.language, preConfirmationContext: preConfirmationContext }),
         })
           .then(function (r) { return r.json(); })
           .then(function (d) {
