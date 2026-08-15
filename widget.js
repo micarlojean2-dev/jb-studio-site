@@ -212,7 +212,7 @@
 
   function updateWidgetBookingInputState(step) {
     var lang = cfg.language === 'en' ? 'en' : 'es';
-    if (!galleryInputLocked && (!step || step === FLOW.STEPS.CHAT || step === FLOW.STEPS.DATE_SELECTION || step === FLOW.STEPS.CUSTOMER_DATA)) {
+    if (!galleryInputLocked && (!step || step === FLOW.STEPS.CHAT || step === FLOW.STEPS.DATE_SELECTION || step === FLOW.STEPS.CUSTOMER_DATA || step === FLOW.STEPS.CONFIRMATION)) {
       inp.disabled = false;
       snd.disabled = false;
       inp.placeholder = step === FLOW.STEPS.DATE_SELECTION
@@ -865,6 +865,7 @@
       button(lang === 'en' ? 'Change time' : 'Cambiar hora', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_TIME }); });
       button(lang === 'en' ? 'Change details' : 'Cambiar datos', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_CUSTOMER }); });
     } else if (state.step === FLOW.STEPS.CONFIRMATION) {
+      addMsg('bot', lang === 'en' ? 'Any questions before confirming? Ask me anything 😊' : '¿Tienes alguna duda antes de confirmar? Preguntame lo que quieras 😊');
       addMsg('bot', lang === 'en' ? 'Everything looks good. Ready to confirm your reservation?' : 'Todo se ve bien. ¿Listo para confirmar tu reserva?');
       var confirmButton = button(lang === 'en' ? 'Confirm' : 'Confirmar', function () {
         confirmButton.disabled = true;
@@ -1390,6 +1391,34 @@
         handleWidgetBookingDateText(t);
         return;
       }
+      if (flowState.step === FLOW.STEPS.CONFIRMATION) {
+        addMsg('user', t);
+        busy = true; inp.disabled = true; snd.disabled = true;
+        showWidgetTyping();
+        var requestMsgs = msgs.concat([{ role: 'user', content: t }]);
+        fetch(API + '/api/client-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(previewToken
+            ? { clientId: clientId, messages: requestMsgs, language: cfg.language, previewToken: previewToken }
+            : { clientId: clientId, messages: requestMsgs, language: cfg.language }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            hideWidgetTyping();
+            if (d && d.text) addMsg('bot', d.text);
+          })
+          .catch(function () {
+            hideWidgetTyping();
+            addMsg('bot', lang === 'en'
+              ? 'I could not process your question. Please try again or click Confirm to complete your booking.'
+              : 'No pude procesar tu pregunta. Inténtalo de nuevo o toca Confirmar para completar tu reserva.');
+          })
+          .finally(function () {
+            busy = false; inp.disabled = false; snd.disabled = false; inp.focus();
+          });
+        return;
+      }
       if (flowState.step !== FLOW.STEPS.CUSTOMER_DATA) {
         return;
       }
@@ -1428,6 +1457,7 @@
         if (nameConfirmationWrap) nameConfirmationWrap.remove();
         nameConfirmationWrap = document.createElement('div');
         nameConfirmationWrap.className = 'jbw-quick';
+        inp.disabled = true; snd.disabled = true;
         addMsg('bot', lang === 'en'
           ? 'Is your name "' + customerDraft.name + '"?'
           : '¿Tu nombre es "' + customerDraft.name + '"?');
@@ -1442,6 +1472,7 @@
         confirmNameButton(lang === 'en' ? '✅ Yes, correct' : '✅ Sí, correcto', function () {
           nameConfirmationWrap.remove();
           nameConfirmationWrap = null;
+          inp.disabled = false; snd.disabled = false; inp.focus();
           addMsg('bot', lang === 'en'
             ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
             : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
@@ -1452,6 +1483,7 @@
           nameConfirmationWrap = null;
           customerDraft.name = null;
           saveCustomerDraft();
+          inp.disabled = false; snd.disabled = false; inp.focus();
           addMsg('bot', lang === 'en'
             ? 'Got it. Please type ONLY your full name in this message (nothing else, no phone, no email).'
             : 'Entendido. Por favor, escribí solo tu nombre (nada más, sin teléfono ni correo).');
