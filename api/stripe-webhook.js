@@ -447,6 +447,19 @@ export default async function handler(req, res) {
           trial_end: sub.trial_end ? String(sub.trial_end) : null,
         });
         console.log(`[stripe-webhook] Client ${clientId} trial ending at ${sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : 'unknown'}`);
+
+        try {
+          const clientData = await redis.get(`client:${clientId}`);
+          if (clientData && clientData.ownerEmail) {
+            await sendBillingAlertEmail(clientData, 'trial_ending_soon', {
+              clientId,
+              trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
+            });
+          }
+        } catch (e) {
+          console.error('[stripe-webhook] trial_will_end email error:', e.message);
+          captureApiException(e, { clientId, feature: 'email_owner', route: '/api/stripe-webhook' });
+        }
         break;
       }
 

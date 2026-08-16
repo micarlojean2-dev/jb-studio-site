@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { sendBillingAlertEmail } from '../lib/reservation-emails.js';
 
-test('sendBillingAlertEmail - handles payment_failed and subscription_paused parameters correctly', async () => {
+test('sendBillingAlertEmail - handles billing alert types correctly', async () => {
   const mockClient = {
     id: 'barberia-el-corte-fino',
     businessName: 'Barbería El Corte Fino',
@@ -31,4 +31,11 @@ test('sendBillingAlertEmail - handles payment_failed and subscription_paused par
   });
   assert.equal(resPaused.attempted, true);
   assert.deepEqual(resPaused.recipients, ['owner@barberia.com']);
+
+  const resTrial = await sendBillingAlertEmail(mockClient, 'trial_ending_soon', {
+    clientId: 'barberia-el-corte-fino',
+    trialEnd: '2026-08-20T12:00:00.000Z'
+  });
+  assert.equal(resTrial.attempted, true);
+  assert.deepEqual(resTrial.recipients, ['owner@barberia.com']);
 });

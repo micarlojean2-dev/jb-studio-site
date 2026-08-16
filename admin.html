@@ -5966,6 +5966,10 @@ LÍMITES ESTRICTOS:
         setCreateStepState('links', 'is-active');
         setCreateStepState('links', 'is-done');
         setCreateStepState('done', 'is-done');
+        if (data.checkoutUrl) {
+          document.getElementById('w-create-error').innerHTML = `Chatbot guardado. <a href="${data.checkoutUrl}" target="_blank" rel="noopener">Completar suscripción</a>`;
+          document.getElementById('w-create-error').style.display = '';
+        }
 
         finalized = true;
         pendingId = null;
@@ -7556,7 +7560,10 @@ LÍMITES ESTRICTOS:
           throw new Error((client.error || 'No se pudo crear el chatbot.') + fieldMsg);
         }
         const panel = `https://jbstudio.app/reservas/${client.id}#t=${encodeURIComponent(client.panelToken)}`;
-        $('spa-success').innerHTML = `Chatbot creado. <a href="${client.assistantUrl}" target="_blank" rel="noopener">Abrir asistente</a> · <a href="${panel}" target="_blank" rel="noopener">Abrir panel</a>`;
+        const checkout = client.checkoutUrl
+          ? ` · <a href="${client.checkoutUrl}" target="_blank" rel="noopener">Completar suscripción</a>`
+          : '';
+        $('spa-success').innerHTML = `Chatbot creado. <a href="${client.assistantUrl}" target="_blank" rel="noopener">Abrir asistente</a> · <a href="${panel}" target="_blank" rel="noopener">Abrir panel</a>${checkout}`;
         $('spa-success').style.display = 'block'; window.__jbAdmin.refreshClients(); return;
       }
       throw new Error('No se pudo obtener un identificador único.');
