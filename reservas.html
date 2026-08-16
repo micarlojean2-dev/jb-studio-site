@@ -963,7 +963,7 @@
   }
 
   function openPortal() {
-    var btn = document.getElementById('portal-btn');
+    var btn = document.getElementById('portal-btn') || document.getElementById('portal-btn-v2');
     if (!btn || btn.dataset.loading === '1') return;
     btn.dataset.loading = '1';
     btn.textContent = '…';
