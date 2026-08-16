@@ -158,6 +158,93 @@
     .plan-btn:hover { background: var(--accent-dark); }
     .plan-btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
     .plan-btn.ghost:hover { border-color: #cfc9bb; color: var(--ink); }
+
+    /* ── Plan banner v2: Option B — tarjeta elevated con color dinámico ── */
+    .plan-banner-v2 {
+      position: relative;
+      overflow: hidden;
+      border-radius: 16px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      border: 1px solid transparent;
+      transition: border-color 0.3s ease;
+    }
+    .plan-banner-v2::before {
+      content: '';
+      position: absolute; top: 0; right: 0;
+      width: 90px; height: 90px;
+      border-radius: 0 16px 0 0;
+      pointer-events: none;
+    }
+    .plan-banner-v2 .trial-glow {
+      position: absolute; top: 0; right: 0;
+      width: 80px; height: 80px;
+      border-radius: 0 16px 0 0;
+      pointer-events: none;
+    }
+    .plan-banner-v2.trial-safe {
+      background: linear-gradient(145deg, #f0f9f2 0%, #e4f4e9 100%);
+      border-color: #5aad72;
+    }
+    .plan-banner-v2.trial-safe .trial-glow { background: radial-gradient(circle, rgba(90,173,114,0.18) 0%, transparent 70%); }
+    .plan-banner-v2.trial-safe .trial-icon-wrap { background: linear-gradient(135deg, #6fc487 0%, #4da066 100%); box-shadow: 0 2px 8px rgba(90,173,114,0.35); }
+    .plan-banner-v2.trial-safe .trial-pill { background: #5aad72; color: #fff; }
+    .plan-banner-v2.trial-safe .trial-days { color: #3d7a50; }
+    .plan-banner-v2.trial-safe .trial-title { color: #1a3d28; }
+    .plan-banner-v2.trial-safe .trial-sub { color: #4a7a58; }
+    .plan-banner-v2.trial-safe .trial-cta { background: #4da066; color: #fff; }
+    .plan-banner-v2.trial-safe .trial-cta:hover { background: #3d8a54; }
+
+    .plan-banner-v2.trial-warning {
+      background: linear-gradient(145deg, #fff8f0 0%, #ffefdf 100%);
+      border-color: #d4700a;
+    }
+    .plan-banner-v2.trial-warning .trial-glow { background: radial-gradient(circle, rgba(212,112,10,0.18) 0%, transparent 70%); }
+    .plan-banner-v2.trial-warning .trial-icon-wrap { background: linear-gradient(135deg, #e8831a 0%, #d4700a 100%); box-shadow: 0 2px 8px rgba(212,112,10,0.35); }
+    .plan-banner-v2.trial-warning .trial-pill { background: #d4700a; color: #fff; }
+    .plan-banner-v2.trial-warning .trial-days { color: #8a4a07; }
+    .plan-banner-v2.trial-warning .trial-title { color: #3d1f00; }
+    .plan-banner-v2.trial-warning .trial-sub { color: #9a5a10; }
+    .plan-banner-v2.trial-warning .trial-cta { background: #d4700a; color: #fff; }
+    .plan-banner-v2.trial-warning .trial-cta:hover { background: #b85e08; }
+
+    .plan-banner-v2.trial-critical {
+      background: linear-gradient(145deg, #fff0f0 0%, #ffe8e8 100%);
+      border-color: #c0392b;
+    }
+    .plan-banner-v2.trial-critical .trial-glow { background: radial-gradient(circle, rgba(192,57,43,0.18) 0%, transparent 70%); }
+    .plan-banner-v2.trial-critical .trial-icon-wrap { background: linear-gradient(135deg, #d94535 0%, #c0392b 100%); box-shadow: 0 2px 8px rgba(192,57,43,0.35); }
+    .plan-banner-v2.trial-critical .trial-pill { background: #c0392b; color: #fff; }
+    .plan-banner-v2.trial-critical .trial-days { color: #8a1a12; }
+    .plan-banner-v2.trial-critical .trial-title { color: #3d0000; }
+    .plan-banner-v2.trial-critical .trial-sub { color: #9a3020; }
+    .plan-banner-v2.trial-critical .trial-cta { background: #c0392b; color: #fff; }
+    .plan-banner-v2.trial-critical .trial-cta:hover { background: #a02a20; }
+
+    .plan-banner-v2 .trial-icon-wrap {
+      width: 44px; height: 44px; flex-shrink: 0;
+      border-radius: 12px; display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+    }
+    .plan-banner-v2 .trial-content { flex: 1; min-width: 0; }
+    .plan-banner-v2 .trial-header { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+    .plan-banner-v2 .trial-pill {
+      font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 2px 8px; border-radius: 20px;
+    }
+    .plan-banner-v2 .trial-days { font-size: 13px; font-weight: 600; }
+    .plan-banner-v2 .trial-title { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+    .plan-banner-v2 .trial-sub { font-size: 12px; }
+    .plan-banner-v2 .trial-cta {
+      font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+      border: none; border-radius: 10px; padding: 10px 18px;
+      text-decoration: none; display: inline-block; flex-shrink: 0;
+      transition: background 0.2s ease;
+    }
   </style>
 </head>
 <body data-sentry-page="client_panel">
@@ -199,12 +286,26 @@
       <button class="hdr-btn ghost" onclick="logout()" data-i18n="logout">Salir</button>
     </div>
     <div id="plan-banner" class="plan-banner inactive" style="display:none">
+      <!-- v1 (paid / inactive) -->
       <span class="plan-icon" id="plan-icon">🟡</span>
       <div class="plan-text">
         <div class="plan-title" id="plan-title">—</div>
         <div class="plan-sub"   id="plan-sub">—</div>
       </div>
       <span id="portal-btn-wrap"></span>
+      <!-- v2 (trial) — hidden by default, shown by JS when trialing -->
+      <div id="plan-banner-v2" style="display:none" class="plan-banner-v2">
+        <div class="trial-icon-wrap" id="v2-icon">⏱</div>
+        <div class="trial-content">
+          <div class="trial-header">
+            <span class="trial-pill" id="v2-pill">PRUEBA</span>
+            <span class="trial-days" id="v2-days">—</span>
+          </div>
+          <div class="trial-title" id="v2-title">Tu prueba gratuita está activa</div>
+          <div class="trial-sub" id="v2-sub">Sin compromiso, cancela cuando quieras</div>
+        </div>
+        <span id="portal-btn-wrap-v2"></span>
+      </div>
     </div>
     <div class="wrap">
       <section class="agenda-intro" aria-labelledby="agenda-title">
@@ -276,8 +377,8 @@
   var LANGUAGE_STORE_KEY = 'jbr_panel_language';
   var panelLanguage = localStorage.getItem(LANGUAGE_STORE_KEY) === 'en' ? 'en' : 'es';
   var I18N = {
-    es: { language: 'Idioma', myAppointments: 'Tus citas', loginDesc: 'Introduce tu clave de acceso para ver las citas de tu negocio.', accessKey: 'Clave de acceso', enter: 'Entrar', loginError: 'Clave incorrecta. Inténtalo de nuevo.', refresh: '↻ Actualizar', logout: 'Salir', businessSchedule: 'Agenda del negocio', autoRefresh: 'Actualización automática', todayAppointments: 'Citas de hoy', upcomingAppointments: 'Próximas citas', rescheduled: 'Reprogramadas', cancelled: 'Canceladas', schedule: 'Agenda', upcoming: 'Próximas', recentActivity: 'Actividad reciente', latestChanges: 'Últimos cambios', invalidLink: 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio', verifying: 'Verificando…', new: 'Nueva', specialRequests: 'Peticiones especiales', noSpecialRequests: 'Sin peticiones especiales', reservation: 'Reserva', time: 'Hora', datePending: 'Fecha por confirmar', people: 'Personas', table: 'Mesa', barber: 'Barbero', phone: 'Teléfono', email: 'Correo', cancelledOn: 'Cancelada', by: 'Por', before: 'Antes', noRecentActivity: 'Aún no hay actividad reciente.', customer: 'Cliente', cancelledAppointment: 'canceló una cita', rescheduledAppointment: 'reagendó una cita', createdReservation: 'creó una nueva reserva', now: 'Ahora', createdSeconds: 'Creada hace unos segundos', createdMinutes: 'Creada hace ', createdHours: 'Creada hace ', createdOn: 'Creada el ', in: 'En ', tomorrowAt: 'Mañana a las ', remaining: 'Faltan ', minute: 'minuto', minutes: 'minutos', hour: 'hora', hours: 'horas', day: 'día', days: 'días', appointment: 'cita', appointments: 'citas', cancelledSuffix: 'canceladas', upcomingSuffix: 'próximas', emptyUpcoming: 'No hay citas próximas.', emptyCancelled: 'No hay citas canceladas.', emptyGeneric: 'No hay citas para este filtro.', all: 'Todas', todayFilter: 'Hoy', tomorrowFilter: 'Mañana', pastFilter: 'Pasadas', past: 'Pasada', updated: 'Actualizado ', planTrialActive: 'Prueba gratuita activa', planTrialEnded: 'Prueba gratuita terminada', planTrialDaysLeft: 'Quedan %% día%% de prueba gratuita', planPaid: 'Suscripción activa', planInactive: 'Sin suscripción activa', manageSubscription: 'Gestionar suscripción', portalError: 'No se pudo abrir el portal. Contacta a soporte.', planDays: 'día', planDaysPlural: 'días', planDay: 'día' },
-    en: { language: 'Language', myAppointments: 'Your appointments', loginDesc: 'Enter your access key to view your business appointments.', accessKey: 'Access key', enter: 'Sign in', loginError: 'Incorrect access key. Please try again.', refresh: '↻ Refresh', logout: 'Sign out', businessSchedule: 'Business schedule', autoRefresh: 'Auto-refresh', todayAppointments: "Today's appointments", upcomingAppointments: 'Upcoming appointments', rescheduled: 'Rescheduled', cancelled: 'Cancelled', schedule: 'Schedule', upcoming: 'Upcoming', recentActivity: 'Recent activity', latestChanges: 'Latest changes', invalidLink: 'Invalid link. Access jbstudio.app/reservas/your-business', verifying: 'Verifying…', new: 'New', specialRequests: 'Special requests', noSpecialRequests: 'No special requests', reservation: 'Reservation', time: 'Time', datePending: 'Date to be confirmed', people: 'People', table: 'Table', barber: 'Barber', phone: 'Phone', email: 'Email', cancelledOn: 'Cancelled', by: 'By', before: 'Before', noRecentActivity: 'No recent activity yet.', customer: 'Customer', cancelledAppointment: 'cancelled an appointment', rescheduledAppointment: 'rescheduled an appointment', createdReservation: 'created a new reservation', now: 'Now', createdSeconds: 'Created seconds ago', createdMinutes: 'Created ', createdHours: 'Created ', createdOn: 'Created on ', in: 'In ', tomorrowAt: 'Tomorrow at ', remaining: 'Remaining: ', minute: 'minute', minutes: 'minutes', hour: 'hour', hours: 'hours', day: 'day', days: 'days', appointment: 'appointment', appointments: 'appointments', cancelledSuffix: 'cancelled', upcomingSuffix: 'upcoming', emptyUpcoming: 'No upcoming appointments.', emptyCancelled: 'No cancelled appointments.', emptyGeneric: 'No appointments for this filter.', all: 'All', todayFilter: 'Today', tomorrowFilter: 'Tomorrow', pastFilter: 'Past', past: 'Past', updated: 'Updated ', planTrialActive: 'Free trial active', planTrialEnded: 'Free trial ended', planTrialDaysLeft: '%% day%% of free trial remaining', planPaid: 'Subscription active', planInactive: 'No active subscription', manageSubscription: 'Manage subscription', portalError: 'Could not open portal. Contact support.', planDays: 'day', planDaysPlural: 'days', planDay: 'day' }
+    es: { language: 'Idioma', myAppointments: 'Tus citas', loginDesc: 'Introduce tu clave de acceso para ver las citas de tu negocio.', accessKey: 'Clave de acceso', enter: 'Entrar', loginError: 'Clave incorrecta. Inténtalo de nuevo.', refresh: '↻ Actualizar', logout: 'Salir', businessSchedule: 'Agenda del negocio', autoRefresh: 'Actualización automática', todayAppointments: 'Citas de hoy', upcomingAppointments: 'Próximas citas', rescheduled: 'Reprogramadas', cancelled: 'Canceladas', schedule: 'Agenda', upcoming: 'Próximas', recentActivity: 'Actividad reciente', latestChanges: 'Últimos cambios', invalidLink: 'Enlace inválido. Accede como jbstudio.app/reservas/tu-negocio', verifying: 'Verificando…', new: 'Nueva', specialRequests: 'Peticiones especiales', noSpecialRequests: 'Sin peticiones especiales', reservation: 'Reserva', time: 'Hora', datePending: 'Fecha por confirmar', people: 'Personas', table: 'Mesa', barber: 'Barbero', phone: 'Teléfono', email: 'Correo', cancelledOn: 'Cancelada', by: 'Por', before: 'Antes', noRecentActivity: 'Aún no hay actividad reciente.', customer: 'Cliente', cancelledAppointment: 'canceló una cita', rescheduledAppointment: 'reagendó una cita', createdReservation: 'creó una nueva reserva', now: 'Ahora', createdSeconds: 'Creada hace unos segundos', createdMinutes: 'Creada hace ', createdHours: 'Creada hace ', createdOn: 'Creada el ', in: 'En ', tomorrowAt: 'Mañana a las ', remaining: 'Faltan ', minute: 'minuto', minutes: 'minutos', hour: 'hora', hours: 'horas', day: 'día', days: 'días', appointment: 'cita', appointments: 'citas', cancelledSuffix: 'canceladas', upcomingSuffix: 'próximas', emptyUpcoming: 'No hay citas próximas.', emptyCancelled: 'No hay citas canceladas.', emptyGeneric: 'No hay citas para este filtro.', all: 'Todas', todayFilter: 'Hoy', tomorrowFilter: 'Mañana', pastFilter: 'Pasadas', past: 'Pasada', updated: 'Actualizado ', planTrialActive: 'Prueba gratuita activa', planTrialEnded: 'Prueba gratuita terminada', planTrialDaysLeft: 'Quedan %% día%% de prueba gratuita', planPaid: 'Suscripción activa', planInactive: 'Sin suscripción activa', manageSubscription: 'Gestionar suscripción', subscribeNow: 'Contratar plan', portalError: 'No se pudo abrir el portal. Contacta a soporte.', planDays: 'día', planDaysPlural: 'días', planDay: 'día' },
+    en: { language: 'Language', myAppointments: 'Your appointments', loginDesc: 'Enter your access key to view your business appointments.', accessKey: 'Access key', enter: 'Sign in', loginError: 'Incorrect access key. Please try again.', refresh: '↻ Refresh', logout: 'Sign out', businessSchedule: 'Business schedule', autoRefresh: 'Auto-refresh', todayAppointments: "Today's appointments", upcomingAppointments: 'Upcoming appointments', rescheduled: 'Rescheduled', cancelled: 'Cancelled', schedule: 'Schedule', upcoming: 'Upcoming', recentActivity: 'Recent activity', latestChanges: 'Latest changes', invalidLink: 'Invalid link. Access jbstudio.app/reservas/your-business', verifying: 'Verifying…', new: 'New', specialRequests: 'Special requests', noSpecialRequests: 'No special requests', reservation: 'Reservation', time: 'Time', datePending: 'Date to be confirmed', people: 'People', table: 'Table', barber: 'Barber', phone: 'Phone', email: 'Email', cancelledOn: 'Cancelled', by: 'By', before: 'Before', noRecentActivity: 'No recent activity yet.', customer: 'Customer', cancelledAppointment: 'cancelled an appointment', rescheduledAppointment: 'rescheduled an appointment', createdReservation: 'created a new reservation', now: 'Now', createdSeconds: 'Created seconds ago', createdMinutes: 'Created ', createdHours: 'Created ', createdOn: 'Created on ', in: 'In ', tomorrowAt: 'Tomorrow at ', remaining: 'Remaining: ', minute: 'minute', minutes: 'minutes', hour: 'hour', hours: 'hours', day: 'day', days: 'days', appointment: 'appointment', appointments: 'appointments', cancelledSuffix: 'cancelled', upcomingSuffix: 'upcoming', emptyUpcoming: 'No upcoming appointments.', emptyCancelled: 'No cancelled appointments.', emptyGeneric: 'No appointments for this filter.', all: 'All', todayFilter: 'Today', tomorrowFilter: 'Tomorrow', pastFilter: 'Past', past: 'Past', updated: 'Updated ', planTrialActive: 'Free trial active', planTrialEnded: 'Free trial ended', planTrialDaysLeft: '%% day%% of free trial remaining', planPaid: 'Subscription active', planInactive: 'No active subscription', manageSubscription: 'Manage subscription', subscribeNow: 'Subscribe now', portalError: 'Could not open portal. Contact support.', planDays: 'day', planDaysPlural: 'days', planDay: 'day' }
   };
   function tr(key) { return I18N[panelLanguage][key] || key; }
   function setPanelLanguage(language) {
@@ -433,6 +534,7 @@
     var sub   = document.getElementById('plan-sub');
     var btnWrap = document.getElementById('portal-btn-wrap');
     var banner = document.getElementById('plan-banner');
+    var bannerV2 = document.getElementById('plan-banner-v2');
     if (!banner) return;
     banner.style.display = 'flex';
 
@@ -444,19 +546,55 @@
     }
 
     if (isTrialing && trialDaysLeft > 0) {
-      banner.className = 'plan-banner trial';
-      icon.textContent = '⏳';
-      title.textContent = tr('planTrialActive');
-      var daysLeftText = trialDaysLeft === 1
-        ? (panelLanguage === 'en' ? '1 day of free trial remaining' : 'Queda 1 día de prueba gratuita')
-        : (panelLanguage === 'en' ? trialDaysLeft + ' days of free trial remaining' : 'Quedan ' + trialDaysLeft + ' días de prueba gratuita');
-      sub.textContent = daysLeftText;
-      if (s.stripeCustomerId) {
-        btnWrap.innerHTML = '<button class="plan-btn" id="portal-btn" onclick="openPortal()">' + esc(tr('manageSubscription')) + '</button>';
-      } else {
-        btnWrap.innerHTML = '';
+      banner.className = 'plan-banner inactive';
+      icon.textContent = '';
+      title.textContent = '';
+      sub.textContent = '';
+      btnWrap.innerHTML = '';
+      if (bannerV2) {
+        bannerV2.style.display = 'flex';
+        var v2Icon = document.getElementById('v2-icon');
+        var v2Pill = document.getElementById('v2-pill');
+        var v2Days = document.getElementById('v2-days');
+        var v2Title = document.getElementById('v2-title');
+        var v2Sub = document.getElementById('v2-sub');
+        var btnWrapV2 = document.getElementById('portal-btn-wrap-v2');
+
+        var urgency;
+        if (trialDaysLeft >= 5)      urgency = 'trial-safe';
+        else if (trialDaysLeft >= 2) urgency = 'trial-warning';
+        else                          urgency = 'trial-critical';
+
+        bannerV2.className = 'plan-banner-v2 ' + urgency;
+
+        v2Icon.textContent = '⏱';
+        var daysWord = trialDaysLeft === 1
+          ? (panelLanguage === 'en' ? ' day left' : ' día restante')
+          : (panelLanguage === 'en' ? ' days left' : ' días restantes');
+        v2Days.textContent = trialDaysLeft + daysWord;
+
+        v2Title.textContent = panelLanguage === 'en'
+          ? 'Your free trial is active'
+          : 'Tu prueba gratuita está activa';
+
+        var isUrgent = urgency !== 'trial-safe';
+        v2Sub.textContent = isUrgent
+          ? (panelLanguage === 'en'
+              ? 'Subscribe now so you don\'t lose access'
+              : 'Contrata ahora para no perder acceso')
+          : (panelLanguage === 'en'
+              ? 'No commitment, cancel whenever you want'
+              : 'Sin compromiso, cancela cuando quieras');
+
+        if (s.stripeCustomerId) {
+          btnWrapV2.innerHTML = '<button class="trial-cta" id="portal-btn-v2" onclick="openPortal()">'
+            + esc(tr('subscribeNow')) + '</button>';
+        } else {
+          btnWrapV2.innerHTML = '';
+        }
       }
     } else if (s.paymentStatus === 'paid' || s.active) {
+      if (bannerV2) bannerV2.style.display = 'none';
       banner.className = 'plan-banner paid';
       icon.textContent = '✅';
       title.textContent = tr('planPaid');
@@ -470,6 +608,7 @@
         btnWrap.innerHTML = '';
       }
     } else {
+      if (bannerV2) bannerV2.style.display = 'none';
       banner.className = 'plan-banner inactive';
       icon.textContent = 'ℹ️';
       title.textContent = tr('planInactive');
@@ -850,6 +989,7 @@
     var title = document.getElementById('plan-title');
     var sub   = document.getElementById('plan-sub');
     var btnWrap = document.getElementById('portal-btn-wrap');
+    var bannerV2 = document.getElementById('plan-banner-v2');
 
     var isTrialing = s.trial_end && s.paymentStatus !== 'paid' && s.paymentStatus !== 'failed' && s.paymentStatus !== 'cancelled';
     var trialDaysLeft = 0;
@@ -858,20 +998,55 @@
     }
 
     if (isTrialing && trialDaysLeft > 0) {
-      banner.className = 'plan-banner trial';
-      icon.textContent = '⏳';
-      title.textContent = tr('planTrialActive');
-      var daysWord = trialDaysLeft === 1 ? tr('planDay') : tr('planDaysPlural');
-      var daysLeftText = trialDaysLeft === 1
-        ? (panelLanguage === 'en' ? '1 day of free trial remaining' : 'Queda 1 día de prueba gratuita')
-        : (panelLanguage === 'en' ? trialDaysLeft + ' days of free trial remaining' : 'Quedan ' + trialDaysLeft + ' días de prueba gratuita');
-      sub.textContent = daysLeftText;
-      if (s.stripeCustomerId) {
-        btnWrap.innerHTML = '<button class="plan-btn" onclick="openPortal()">' + esc(tr('manageSubscription')) + '</button>';
-      } else {
-        btnWrap.innerHTML = '';
+      banner.className = 'plan-banner inactive';
+      icon.textContent = '';
+      title.textContent = '';
+      sub.textContent = '';
+      btnWrap.innerHTML = '';
+      if (bannerV2) {
+        bannerV2.style.display = 'flex';
+        var v2Icon = document.getElementById('v2-icon');
+        var v2Pill = document.getElementById('v2-pill');
+        var v2Days = document.getElementById('v2-days');
+        var v2Title = document.getElementById('v2-title');
+        var v2Sub = document.getElementById('v2-sub');
+        var btnWrapV2 = document.getElementById('portal-btn-wrap-v2');
+
+        var urgency;
+        if (trialDaysLeft >= 5)      urgency = 'trial-safe';
+        else if (trialDaysLeft >= 2) urgency = 'trial-warning';
+        else                          urgency = 'trial-critical';
+
+        bannerV2.className = 'plan-banner-v2 ' + urgency;
+
+        v2Icon.textContent = '⏱';
+        var daysWord = trialDaysLeft === 1
+          ? (panelLanguage === 'en' ? ' day left' : ' día restante')
+          : (panelLanguage === 'en' ? ' days left' : ' días restantes');
+        v2Days.textContent = trialDaysLeft + daysWord;
+
+        v2Title.textContent = panelLanguage === 'en'
+          ? 'Your free trial is active'
+          : 'Tu prueba gratuita está activa';
+
+        var isUrgent = urgency !== 'trial-safe';
+        v2Sub.textContent = isUrgent
+          ? (panelLanguage === 'en'
+              ? 'Subscribe now so you don\'t lose access'
+              : 'Contrata ahora para no perder acceso')
+          : (panelLanguage === 'en'
+              ? 'No commitment, cancel whenever you want'
+              : 'Sin compromiso, cancela cuando quieras');
+
+        if (s.stripeCustomerId) {
+          btnWrapV2.innerHTML = '<button class="trial-cta" id="portal-btn-v2" onclick="openPortal()">'
+            + esc(tr('subscribeNow')) + '</button>';
+        } else {
+          btnWrapV2.innerHTML = '';
+        }
       }
     } else if (s.paymentStatus === 'paid' || s.active) {
+      if (bannerV2) bannerV2.style.display = 'none';
       banner.className = 'plan-banner paid';
       icon.textContent = '✅';
       title.textContent = tr('planPaid');
@@ -885,6 +1060,7 @@
         btnWrap.innerHTML = '';
       }
     } else {
+      if (bannerV2) bannerV2.style.display = 'none';
       banner.className = 'plan-banner inactive';
       icon.textContent = 'ℹ️';
       title.textContent = tr('planInactive');
