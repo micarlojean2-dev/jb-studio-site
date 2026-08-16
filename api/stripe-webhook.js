@@ -319,27 +319,20 @@ export default async function handler(req, res) {
         const clientId = sub.metadata?.clientId;
         if (!clientId) { console.warn('[stripe-webhook] subscription.updated: no clientId'); break; }
 
-        // Cancelación durante trial: Stripe marca canceled_at pero el status
-        // sigue siendo "trialing". Se procesa primero para que anule cualquier
-        // patch.active = true que hubiera venido después.
-        if (sub.canceled_at) {
-          await updateClient(clientId, {
-            active:        false,
-            paymentStatus: 'cancelled',
-            cancelledAt:   isoDate(sub.canceled_at),
-          });
-          console.log(`[stripe-webhook] Client ${clientId} → subscription canceled_at=${isoDate(sub.canceled_at)}`);
-          
-          try {
-            const clientData = await redis.get(`client:${clientId}`);
-            if (clientData && clientData.ownerEmail) {
-              await sendBillingAlertEmail(clientData, 'subscription_paused', { clientId });
-            }
-          } catch (e) {
-            console.error('[stripe-webhook] canceled_at email error:', e.message);
-          }
-          break;
-        }
+         // Stripe puede indicar canceled_at al solicitar una cancelación que
+         // todavía terminará en cancel_at. Date.now() usa el reloj del runtime;
+         // con Test Clocks muy desalineados, esta comparación puede no coincidir.
+         const cancelAtFuture = sub.cancel_at && sub.cancel_at > Math.floor(Date.now() / 1000);
+         const cancellationScheduled = sub.cancel_at_period_end === true || cancelAtFuture;
+
+         if (sub.canceled_at && cancellationScheduled) {
+           await updateClient(clientId, {
+             cancelAtPeriodEnd: true,
+             cancelAt:          isoDate(sub.cancel_at),
+           });
+           console.log(`[stripe-webhook] Client ${clientId} → cancellation scheduled for ${isoDate(sub.cancel_at)}`);
+           break;
+         }
 
         const patch = { cancelAtPeriodEnd: !!sub.cancel_at_period_end };
 

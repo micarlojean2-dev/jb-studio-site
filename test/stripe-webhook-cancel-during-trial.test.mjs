@@ -19,6 +19,7 @@ function isoDate(unixSeconds) {
 
 const NOW = Math.floor(Date.now() / 1000);
 const CANCEL_TS = NOW - 60; // canceled_at: hace 1 minuto
+const CANCEL_AT_FUTURE = NOW + 86400; // cancel_at: dentro de 1 día
 
 // ── Mock de Stripe ───────────────────────────────────────────────────────────
 function makeSubUpdatedEvent(overrides = {}) {
@@ -107,7 +108,16 @@ async function runHandler(event, redisStore = {}) {
   let patch;
   let wouldBreak = false;
 
-  if (sub.canceled_at) {
+  const cancelAtFuture = sub.cancel_at && sub.cancel_at > NOW;
+  const cancellationScheduled = sub.cancel_at_period_end === true || cancelAtFuture;
+
+  if (sub.canceled_at && cancellationScheduled) {
+    patch = {
+      cancelAtPeriodEnd: true,
+      cancelAt: isoDate(sub.cancel_at),
+    };
+    wouldBreak = true;
+  } else if (sub.canceled_at) {
     patch = {
       active: false,
       paymentStatus: 'cancelled',
@@ -140,9 +150,9 @@ async function runHandler(event, redisStore = {}) {
   return { patch, wouldBreak, sub };
 }
 
-// ── Test 1: cancelación durante trial → canceled_at presente ─────────────────
+// ── Test 1: cancelación inmediata → canceled_at presente sin fecha futura ─────
 async function testCancelDuringTrial() {
-  console.log('\n1. Cancelación durante trial (status=trialing, canceled_at presente):');
+  console.log('\n1. Cancelación inmediata (canceled_at presente, sin cancel_at futuro):');
 
   const event = makeSubUpdatedEvent({
     status: 'trialing',
@@ -158,7 +168,27 @@ async function testCancelDuringTrial() {
   ok(ISO_DATE_RE.test(patch.cancelledAt), `cancelledAt es fecha ISO válida: ${patch.cancelledAt}`);
 }
 
-// ── Test 2: trial normal sin cancelar ─────────────────────────────────────────
+// ── Test 2: cancelación solicitada antes del fin del trial ────────────────────
+async function testScheduledCancellationWithCanceledAt() {
+  console.log('\n2. Cancelación programada (canceled_at presente, cancel_at futuro):');
+
+  const event = makeSubUpdatedEvent({
+    status: 'trialing',
+    canceled_at: CANCEL_TS,
+    cancel_at: CANCEL_AT_FUTURE,
+  });
+
+  const { patch, wouldBreak } = await runHandler(event);
+
+  ok(wouldBreak === true, 'procesa la cancelación programada sin continuar al branch final');
+  ok(patch.cancelAtPeriodEnd === true, 'cancelAtPeriodEnd → true');
+  ok(patch.cancelAt === isoDate(CANCEL_AT_FUTURE), 'cancelAt guarda la fecha real de terminación');
+  ok(patch.active === undefined, 'active no se modifica');
+  ok(patch.paymentStatus === undefined, 'paymentStatus no se modifica');
+  ok(patch.cancelledAt === undefined, 'cancelledAt no se guarda antes de terminar');
+}
+
+// ── Test 3: trial normal sin cancelar ─────────────────────────────────────────
 async function testNormalTrial() {
   console.log('\n2. Trial normal sin cancelación (status=trialing, canceled_at=null):');
 
@@ -175,7 +205,7 @@ async function testNormalTrial() {
   ok(patch.trial_end !== null, 'trial_end preservado');
 }
 
-// ── Test 3: suscripción activa normal ───────────────────────────────────────
+// ── Test 4: suscripción activa normal ───────────────────────────────────────
 async function testActiveSubscription() {
   console.log('\n3. Suscripción activa (status=active, canceled_at=null):');
 
@@ -191,7 +221,7 @@ async function testActiveSubscription() {
   ok(patch.paymentStatus === 'paid', 'paymentStatus → paid');
 }
 
-// ── Test 4: cancelación inmediata (después de trial) ──────────────────────────
+// ── Test 5: cancelación inmediata (después de trial) ──────────────────────────
 async function testCancelAfterTrial() {
   console.log('\n4. Cancelación inmediata post-trial (status=canceled):');
 
@@ -210,7 +240,7 @@ async function testCancelAfterTrial() {
   ok(patch.cancelledAt !== null, 'cancelledAt seteado');
 }
 
-// ── Test 5: cancel_at_period_end=true (programada, no cancelada) ─────────────
+// ── Test 6: cancel_at_period_end=true (programada, no cancelada) ─────────────
 async function testCancelAtPeriodEnd() {
   console.log('\n5. Cancelación programada al final del período (cancel_at_period_end=true):');
 
@@ -227,7 +257,7 @@ async function testCancelAtPeriodEnd() {
   ok(patch.active === true, 'active sigue true (se cancela al period end, no ahora)');
 }
 
-// ── Test 6: el isoDate helper produce formato correcto ───────────────────────
+// ── Test 7: el isoDate helper produce formato correcto ───────────────────────
 async function testIsoDateHelper() {
   console.log('\n6. Helper isoDate():');
 
@@ -241,6 +271,7 @@ async function testIsoDateHelper() {
 
 // ── Ejecutar ──────────────────────────────────────────────────────────────────
 await testCancelDuringTrial();
+await testScheduledCancellationWithCanceledAt();
 await testNormalTrial();
 await testActiveSubscription();
 await testCancelAfterTrial();
