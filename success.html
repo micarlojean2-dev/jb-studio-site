@@ -115,8 +115,14 @@
       <li>Asistente activado automáticamente</li>
       <li>Widget listo para instalar</li>
     </ul>
-    <a href="https://jbstudio.app" class="btn">Volver al inicio →</a>
+    <a href="/reservas/" id="panel-link" class="btn">Volver al panel →</a>
     <p class="brand">JB <span>STUDIO</span></p>
   </div>
+  <script>
+    const clientId = new URLSearchParams(window.location.search).get('client');
+    if (clientId && /^[a-z0-9-]+$/.test(clientId)) {
+      document.getElementById('panel-link').href = `/reservas/${encodeURIComponent(clientId)}`;
+    }
+  </script>
 </body>
 </html>
