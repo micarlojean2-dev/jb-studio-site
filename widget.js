@@ -1827,11 +1827,6 @@
     save();
     setTimeout(function () {
       renderQuickActions();
-      // El saludo obliga a elegir uno de los 3 botones: nada de texto
-      // libre acá. Se reutiliza el mismo bloqueo que la galería de
-      // servicios porque es el mismo caso — pantalla con botones
-      // clickeables donde escribir no lleva a nada. [CAMBIO 1]
-      setWidgetGalleryInputLocked(true);
     }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - greetingPromptStartedAt)));
   }
 

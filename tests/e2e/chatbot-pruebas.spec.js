@@ -18,3 +18,14 @@ test('V2 booking starts from structured intent and uses isolated persistence', a
   expect(keys.some(key => key === 'jba_v2-qa_booking_v2')).toBeTruthy();
   expect(keys.some(key => key.endsWith('_booking'))).toBeFalsy();
 });
+
+test('initial bilingual greeting keeps free text enabled alongside quick actions', async ({ page }) => {
+  await page.route('**/api/client-config**', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ ...client, languages: ['es', 'en'] }),
+  }));
+  await page.goto(`${BASE}/asistente.html?id=initial-input-qa`);
+  await page.getByRole('button', { name: /español/i }).click();
+  await expect(page.getByRole('button', { name: /ver servicios/i })).toBeVisible();
+  await expect(page.locator('#a-inp')).toBeEditable();
+});
