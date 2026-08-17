@@ -793,7 +793,11 @@ IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, d
     const responsePayload = interpretation
       ? { text, provider, model: getModel(req), preview: previewOk, interpretation }
       : { text, provider, model: getModel(req), preview: previewOk };
-    if (serviceQuestion) responsePayload.serviceFacts = { precio: serviceQuestion.precio, duracion: serviceQuestion.duracion };
+    if (serviceQuestion) responsePayload.serviceFacts = {
+      nombre: serviceQuestion.nombre,
+      precio: serviceQuestion.precio,
+      duracion: serviceQuestion.duracion,
+    };
 
     if (availabilityRes.slots && availabilityRes.slots.length > 0) {
       responsePayload.slots = availabilityRes.slots;

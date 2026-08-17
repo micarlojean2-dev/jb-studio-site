@@ -395,9 +395,7 @@
   var bookingDatePendingText = '';
   var bookingFlowIdempotencyKey = '';
   var autoSelectingService = false;
-  // Aviso temprano de CAMBIO 3: solo una vez por reserva, no en cada
-  // re-entrada a SERVICE_SELECTION vía "Cambiar servicio" (EDIT_SERVICE).
-  var bookingIntroShown = false;
+  var bookingQuestionActive = false;
   var galleryInputLocked = false;
   var renderingServicePhotoGallery = false;
   var BOT_MESSAGE_DELAY_MS = 2000;
@@ -795,7 +793,9 @@
       if (available[value]) dayButton.addEventListener('click', (function (dateValue) { return function () { selectBookingDate(dateValue); }; })(value));
       grid.appendChild(dayButton);
     }
-    calendar.appendChild(grid); wrap.replaceChildren(calendar); msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
+    calendar.appendChild(grid); wrap.replaceChildren(calendar);
+    appendBookingQuestionButton(wrap, bookingFlow.getState(), lang);
+    msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
   }
 
   function handleBookingDateText(text, alreadyShown) {
@@ -876,6 +876,7 @@
 
   function renderBookingFlow(state) {
     updateBookingInputState(state.step);
+    bookingQuestionActive = false;
     if (bookingFlowActions && bookingFlowActions.parentNode) bookingFlowActions.remove();
     if (bookingDateConfirmation && bookingDateConfirmation.parentNode) bookingDateConfirmation.remove();
     bookingFlowActions = null;
@@ -891,29 +892,18 @@
       return element;
     }
     if (state.step === window.JBChatFlow.STEPS.SERVICE_SELECTION) {
-      // Aviso temprano: con CAMBIO 1/2 el teclado queda bloqueado en buena
-      // parte del flujo, así que se avisa desde el arranque que las dudas
-      // se resuelven en el resumen, no acá. Va antes del early-return de
-      // autoSelectingService para que se vea también cuando el servicio ya
-      // viene elegido (tarjeta de la galería). Solo una vez por reserva:
-      // "Cambiar servicio" (EDIT_SERVICE) reentra a este mismo paso y no
-      // debe repetirlo. [CAMBIO 3]
-      if (!bookingIntroShown) {
-        bookingIntroShown = true;
-        addMsg('bot', lang === 'en'
-          ? 'Any questions will be answered at the end, once everything is set 😊'
-          : 'Cualquier duda te la resuelvo al final, una vez que tengas todo listo 😊');
-      }
       if (autoSelectingService) return;
       addMsg('bot', lang === 'en' ? 'Choose a service.' : 'Elige un servicio.');
       bookingFlowServices().forEach(function (service) {
         var name = bookingFlowServiceName(service);
         if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_SERVICE, service: name }); });
       });
+      appendBookingQuestionButton(wrap, state, lang);
     } else if (state.step === window.JBChatFlow.STEPS.BARBER_SELECTION) {
       addMsg('bot', lang === 'en' ? 'Choose a barber, or any available barber.' : 'Elige un barbero o cualquiera disponible.');
       button(lang === 'en' ? 'Any available barber' : 'Cualquiera', function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_BARBER, barberPreference: null }); });
       bookingFlowStaff().forEach(function (staff) { var name = staff && (staff.name || staff.nombre || staff.id); if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_BARBER, barberPreference: name }); }); });
+      appendBookingQuestionButton(wrap, state, lang);
     } else if (state.step === window.JBChatFlow.STEPS.DATE_SELECTION) {
       var datePromptStartedAt = Date.now();
       addMsg('bot', lang === 'en' ? 'What day would you like to come by?' : '¿Qué día te gustaría venir?');
@@ -942,6 +932,7 @@
       [1, 2, 3, 4, 5, 6].forEach(function (people) {
         button(String(people), function () { wrap.remove(); bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_PEOPLE, people: people }); });
       });
+      appendBookingQuestionButton(wrap, state, lang);
     } else if (state.step === window.JBChatFlow.STEPS.TIME_SELECTION) {
       var timePromptStartedAt = Date.now();
       bookingTimeQuestionMessage = addMsg('bot', lang === 'en' ? 'What time would work best for you?' : '¿Qué horario te acomodaría mejor?');
@@ -956,6 +947,7 @@
             slotsWrap.appendChild(element);
           });
           bookingFlowActions = slotsWrap;
+          appendBookingQuestionButton(slotsWrap, state, lang);
           msgsEl.appendChild(slotsWrap); CORE.irAlFondo(msgsEl, true);
         }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - timePromptStartedAt)));
       }).catch(function (error) {
@@ -1038,6 +1030,23 @@
     msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
   }
 
+  function appendBookingQuestionButton(wrap, state, lang) {
+    if (![window.JBChatFlow.STEPS.SERVICE_SELECTION, window.JBChatFlow.STEPS.BARBER_SELECTION,
+      window.JBChatFlow.STEPS.DATE_SELECTION, window.JBChatFlow.STEPS.PEOPLE_SELECTION,
+      window.JBChatFlow.STEPS.TIME_SELECTION].includes(state.step)) return;
+    var button = document.createElement('button');
+    button.type = 'button'; button.className = 'a-quick-btn';
+    button.textContent = lang === 'en' ? 'Ask a question' : 'Hacer una pregunta';
+    button.addEventListener('click', function () {
+      if (busy) return;
+      bookingQuestionActive = true;
+      inp.disabled = false; snd.disabled = false;
+      inp.placeholder = lang === 'en' ? 'Type your question…' : 'Escribe tu pregunta…';
+      inp.focus();
+    });
+    wrap.appendChild(button);
+  }
+
   function startBookingFlowV2(lang, initialEntities) {
     if (!window.JBChatFlow || typeof window.JBChatFlow.createBookingFlow !== 'function' || !bookingFlowServices().length) {
       console.error('[booking-flow-v2] unavailable flow or service contract');
@@ -1055,10 +1064,6 @@
         });
       }
       resetCustomerDraft();
-      // Reserva genuinamente nueva (no una re-entrada a SERVICE_SELECTION
-      // por EDIT_SERVICE, que reutiliza este mismo bookingFlow): el aviso
-      // temprano se vuelve a habilitar. [CAMBIO 3]
-      bookingIntroShown = false;
       bookingFlow = window.JBChatFlow.createBookingFlow({
         config: { clientId: clientId, templateId: cfg.templateId || cfg.vertical, staff: bookingFlowStaff(), storageNamespace: 'jba' }, storage: sessionStorage,
         render: { render: renderBookingFlow },
@@ -1073,6 +1078,9 @@
           }
         },
       });
+      addMsg('bot', lang === 'en'
+        ? 'You are now in booking mode. If you have another question unrelated to booking, use the button below and I will help you.'
+        : 'Ahora estás en modo reserva. Si tienes otra duda que no tenga que ver con reservar, pulsa el botón de abajo para que te ayude.');
       if (matched) {
         autoSelectingService = true;
         bookingFlow.startBooking();
@@ -1260,12 +1268,37 @@
     renderingServicePhotoGallery = false;
   }
 
-  function renderGallery() {
+  function fullGalleryRequested(text) {
+    return /(?:todos?|toda|completa).{0,30}(?:fotos?|im[aá]genes?|galer[ií]a|servicios?)|(?:fotos?|im[aá]genes?|galer[ií]a|servicios?).{0,30}(?:todos?|toda|completa)/i.test(text);
+  }
+
+  function galleryServiceFor(interpretation, text) {
+    if (fullGalleryRequested(text)) return null;
+    var items = Array.isArray(cfg.menu) ? cfg.menu : [];
+    function match(name) {
+      var wanted = String(name || '').trim().toLowerCase();
+      return items.find(function (item) { return String(item && item.nombre || '').trim().toLowerCase() === wanted; }) || null;
+    }
+    var explicit = match(interpretation && interpretation.entities && interpretation.entities.service);
+    if (explicit) return explicit;
+    for (var i = msgs.length - 1; i >= 0; i--) {
+      var content = String(msgs[i] && msgs[i].content || '').toLowerCase();
+      var matches = items.filter(function (item) {
+        return item && item.nombre && content.includes(String(item.nombre).toLowerCase());
+      });
+      if (matches.length === 1) return matches[0];
+    }
+    return null;
+  }
+
+  function renderGallery(service) {
     var generalImages = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
-    var serviceImages = (Array.isArray(cfg.menu) ? cfg.menu : []).filter(function (item) {
+    var serviceImages = service
+      ? (service.imagen ? [{ url: service.imagen, item: service }] : [])
+      : (Array.isArray(cfg.menu) ? cfg.menu : []).filter(function (item) {
       return item && item.imagen && generalImages.indexOf(item.imagen) === -1;
     }).map(function (item) { return { url: item.imagen, item: item }; });
-    var images = generalImages.map(function (url) { return { url: url, item: null }; }).concat(serviceImages);
+    var images = service ? serviceImages : generalImages.map(function (url) { return { url: url, item: null }; }).concat(serviceImages);
     if (!images.length) return;
     var wrap = document.createElement('div');
     wrap.className = 'a-cards-wrap';
@@ -1548,12 +1581,12 @@
   // toca bookingFlowActions — los botones de ese paso (editar, Continuar,
   // Confirmar) quedan intactos en pantalla durante todo el intercambio.
   // [CAMBIO 3]
-  function handleBookingQuestion(flowState, text, lang, fallbackMsg) {
+  function handleBookingQuestion(flowState, text, lang, fallbackMsg, finalReview, relockAfterAnswer) {
     addMsg('user', text);
     busy = true; inp.disabled = true; snd.disabled = true;
     showTyping();
     var requestMsgs = msgs.concat([{ role: 'user', content: text }]);
-    var preConfirmationContext = {
+    var preConfirmationContext = finalReview ? {
       preConfirmationStep: true,
       summary: {
         service: flowState.service,
@@ -1565,13 +1598,19 @@
         email: customerDraft.email || (flowState.customer ? flowState.customer.email : null),
         specialRequests: flowState.specialRequests || ''
       }
+    } : null;
+    var body = {
+      clientId: clientId,
+      messages: requestMsgs,
+      language: cfg.language,
+      reservationContext: CORE.buildReservationContext(activeReservation),
     };
+    if (previewToken) body.previewToken = previewToken;
+    if (preConfirmationContext) body.preConfirmationContext = preConfirmationContext;
     fetch(API + '/api/client-chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(previewToken
-        ? { clientId: clientId, messages: requestMsgs, language: cfg.language, previewToken: previewToken, reservationContext: CORE.buildReservationContext(activeReservation), preConfirmationContext: preConfirmationContext }
-        : { clientId: clientId, messages: requestMsgs, language: cfg.language, reservationContext: CORE.buildReservationContext(activeReservation), preConfirmationContext: preConfirmationContext }),
+      body: JSON.stringify(body),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -1600,7 +1639,10 @@
       })
       .finally(function () {
         busy = false;
-        if (!galleryInputLocked) { inp.disabled = false; snd.disabled = false; inp.focus(); }
+        if (relockAfterAnswer) {
+          bookingQuestionActive = false;
+          updateBookingInputState(bookingFlow ? bookingFlow.getState().step : null);
+        } else if (!galleryInputLocked) { inp.disabled = false; snd.disabled = false; inp.focus(); }
       });
   }
 
@@ -1629,19 +1671,26 @@
 
     if (bookingFlow) {
       var flowState = bookingFlow.getState();
+      if (bookingQuestionActive) {
+        bookingQuestionActive = false;
+        handleBookingQuestion(flowState, t, lang, lang === 'en'
+          ? 'I could not process your question. Please use the options to continue.'
+          : 'No pude procesar tu pregunta. Usa las opciones para continuar.', false, true);
+        return;
+      }
       // DATE_SELECTION ya no acepta texto libre (el input queda bloqueado
       // por updateBookingInputState): solo el calendario avanza este paso.
       // [CAMBIO 2]
       if (flowState.step === window.JBChatFlow.STEPS.SUMMARY) {
         handleBookingQuestion(flowState, t, lang, lang === 'en'
           ? 'I could not process your question. Please try again or use the buttons above to continue.'
-          : 'No pude procesar tu pregunta. Inténtalo de nuevo o usa los botones de arriba para continuar.');
+          : 'No pude procesar tu pregunta. Inténtalo de nuevo o usa los botones de arriba para continuar.', true, false);
         return;
       }
       if (flowState.step === window.JBChatFlow.STEPS.CONFIRMATION) {
         handleBookingQuestion(flowState, t, lang, lang === 'en'
           ? 'I could not process your question. Please try again or click Confirm to complete your booking.'
-          : 'No pude procesar tu pregunta. Inténtalo de nuevo o toca Confirmar para completar tu reserva.');
+          : 'No pude procesar tu pregunta. Inténtalo de nuevo o toca Confirmar para completar tu reserva.', true, false);
         return;
       }
       if (flowState.step !== window.JBChatFlow.STEPS.CUSTOMER_DATA) {
@@ -1878,7 +1927,10 @@
             var facts = [];
             if (d.serviceFacts.precio) facts.push((cfg.language === 'en' ? 'Price: ' : 'Precio: ') + d.serviceFacts.precio);
             if (d.serviceFacts.duracion) facts.push((cfg.language === 'en' ? 'Duration: ' : 'Duración: ') + d.serviceFacts.duracion);
-            if (facts.length) cleanText = [cleanText, facts.join(' · ')].filter(Boolean).join('\n');
+            if (facts.length) {
+              var label = d.serviceFacts.nombre || (cfg.language === 'en' ? 'Service details' : 'Detalles del servicio');
+              cleanText = [cleanText, label + ': ' + facts.join(' · ')].filter(Boolean).join('\n');
+            }
           }
           var shownTexts = [];
           if (showMenu && !showServicePhotos) {
@@ -1908,7 +1960,7 @@
           // que ambos bloquean el teclado igual mientras se muestran.
           // [BUG-GALERIA-MENU]
           if (showServicePhotos) renderServicesWithPhotos();
-          else { if (showMenu) renderServicesWithPhotos(); if (showGallery) renderGallery(); }
+          else { if (showMenu) renderServicesWithPhotos(); if (showGallery) renderGallery(galleryServiceFor(interp, t)); }
           // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
           // historial va solo lo que realmente se mostró, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: shownTexts.join('\n\n') });

@@ -203,9 +203,7 @@
   var widgetDateOptionsLoaded = false;
   var widgetDatePendingText = '';
   var autoSelectingService = false;
-  // Aviso temprano de CAMBIO 3: solo una vez por reserva, no en cada
-  // re-entrada a SERVICE_SELECTION vía "Cambiar servicio" (EDIT_SERVICE).
-  var bookingIntroShown = false;
+  var bookingQuestionActive = false;
   var galleryInputLocked = false;
   var renderingServicePhotoGallery = false;
   var BOT_MESSAGE_DELAY_MS = 2000;
@@ -734,7 +732,9 @@
       if (available[value]) dayButton.addEventListener('click', (function (dateValue) { return function () { selectWidgetBookingDate(dateValue); }; })(value));
       grid.appendChild(dayButton);
     }
-    calendar.appendChild(grid); wrap.replaceChildren(calendar); msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
+    calendar.appendChild(grid); wrap.replaceChildren(calendar);
+    appendWidgetBookingQuestionButton(wrap, bookingFlow.getState(), lang);
+    msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
   }
 
   function handleWidgetBookingDateText(text, alreadyShown) {
@@ -786,6 +786,7 @@
 
   function renderWidgetBookingFlow(state) {
     updateWidgetBookingInputState(state.step);
+    bookingQuestionActive = false;
     if (widgetFlowActions && widgetFlowActions.parentNode) widgetFlowActions.remove();
     if (widgetDateConfirmation && widgetDateConfirmation.parentNode) widgetDateConfirmation.remove();
     widgetFlowActions = null;
@@ -799,29 +800,19 @@
       element.addEventListener('click', handler); wrap.appendChild(element); return element;
     }
     if (state.step === FLOW.STEPS.SERVICE_SELECTION) {
-      // Aviso temprano: con CAMBIO 1/2 el teclado queda bloqueado en buena
-      // parte del flujo, así que se avisa desde el arranque que las dudas
-      // se resuelven en el resumen, no acá. Va antes del early-return de
-      // autoSelectingService para que se vea también cuando el servicio ya
-      // viene elegido (tarjeta de la galería). Solo una vez por reserva:
-      // "Cambiar servicio" (EDIT_SERVICE) reentra a este mismo paso y no
-      // debe repetirlo. [CAMBIO 3]
-      if (!bookingIntroShown) {
-        bookingIntroShown = true;
-        addMsg('bot', lang === 'en'
-          ? 'Any questions will be answered at the end, once everything is set 😊'
-          : 'Cualquier duda te la resuelvo al final, una vez que tengas todo listo 😊');
-      }
       if (autoSelectingService) return;
       addMsg('bot', lang === 'en' ? 'Choose a service.' : 'Elige un servicio.');
       widgetFlowServices().forEach(function (service) { var name = widgetFlowServiceName(service); if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_SERVICE, service: name }); }); });
+      appendWidgetBookingQuestionButton(wrap, state, lang);
     } else if (state.step === FLOW.STEPS.BARBER_SELECTION) {
       addMsg('bot', lang === 'en' ? 'Choose a barber, or any available barber.' : 'Elige un barbero o cualquiera disponible.');
       button(lang === 'en' ? 'Any available barber' : 'Cualquiera', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_BARBER, barberPreference: null }); });
       widgetFlowStaff().forEach(function (staff) { var name = staff && (staff.name || staff.nombre || staff.id); if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_BARBER, barberPreference: name }); }); });
+      appendWidgetBookingQuestionButton(wrap, state, lang);
     } else if (state.step === FLOW.STEPS.PEOPLE_SELECTION) {
       addMsg('bot', lang === 'en' ? 'For how many people?' : '¿Para cuántas personas?');
       [1, 2, 3, 4, 5, 6].forEach(function (people) { button(String(people), function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_PEOPLE, people: people }); }); });
+      appendWidgetBookingQuestionButton(wrap, state, lang);
     } else if (state.step === FLOW.STEPS.DATE_SELECTION) {
       var datePromptStartedAt = Date.now();
       addMsg('bot', lang === 'en' ? 'What day would you like to come by?' : '¿Qué día te gustaría venir?');
@@ -852,6 +843,7 @@
           if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date. Please choose another day.' : 'No hay horarios disponibles para esa fecha. Elige otro día, por favor.'); return; }
           slots.forEach(function (slot) { var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = slot.label; element.addEventListener('click', function () { slotWrap.remove(); selectWidgetBookingTime(slot.value, lang); }); slotWrap.appendChild(element); });
           widgetFlowActions = slotWrap;
+          appendWidgetBookingQuestionButton(slotWrap, state, lang);
           msgsEl.appendChild(slotWrap); CORE.irAlFondo(msgsEl, true);
         }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - timePromptStartedAt)));
       }).catch(function (error) { captureWidgetError(error, 'booking_v2_slots'); addMsg('bot', lang === 'en' ? 'Sorry, we could not load the times. Please try again.' : 'Perdón, no pudimos cargar los horarios. Inténtalo de nuevo.'); });
@@ -905,6 +897,22 @@
     msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
   }
 
+  function appendWidgetBookingQuestionButton(wrap, state, lang) {
+    if (![FLOW.STEPS.SERVICE_SELECTION, FLOW.STEPS.BARBER_SELECTION, FLOW.STEPS.DATE_SELECTION,
+      FLOW.STEPS.PEOPLE_SELECTION, FLOW.STEPS.TIME_SELECTION].includes(state.step)) return;
+    var button = document.createElement('button');
+    button.type = 'button'; button.className = 'jbw-quick-btn';
+    button.textContent = lang === 'en' ? 'Ask a question' : 'Hacer una pregunta';
+    button.addEventListener('click', function () {
+      if (busy) return;
+      bookingQuestionActive = true;
+      inp.disabled = false; snd.disabled = false;
+      inp.placeholder = lang === 'en' ? 'Type your question…' : 'Escribe tu pregunta…';
+      inp.focus();
+    });
+    wrap.appendChild(button);
+  }
+
   function createWidgetBookingFlow() {
     return FLOW.createBookingFlow({
       config: { clientId: clientId, templateId: cfg.templateId || cfg.vertical, staff: widgetFlowStaff(), storageNamespace: 'jbw' }, storage: sessionStorage,
@@ -926,10 +934,6 @@
     if (!FLOW || typeof FLOW.createBookingFlow !== 'function' || !widgetFlowServices().length) return false;
     try {
       resetCustomerDraft();
-      // Reserva genuinamente nueva (no una re-entrada a SERVICE_SELECTION
-      // por EDIT_SERVICE, que reutiliza este mismo bookingFlow): el aviso
-      // temprano se vuelve a habilitar. [CAMBIO 3]
-      bookingIntroShown = false;
       bookingFlowIdempotencyKey = CORE.genIdempotencyKey();
       var reqService = initialEntities && (initialEntities.service || initialEntities.servicio);
       var matched = null;
@@ -941,6 +945,9 @@
         });
       }
       bookingFlow = createWidgetBookingFlow();
+      addMsg('bot', lang === 'en'
+        ? 'You are now in booking mode. If you have another question unrelated to booking, use the button below and I will help you.'
+        : 'Ahora estás en modo reserva. Si tienes otra duda que no tenga que ver con reservar, pulsa el botón de abajo para que te ayude.');
       if (matched) {
         autoSelectingService = true;
         bookingFlow.startBooking();
@@ -1127,12 +1134,37 @@
     renderingServicePhotoGallery = false;
   }
 
-  function renderGallery() {
+  function fullGalleryRequested(text) {
+    return /(?:todos?|toda|completa).{0,30}(?:fotos?|im[aá]genes?|galer[ií]a|servicios?)|(?:fotos?|im[aá]genes?|galer[ií]a|servicios?).{0,30}(?:todos?|toda|completa)/i.test(text);
+  }
+
+  function galleryServiceFor(interpretation, text) {
+    if (fullGalleryRequested(text)) return null;
+    var items = Array.isArray(cfg.menu) ? cfg.menu : [];
+    function match(name) {
+      var wanted = String(name || '').trim().toLowerCase();
+      return items.find(function (item) { return String(item && item.nombre || '').trim().toLowerCase() === wanted; }) || null;
+    }
+    var explicit = match(interpretation && interpretation.entities && interpretation.entities.service);
+    if (explicit) return explicit;
+    for (var i = msgs.length - 1; i >= 0; i--) {
+      var content = String(msgs[i] && msgs[i].content || '').toLowerCase();
+      var matches = items.filter(function (item) {
+        return item && item.nombre && content.includes(String(item.nombre).toLowerCase());
+      });
+      if (matches.length === 1) return matches[0];
+    }
+    return null;
+  }
+
+  function renderGallery(service) {
     var generalImages = cfg.media && Array.isArray(cfg.media.gallery) ? cfg.media.gallery : [];
-    var serviceImages = (Array.isArray(cfg.menu) ? cfg.menu : []).filter(function (item) {
+    var serviceImages = service
+      ? (service.imagen ? [{ url: service.imagen, item: service }] : [])
+      : (Array.isArray(cfg.menu) ? cfg.menu : []).filter(function (item) {
       return item && item.imagen && generalImages.indexOf(item.imagen) === -1;
     }).map(function (item) { return { url: item.imagen, item: item }; });
-    var images = generalImages.map(function (url) { return { url: url, item: null }; }).concat(serviceImages);
+    var images = service ? serviceImages : generalImages.map(function (url) { return { url: url, item: null }; }).concat(serviceImages);
     if (!images.length) return;
     var wrap = document.createElement('div');
     wrap.className = 'jbw-cards-wrap';
@@ -1372,12 +1404,12 @@
   // nunca recrea widgetFlowActions — los botones de ese paso (editar,
   // Continuar, Confirmar) quedan intactos durante todo el intercambio.
   // [CAMBIO 3]
-  function handleWidgetBookingQuestion(flowState, text, lang, fallbackMsg) {
+  function handleWidgetBookingQuestion(flowState, text, lang, fallbackMsg, finalReview, relockAfterAnswer) {
     addMsg('user', text);
     busy = true; inp.disabled = true; snd.disabled = true;
     showWidgetTyping();
     var requestMsgs = msgs.concat([{ role: 'user', content: text }]);
-    var preConfirmationContext = {
+    var preConfirmationContext = finalReview ? {
       preConfirmationStep: true,
       summary: {
         service: flowState.service,
@@ -1389,13 +1421,18 @@
         email: customerDraft.email || (flowState.customer ? flowState.customer.email : null),
         specialRequests: flowState.specialRequests || ''
       }
+    } : null;
+    var body = {
+      clientId: clientId,
+      messages: requestMsgs,
+      language: cfg.language,
     };
+    if (previewToken) body.previewToken = previewToken;
+    if (preConfirmationContext) body.preConfirmationContext = preConfirmationContext;
     fetch(API + '/api/client-chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(previewToken
-        ? { clientId: clientId, messages: requestMsgs, language: cfg.language, previewToken: previewToken, preConfirmationContext: preConfirmationContext }
-        : { clientId: clientId, messages: requestMsgs, language: cfg.language, preConfirmationContext: preConfirmationContext }),
+      body: JSON.stringify(body),
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -1424,7 +1461,10 @@
       })
       .finally(function () {
         busy = false;
-        if (!galleryInputLocked) { inp.disabled = false; snd.disabled = false; inp.focus(); }
+        if (relockAfterAnswer) {
+          bookingQuestionActive = false;
+          updateWidgetBookingInputState(bookingFlow ? bookingFlow.getState().step : null);
+        } else if (!galleryInputLocked) { inp.disabled = false; snd.disabled = false; inp.focus(); }
       });
   }
 
@@ -1480,19 +1520,26 @@
 
     if (bookingFlow) {
       var flowState = bookingFlow.getState();
+      if (bookingQuestionActive) {
+        bookingQuestionActive = false;
+        handleWidgetBookingQuestion(flowState, t, lang, lang === 'en'
+          ? 'I could not process your question. Please use the options to continue.'
+          : 'No pude procesar tu pregunta. Usa las opciones para continuar.', false, true);
+        return;
+      }
       // DATE_SELECTION ya no acepta texto libre (el input queda bloqueado
       // por updateWidgetBookingInputState): solo el calendario avanza este
       // paso. [CAMBIO 2]
       if (flowState.step === FLOW.STEPS.SUMMARY) {
         handleWidgetBookingQuestion(flowState, t, lang, lang === 'en'
           ? 'I could not process your question. Please try again or use the buttons above to continue.'
-          : 'No pude procesar tu pregunta. Inténtalo de nuevo o usa los botones de arriba para continuar.');
+          : 'No pude procesar tu pregunta. Inténtalo de nuevo o usa los botones de arriba para continuar.', true, false);
         return;
       }
       if (flowState.step === FLOW.STEPS.CONFIRMATION) {
         handleWidgetBookingQuestion(flowState, t, lang, lang === 'en'
           ? 'I could not process your question. Please try again or click Confirm to complete your booking.'
-          : 'No pude procesar tu pregunta. Inténtalo de nuevo o toca Confirmar para completar tu reserva.');
+          : 'No pude procesar tu pregunta. Inténtalo de nuevo o toca Confirmar para completar tu reserva.', true, false);
         return;
       }
       if (flowState.step !== FLOW.STEPS.CUSTOMER_DATA) {
@@ -1704,7 +1751,10 @@
             var facts = [];
             if (d.serviceFacts.precio) facts.push((cfg.language === 'en' ? 'Price: ' : 'Precio: ') + d.serviceFacts.precio);
             if (d.serviceFacts.duracion) facts.push((cfg.language === 'en' ? 'Duration: ' : 'Duración: ') + d.serviceFacts.duracion);
-            if (facts.length) cleanText = [cleanText, facts.join(' · ')].filter(Boolean).join('\n');
+            if (facts.length) {
+              var label = d.serviceFacts.nombre || (cfg.language === 'en' ? 'Service details' : 'Detalles del servicio');
+              cleanText = [cleanText, label + ': ' + facts.join(' · ')].filter(Boolean).join('\n');
+            }
           }
           var shownTexts = [];
           if (showMenu && !showServicePhotos) {
@@ -1734,7 +1784,7 @@
           // que ambos bloquean el teclado igual mientras se muestran.
           // [BUG-GALERIA-MENU]
           if (showServicePhotos) renderServicesWithPhotos();
-          else { if (showMenu) renderServicesWithPhotos(); if (showGallery) renderGallery(); }
+          else { if (showMenu) renderServicesWithPhotos(); if (showGallery) renderGallery(galleryServiceFor(interp, t)); }
           // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
           // historial va solo lo que realmente se mostró, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: shownTexts.join('\n\n') });
