@@ -155,6 +155,7 @@ const SPA_INFO_LABELS = {
     ],
     name: 'Nombre', address: 'Dirección', phone: 'Teléfono', timezone: 'Zona horaria',
     hours: 'Horarios:', services: 'Servicios:', price: 'Precio', duration: 'Duración',
+    description: 'Descripción',
     minutes: 'minutos', closed: 'Cerrado',
   },
   en: {
@@ -167,6 +168,7 @@ const SPA_INFO_LABELS = {
     ],
     name: 'Name', address: 'Address', phone: 'Phone', timezone: 'Time zone',
     hours: 'Business hours:', services: 'Services:', price: 'Price', duration: 'Duration',
+    description: 'Description',
     minutes: 'minutes', closed: 'Closed',
   },
 };
@@ -227,6 +229,8 @@ function businessInfoBlock(client, activeLanguage) {
       lines.push(`${n}. ${nombre}`);
       if (item.precio) lines.push(`   ${L.price}: ${spaOneLine(item.precio, 30)}`);
       if (item.duracion) lines.push(`   ${L.duration}: ${spaOneLine(item.duracion, 30)} ${L.minutes}`);
+      const descripcionLarga = spaOneLine(item.descripcionLarga, 5000);
+      if (descripcionLarga) lines.push(`   ${L.description}: ${descripcionLarga}`);
     });
   }
 

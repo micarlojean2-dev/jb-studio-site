@@ -39,7 +39,7 @@ console.log('PROMPT DINÁMICO — spaBusinessInfoBlock (bilingüe)');
     panelToken: 'no-debe-aparecer-nunca-1234',
     businessHours: HOURS_MON_FRI,
     services: [
-      { nombre: 'Masaje relajante', precio: '35000', duracion: '60' },
+      { nombre: 'Masaje relajante', precio: '35000', duracion: '60', descripcionLarga: 'Trabaja espalda y hombros.' },
       { nombre: 'Facial hidratante', precio: '28000', duracion: '45' },
     ],
   };
@@ -54,6 +54,8 @@ console.log('PROMPT DINÁMICO — spaBusinessInfoBlock (bilingüe)');
   ok(blockEs.includes('Masaje relajante') && blockEs.includes('Facial hidratante'), '5. Recibe servicios');
   ok(blockEs.includes('Precio: 35000') && blockEs.includes('Precio: 28000'), '6. Recibe precios');
   ok(blockEs.includes('Duración: 60 minutos') && blockEs.includes('Duración: 45 minutos'), '7. Recibe duraciones');
+  ok(blockEs.includes('Descripción: Trabaja espalda y hombros.'), '7a. Recibe descripción larga cuando existe');
+  ok(!blockEs.includes('Descripción: \n'), '7b. Omite descripción larga vacía');
   ok(!blockEs.includes('owner-secreto@example.com'), '8. No recibe ownerEmail');
   ok(!blockEs.includes('equipo@example.com'), '9. No recibe notificationEmails');
   ok(!blockEs.includes('no-debe-aparecer-nunca-1234'), '10. No recibe panelToken');
@@ -61,13 +63,13 @@ console.log('PROMPT DINÁMICO — spaBusinessInfoBlock (bilingüe)');
   // ── Etiquetas en el idioma correcto (fix 4) ──
   ok(blockEs.includes('INFORMACIÓN VALIDADA DEL NEGOCIO') && blockEs.includes('Nombre:') && blockEs.includes('Dirección:') &&
      blockEs.includes('Horarios:') && blockEs.includes('Servicios:') && blockEs.includes('Precio:') && blockEs.includes('Duración:') &&
-     blockEs.includes('Lunes') && blockEs.includes('Cerrado'),
+     blockEs.includes('Descripción:') && blockEs.includes('Lunes') && blockEs.includes('Cerrado'),
     'etiquetas españolas presentes en el bloque español');
   ok(!blockEs.includes('VERIFIED BUSINESS INFORMATION'), 'el bloque español no contiene "VERIFIED BUSINESS INFORMATION"');
 
   ok(blockEn.includes('VERIFIED BUSINESS INFORMATION') && blockEn.includes('Name:') && blockEn.includes('Address:') &&
      blockEn.includes('Business hours:') && blockEn.includes('Services:') && blockEn.includes('Price:') && blockEn.includes('Duration:') &&
-     blockEn.includes('Monday') && blockEn.includes('Closed'),
+     blockEn.includes('Description:') && blockEn.includes('Monday') && blockEn.includes('Closed'),
     'todas las etiquetas inglesas presentes en el bloque inglés');
   ok(!blockEn.includes('INFORMACIÓN VALIDADA DEL NEGOCIO'), 'el bloque inglés no contiene "INFORMACIÓN VALIDADA DEL NEGOCIO"');
 
