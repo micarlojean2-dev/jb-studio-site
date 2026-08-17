@@ -500,24 +500,33 @@ export default async function handler(req, res) {
           client.stripeCustomerId = stripeCustomer.id;
         }
 
-        let stripeSubscription;
+        let stripeSubscription = null;
+        let checkoutSession = null;
         if (client.stripeSubscriptionId) {
           stripeSubscription = await stripe.subscriptions.retrieve(client.stripeSubscriptionId);
         } else {
-          stripeSubscription = await stripe.subscriptions.create({
+          checkoutSession = await stripe.checkout.sessions.create({
+            mode: 'subscription',
+            payment_method_types: ['card'],
+            payment_method_collection: 'always',
+            line_items: [{ price: stripePriceId, quantity: 1 }],
+            client_reference_id: cid,
             customer: stripeCustomer.id,
-            items: [{ price: stripePriceId }],
-            trial_period_days: 10,
-            trial_settings: { end_behavior: { missing_payment_method: 'pause' } },
-            metadata: { clientId: cid }
+            metadata: { clientId: cid },
+            subscription_data: {
+              trial_period_days: 10,
+              trial_settings: { end_behavior: { missing_payment_method: 'pause' } },
+              metadata: { clientId: cid },
+            },
+            success_url: `https://jbstudio.app/success?client=${encodeURIComponent(cid)}`,
+            cancel_url: `https://jbstudio.app/reservas/${encodeURIComponent(cid)}`,
           });
-          client.stripeSubscriptionId = stripeSubscription.id;
         }
 
-        client.trial_end = String(stripeSubscription.trial_end);
-        client.paymentStatus = 'trialing';
+        client.trial_end = stripeSubscription?.trial_end ? String(stripeSubscription.trial_end) : null;
+        client.paymentStatus = stripeSubscription ? 'trialing' : 'awaiting_checkout';
         client.plan = client.plan || 'pro';
-        client.active = true;
+        client.active = !!stripeSubscription;
         client.trialEnabled = true;
         client.trialDays = 10;
         await redis.set(`client:${cid}`, client);
@@ -529,14 +538,15 @@ export default async function handler(req, res) {
             email: stripeCustomer.email,
             livemode: stripeCustomer.livemode
           },
-          stripeSubscription: {
+          stripeSubscription: stripeSubscription ? {
             id: stripeSubscription.id,
             status: stripeSubscription.status,
             trial_start: stripeSubscription.trial_start,
             trial_end: stripeSubscription.trial_end,
             trial_end_iso: new Date(stripeSubscription.trial_end * 1000).toISOString(),
-            livemode: stripeSubscription.livemode
-          },
+            livemode: stripeSubscription.livemode,
+          } : null,
+          checkoutSession: checkoutSession ? { id: checkoutSession.id, url: checkoutSession.url } : null,
           updatedClientInRedis: {
             id: client.id,
             businessName: client.businessName,
@@ -822,18 +832,29 @@ export default async function handler(req, res) {
         metadata: { clientId: id },
         ...((testClock || test_clock) ? { test_clock: String(testClock || test_clock) } : {}),
       });
-      const stripeSubscription = await stripe.subscriptions.create({
+      const checkoutSession = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        payment_method_types: ['card'],
+        payment_method_collection: 'always',
+        line_items: [{ price: stripePriceId, quantity: 1 }],
+        client_reference_id: id,
         customer: stripeCustomer.id,
-        items: [{ price: stripePriceId }],
-        trial_period_days: 10,
-        trial_settings: { end_behavior: { missing_payment_method: 'pause' } },
         metadata: { clientId: id },
+        subscription_data: {
+          trial_period_days: 10,
+          trial_settings: { end_behavior: { missing_payment_method: 'pause' } },
+          metadata: { clientId: id },
+        },
+        success_url: `https://jbstudio.app/success?client=${encodeURIComponent(id)}`,
+        cancel_url: `https://jbstudio.app/reservas/${encodeURIComponent(id)}`,
       });
 
       client.stripeCustomerId = stripeCustomer.id;
-      client.stripeSubscriptionId = stripeSubscription.id;
+      client.paymentStatus = 'awaiting_checkout';
+      client.active = false;
+      client.stripeCheckoutSessionId = checkoutSession.id;
       await redis.set(`client:${id}`, client);
-      return res.status(201).json(client);
+      return res.status(201).json({ ...client, checkoutUrl: checkoutSession.url });
     } catch (err) {
       console.error('[api/clients] POST:', err.message);
       captureApiException(err, { clientId: id, feature: 'client_panel', route: '/api/clients' });
