@@ -12,8 +12,8 @@ for (const file of ['asistente.html', 'widget.js']) {
   // Asking for photos no longer forces the whole service catalog open, and
   // asking for the catalog no longer requires also asking for photos: each
   // marker controls its own block. [BUG-FOTOS-GALERIA]
-  assert.match(source, /if \(showMenu\) renderMenu\(\);/, `${file} renders the catalog only on its own trigger`);
-  assert.match(source, /if \(showGallery\) renderGallery\(\);/, `${file} renders confirmed media only on its own trigger`);
+  assert.match(source, /if \(showMenu\) render(?:Menu|ServicesWithPhotos)\(\);/, `${file} renders the catalog only on its own trigger`);
+  assert.match(source, /if \(showGallery\) (?:\{|renderGallery)/, `${file} renders confirmed media only on its own trigger`);
 
   // Regression: "estaAlFondo" measures against the CURRENT scrollHeight, so
   // right after a tall gallery block grows the container, a customer who was
@@ -23,10 +23,10 @@ for (const file of ['asistente.html', 'widget.js']) {
   // reaction to the customer's own message (same as addMsg's role==='user'
   // case), so it must always force the scroll, not ask permission.
   // [BUG-SCROLL-GALERIA]
-  const galleryFn = source.match(/function renderGallery\(\)[\s\S]*?\n  \}/)[0];
+  const galleryFn = source.match(/function renderGallery\([^)]*\)[\s\S]*?\n  \}/)[0];
   assert.equal((galleryFn.match(/irAlFondo\(msgsEl, true\)/g) || []).length, 2,
     `${file} renderGallery() forces the scroll into view (initial render and "ver más fotos")`);
-  const menuFn = source.match(/function renderMenu\(\)[\s\S]*?\n  \}/)[0];
+  const menuFn = source.match(/function render(?:Menu|ServicesWithPhotos)\([^)]*\)[\s\S]*?\n  \}/)[0];
   assert.match(menuFn, /irAlFondo\(msgsEl, true\)/,
     `${file} renderMenu() forces the scroll into view`);
 }

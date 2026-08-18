@@ -12,7 +12,7 @@ console.log('Contrato conversacional V2');
 for (const [name, source] of [['asistente', assistant], ['widget', widget]]) {
   assert.match(source, /interpretation\) \|\| null/);
   assert.match(source, /intent = interp \? interp\.intent : 'unknown'/);
-  assert.match(source, /start(?:Widget)?BookingFlowV2\(lang\)/);
+  assert.match(source, /start(?:Widget)?BookingFlowV2\(lang/);
   assert.doesNotMatch(source, /\b(bookingData|bookingStep|BOOKING_SESS|askBookingTurn|showBookingSummary|submitBooking)\b/);
   console.log(`  ✓ ${name} usa intent estructurado y arranque V2 sin motor legacy`);
 }

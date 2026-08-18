@@ -242,7 +242,7 @@
   }
 
   function resetCustomerDraft() {
-    customerDraft = { name: null, phone: null, email: null };
+    customerDraft = { name: null, phone: null, email: null, pendingSpecialMention: null };
     specialRequestsAsked = false;
     if (nameConfirmationWrap && nameConfirmationWrap.parentNode) nameConfirmationWrap.remove();
     nameConfirmationWrap = null;
@@ -260,7 +260,7 @@
       if (savedDraft) {
         var parsed = JSON.parse(savedDraft);
         if (parsed && typeof parsed === 'object') {
-          customerDraft = { name: parsed.name || null, phone: parsed.phone || null, email: parsed.email || null };
+          customerDraft = { name: parsed.name || null, phone: parsed.phone || null, email: parsed.email || null, pendingSpecialMention: parsed.pendingSpecialMention || null };
           return;
         }
       }
@@ -270,6 +270,7 @@
         name: state.customer.name || null,
         phone: state.customer.phone || null,
         email: state.customer.email || null,
+        pendingSpecialMention: null,
       };
     } else {
       resetCustomerDraft();
@@ -648,8 +649,12 @@
 
   function widgetBookingSummaryText(state, lang) {
     var en = lang === 'en';
-    return (en ? '📋 Your reservation summary' : '📋 Resumen de tu reserva') + '\n' +
+    var text = (en ? '📋 Your reservation summary' : '📋 Resumen de tu reserva') + '\n' +
       '💆 ' + state.service + '\n📅 ' + state.date + '\n🕐 ' + state.time + '\n👤 ' + state.customer.name + '\n📞 ' + state.customer.phone + '\n✉️ ' + state.customer.email;
+    if (state.specialRequests && state.specialRequests !== 'No') {
+      text += '\n📝 ' + (en ? 'Special requests' : 'Peticiones especiales') + ': ' + state.specialRequests;
+    }
+    return text;
   }
 
   function widgetFlowServices() {
@@ -854,9 +859,16 @@
       if (missingField) {
         addMsg('bot', CORE.askMissingCustomerField(missingField, lang));
       } else if (!specialRequestsAsked) {
-        addMsg('bot', lang === 'en'
-          ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
-          : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
+        if (customerDraft.pendingSpecialMention) {
+          var pendingText = customerDraft.pendingSpecialMention;
+          addMsg('bot', lang === 'en'
+            ? 'Earlier you mentioned: "' + pendingText + '". Should I note that as a special request? (Reply "Yes" to save it, or anything else to skip it).'
+            : 'Antes mencionaste: "' + pendingText + '". ¿Querés que lo anote como petición especial? (Decí "Sí" para guardarlo, o cualquier otra cosa para omitirlo).');
+        } else {
+          addMsg('bot', lang === 'en'
+            ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
+            : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
+        }
         specialRequestsAsked = true;
       }
       if (widgetFlowIsRestaurant()) {
@@ -1153,6 +1165,10 @@
         return item && item.nombre && content.includes(String(item.nombre).toLowerCase());
       });
       if (matches.length === 1) return matches[0];
+      if (matches.length >= 2) {
+        window.__galleryAmbiguousServices = matches;
+        return null;
+      }
     }
     return null;
   }
@@ -1547,13 +1563,18 @@
       }
       addMsg('user', t);
       var missingBefore = CORE.missingCustomerField(customerDraft);
+      if (!customerDraft.pendingSpecialMention && CORE.looksLikeSpecialMention(t)) {
+        customerDraft.pendingSpecialMention = t.trim();
+      }
       if (missingBefore) {
         if (CORE.isGeneralQuestionOrComment(t)) {
           addMsg('bot', CORE.customerDataHoldMessage(lang));
           return;
         }
         var draftBefore = JSON.stringify(customerDraft);
+        var pendingMention = customerDraft.pendingSpecialMention;
         customerDraft = CORE.parseCustomerDraft(t, customerDraft);
+        if (pendingMention) customerDraft.pendingSpecialMention = pendingMention;
         saveCustomerDraft();
         var missingAfter = CORE.missingCustomerField(customerDraft);
         if (missingAfter) {
@@ -1596,9 +1617,16 @@
           nameConfirmationWrap.remove();
           nameConfirmationWrap = null;
           if (!galleryInputLocked) { inp.disabled = false; snd.disabled = false; inp.focus(); }
-          addMsg('bot', lang === 'en'
-            ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
-            : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
+          if (customerDraft.pendingSpecialMention) {
+            var pendingText = customerDraft.pendingSpecialMention;
+            addMsg('bot', lang === 'en'
+              ? 'Earlier you mentioned: "' + pendingText + '". Should I note that as a special request? (Reply "Yes" to save it, or anything else to skip it).'
+              : 'Antes mencionaste: "' + pendingText + '". ¿Querés que lo anote como petición especial? (Decí "Sí" para guardarlo, o cualquier otra cosa para omitirlo).');
+          } else {
+            addMsg('bot', lang === 'en'
+              ? 'Do you have any allergies, preferences, or special requests to share? (Type "None" or "No" if you have none).'
+              : '¿Tienes alguna alergia, preferencia o petición especial que quieras contarme? (Escribe "Ninguna" o "No" si no tienes ninguna).');
+          }
           specialRequestsAsked = true;
         });
         confirmNameButton(lang === 'en' ? '❌ No, correct name' : '❌ No, corregir', function () {
@@ -1784,7 +1812,22 @@
           // que ambos bloquean el teclado igual mientras se muestran.
           // [BUG-GALERIA-MENU]
           if (showServicePhotos) renderServicesWithPhotos();
-          else { if (showMenu) renderServicesWithPhotos(); if (showGallery) renderGallery(galleryServiceFor(interp, t)); }
+          else {
+            if (showMenu) renderServicesWithPhotos();
+            if (showGallery) {
+              var galleryService = galleryServiceFor(interp, t);
+              if (window.__galleryAmbiguousServices && window.__galleryAmbiguousServices.length >= 2) {
+                var ambiguous = window.__galleryAmbiguousServices;
+                window.__galleryAmbiguousServices = null;
+                var names = ambiguous.map(function(s) { return '"' + s.nombre + '"'; }).join(', ');
+                addMsg('bot', lang === 'en'
+                  ? 'Which one would you like to see the photo of: ' + names + '?'
+                  : '¿De cuál de los dos te gustaría ver la foto: ' + names + '?');
+              } else {
+                renderGallery(galleryService);
+              }
+            }
+          }
           // La acción interna (mostrar menú/galería) ya se extrajo de d.text; al
           // historial va solo lo que realmente se mostró, nunca el marcador crudo.
           msgs.push({ role: 'assistant', content: shownTexts.join('\n\n') });
@@ -1837,13 +1880,22 @@
 
   function submitWidgetCustomerSpecialRequests(text, state, language) {
     try {
+      var resolvedSpecialRequests = (function() {
+        if (CORE.esSinPeticionEspecial(text)) return 'No';
+        if (customerDraft.pendingSpecialMention && /^(?:sí|si|yes|yep)$/i.test(text.trim())) {
+          return customerDraft.pendingSpecialMention;
+        }
+        return text.trim();
+      })();
       bookingFlow.dispatch({
         type: FLOW.EVENTS.SET_CUSTOMER_DATA,
         customer: customerDraft,
-        specialRequests: CORE.esSinPeticionEspecial(text) ? 'No' : text.trim(),
+        specialRequests: resolvedSpecialRequests,
         foodPreferences: widgetFlowIsRestaurant() ? CORE.applyFoodPreferences(state.foodPreferences, text, cfg) : null,
       });
       bookingFlow.dispatch({ type: FLOW.EVENTS.SHOW_SUMMARY });
+      customerDraft.pendingSpecialMention = null;
+      saveCustomerDraft();
     } catch (error) {
       addMsg('bot', error.message || (language === 'en' ? 'Please take a moment to check your details.' : 'Por favor, revisa tus datos un momento.'));
     }

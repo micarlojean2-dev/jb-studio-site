@@ -1077,6 +1077,16 @@ window.JBChatCore = (function () {
   // petición especial. [BUG-MEMORIA-ADELANTADA]
   var NO_SPECIAL_MENTION_RE = /\bno\s+tengo\s+petici[oó]n(?:es)?\s+especial(?:es)?\b|\bsin\s+petici[oó]n(?:es)?\s+especial(?:es)?\b|\bninguna\s+petici[oó]n\s+especial(?:es)?\b/i;
 
+  // Detecta si un mensaje de datos del cliente (ej. respuesta al nombre o teléfono)
+  // contiene una mención de alergia, sensibilidad o preferencia. No reemplaza el regex de negación.
+  function looksLikeSpecialMention(text) {
+    if (!text || typeof text !== 'string') return false;
+    var t = text.trim();
+    if (t.length < 20) return false;
+    var allergyKeywords = /\b(?:alergia|al[eé]rgic[oa]s?|sensibles?|sensibilidad|sensibilidades|intolerancia|intolerantes?|no\s+[Pp]ued[oe]|evitar|evito|prefiero|preferencias?|dermatitis|eccema|eczema|reacci[oó]n(?:es)?)\b/i;
+    return allergyKeywords.test(t);
+  }
+
   function valorValido(field, t) {
       if (field === 'email')    return EMAIL_RE2.test(t) || /^(no|ninguno|skip|omitir)$/i.test(t.trim());
       if (field === 'telefono') return t.replace(/\D/g, '').length >= 7;
@@ -1142,7 +1152,7 @@ window.JBChatCore = (function () {
 
     var explicitMatch = s.match(/\b(?:me\s+llamo|soy|mi\s+nombre\s+es)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ' -]{1,50})/i);
     if (explicitMatch && explicitMatch[1]) {
-      var candExplicit = explicitMatch[1].trim();
+      var candExplicit = explicitMatch[1].replace(/\s+(?:y\s+tengo|tengo|pero|con)\b.*$/i, '').replace(/[,;.].*$/, '').trim();
       if (valorValido('nombre', candExplicit) && candExplicit.split(/\s+/).length <= 4) return candExplicit;
     }
 
@@ -1488,6 +1498,7 @@ window.JBChatCore = (function () {
     generalPhotosIntro: generalPhotosIntro,
     limpiarNombre: limpiarNombre,
     esSinPeticionEspecial: esSinPeticionEspecial,
+    looksLikeSpecialMention: looksLikeSpecialMention,
     RESUMEN_ICONOS: RESUMEN_ICONOS,
     summaryLabel: summaryLabel,
     genIdempotencyKey: genIdempotencyKey,
