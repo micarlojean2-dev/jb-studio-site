@@ -5,6 +5,18 @@ import { sendBillingAlertEmail } from '../lib/reservation-emails.js';
 
 initSentry();
 
+// Fire-and-forget heartbeat to Better Stack. No afecta el response del
+// webhook aunque Better Stack esté lento o caiga. Timeout de 2 s.
+async function notifyHeartbeat(eventType) {
+  const url = process.env.STRIPE_WEBHOOK_HEARTBEAT_URL;
+  if (!url) return;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2000);
+  fetch(url, { signal: controller.signal, method: 'HEAD' })
+    .catch(() => {}) // intentionally swallow — heartbeat no es crítico
+    .finally(() => clearTimeout(timeout));
+}
+
 // Disable Vercel's body parser — Stripe needs the raw body to verify signature
 export const config = { api: { bodyParser: false } };
 
@@ -398,6 +410,7 @@ export default async function handler(req, res) {
           }
         } catch (e) {
           console.error('[stripe-webhook] subscription.deleted email error:', e.message);
+          captureApiException(e, { clientId, feature: 'email_owner', route: '/api/stripe-webhook' });
         }
         break;
       }
@@ -467,6 +480,9 @@ export default async function handler(req, res) {
     // podría producir un loop de reintentos sobre un error que no se va a
     // resolver solo. El evento ya quedó marcado como procesado arriba.
   }
+
+  // Latido de vida — no bloquea el response aunque falle o corte.
+  notifyHeartbeat(event?.type);
 
   return res.status(200).json({ received: true });
 }
