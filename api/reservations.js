@@ -17,17 +17,28 @@ let redis  = new Redis({
 
 const FROM = 'reservas@jbstudio.app';
 
-// ── Rate limit: 5 reservas/IP/hora ──────────────────────────────────────────
-const ipStore = new Map();
-const HOUR_MS = 60 * 60 * 1000;
-const RPH     = 5;
+// ── Centralized Redis rate limit: 5 reservas/IP/hora ────────────────────────
+const RESERVATION_RATE_LIMIT_RPH = 5;
+const RESERVATION_RATE_LIMIT_WINDOW_SEC = 3600;
 
-function checkRateLimit(ip) {
-  const now = Date.now();
-  if (!ipStore.has(ip)) ipStore.set(ip, { count: 0, ts: now });
-  const d = ipStore.get(ip);
-  if (now - d.ts > HOUR_MS) { d.count = 0; d.ts = now; }
-  return ++d.count <= RPH;
+async function checkRedisReservationRateLimit(redisClient, ip, limit = RESERVATION_RATE_LIMIT_RPH, windowSec = RESERVATION_RATE_LIMIT_WINDOW_SEC) {
+  if (!ip || ip === 'unknown' || !redisClient) return { ok: true, count: 1, limit };
+  try {
+    const key = `ratelimit:reservations:${ip}`;
+    if (typeof redisClient.incr === 'function') {
+      const count = await redisClient.incr(key);
+      if (count === 1 && typeof redisClient.expire === 'function') {
+        await redisClient.expire(key, windowSec);
+      }
+      return { ok: count <= limit, count, limit, remaining: Math.max(0, limit - count) };
+    }
+    const current = Number(await redisClient.get(key) || 0) + 1;
+    await redisClient.set(key, current, { ex: windowSec });
+    return { ok: current <= limit, count: current, limit, remaining: Math.max(0, limit - current) };
+  } catch (err) {
+    console.error('[api/reservations] rate limit redis error:', err.message);
+    return { ok: true, count: 1, limit, remaining: limit - 1 };
+  }
 }
 
 // ── Email helpers ────────────────────────────────────────────────────────────
@@ -1031,8 +1042,15 @@ export default async function handler(req, res) {
   const isTestBypass = testBypassSecret !== '' && (queryBypass === testBypassSecret || headerVal === testBypassSecret);
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
-  if (!isTestBypass && !checkRateLimit(ip))
-    return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
+  if (!isTestBypass) {
+    const rl = await checkRedisReservationRateLimit(redis, ip);
+    if (!rl.ok) {
+      return res.status(429).json({
+        error: 'Too many requests',
+        message: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.',
+      });
+    }
+  }
 
   const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, selectedReservationId, idempotencyKey, language, previewToken, service, date, people } = req.body || {};
 
@@ -1454,6 +1472,34 @@ export default async function handler(req, res) {
         mensaje: 'Ya existe una reserva con estos datos.',
       });
     }
+
+    // ── Límite de reservas activas simultáneas por contacto (por defecto 3) ──
+    const maxActive = (typeof client.maxActiveReservationsPerContact === 'number' && client.maxActiveReservationsPerContact > 0)
+      ? client.maxActiveReservationsPerContact
+      : 3;
+    const todayISO = nowEnZona(client.timezone).toISOString().slice(0, 10);
+    const activeFutureCount = (existentesConKey || []).filter((r) => {
+      if (!activa(r)) return false;
+      const isFutureOrToday = (r.fechaISO || '') >= todayISO;
+      if (!isFutureOrToday) return false;
+      return (reservation.email && contactMatches(r.email, reservation.email)) ||
+             (reservation.telefono && contactMatches(r.telefono, reservation.telefono));
+    }).length;
+
+    if (activeFutureCount >= maxActive) {
+      await redis.del(lockKey).catch(() => {});
+      const isEn = reservation.language === 'en' || client.language === 'en';
+      return res.status(200).json({
+        ok: false,
+        reservationCreated: false,
+        motivo: 'max_active_reservations',
+        activeCount: activeFutureCount,
+        maxAllowed: maxActive,
+        mensaje: isEn
+          ? `You already have ${activeFutureCount} active appointments with this business. Please attend, reschedule, or cancel an existing appointment before booking a new one.`
+          : `Ya tienes ${activeFutureCount} reservas activas para este negocio. Por favor gestiona o cancela una de tus citas antes de agendar otra.`,
+      });
+    }
     const clientForValidation = { ...client, __reservationBarberPreference: reservation.barberPreference };
     const v = validarReserva(clientForValidation, reservation.fechaISO, reservation.horaISO, reservation.servicio, undefined, existentes);
     if (!v.ok) {
@@ -1542,6 +1588,6 @@ export const __test = { runDigest, digestHtml, digestBloque, destinatariosAviso,
   parseFechaISO, normalizeHora, normalizePersonas, validarReserva, reservationTemplate,
   configuredStaff, duplicateReservationKey, idempotencyFingerprint, reservationActionUrl, reservationEmailHtml,
   sendReservationEmails, resendMessageId, releaseInactiveIdempotencyLock, reservationLanguage, publicReservationView,
-  nowEnZona, durationFor, actionTokenHash, tokenMatches, actionTokenState, actionTokenIsActive, sameChatContact, chatReservationView,
+  nowEnZona, durationFor, actionTokenHash, tokenMatches, actionTokenState, actionTokenIsActive, sameChatContact, chatReservationView, checkRedisReservationRateLimit,
   actionTokenExpiry, migrateLegacyActionToken, obtenerHuecosDisponibles, isStrictIsoDate, formatSlotDate, getAvailableSlots, getAvailableDates,
   setRedisForTests(value) { redis = value; } };

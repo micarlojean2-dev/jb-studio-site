@@ -30,11 +30,59 @@ let redis = new Redis({
 });
 let stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock');
 
-function auth(req) {
+import { timingSafeEqual } from 'node:crypto';
+
+function safeTokenCompare(provided, expected) {
+  if (!provided || !expected) return false;
+  const provBuf = Buffer.from(String(provided));
+  const expBuf = Buffer.from(String(expected));
+  if (provBuf.length !== expBuf.length) return false;
+  return timingSafeEqual(provBuf, expBuf);
+}
+
+function verifyAdminToken(req) {
   const t = req.headers['x-admin-token'] || req.query?.adminKey;
+  if (!t) return false;
   const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
-  if (testBypassSecret !== '' && t === testBypassSecret) return true;
-  return process.env.ADMIN_TOKEN && t === process.env.ADMIN_TOKEN;
+  if (testBypassSecret !== '' && safeTokenCompare(t, testBypassSecret)) return true;
+  const adminToken = process.env.ADMIN_TOKEN || '';
+  if (!adminToken) return false;
+  return safeTokenCompare(t, adminToken);
+}
+
+const ADMIN_FAILED_LIMIT = 10;
+const ADMIN_FAILED_WINDOW_SEC = 3600;
+
+async function checkAdminFailedRateLimit(redisClient, ip) {
+  if (!ip || ip === 'unknown') return { blocked: false };
+  try {
+    const key = `ratelimit:admin_failed:${ip}`;
+    const count = await redisClient.get(key);
+    return { blocked: Number(count || 0) >= ADMIN_FAILED_LIMIT, count: Number(count || 0) };
+  } catch (err) {
+    return { blocked: false };
+  }
+}
+
+async function recordAdminFailedAttempt(redisClient, ip) {
+  if (!ip || ip === 'unknown' || !redisClient) return;
+  try {
+    const key = `ratelimit:admin_failed:${ip}`;
+    if (typeof redisClient.incr === 'function') {
+      const count = await redisClient.incr(key);
+      if (count === 1 && typeof redisClient.expire === 'function') await redisClient.expire(key, ADMIN_FAILED_WINDOW_SEC);
+      return;
+    }
+    const count = Number(await redisClient.get(key) || 0) + 1;
+    await redisClient.set(key, count, { ex: ADMIN_FAILED_WINDOW_SEC });
+  } catch (err) {}
+}
+
+async function resetAdminFailedAttempts(redisClient, ip) {
+  if (!ip || ip === 'unknown') return;
+  try {
+    await redisClient.del(`ratelimit:admin_failed:${ip}`);
+  } catch (err) {}
 }
 
 // Same defaults as admin.html's wizard (PLAN_FEATURES) — kept in sync manually
@@ -395,7 +443,17 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-token');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
-  if (!auth(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
+  const rl = await checkAdminFailedRateLimit(redis, ip);
+  if (rl.blocked) {
+    return res.status(429).json({ error: 'Too many failed authentication attempts. Please try again later.' });
+  }
+
+  if (!verifyAdminToken(req)) {
+    await recordAdminFailedAttempt(redis, ip);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  await resetAdminFailedAttempts(redis, ip);
 
   // ── POST ?action=detect-timezone: Geoapify lookup for the creator. ──────
   // The provider key is read only in this server function; callers receive
@@ -988,6 +1046,11 @@ export default async function handler(req, res) {
 }
 
 export const __test = {
+  safeTokenCompare,
+  verifyAdminToken,
+  checkAdminFailedRateLimit,
+  recordAdminFailedAttempt,
+  resetAdminFailedAttempts,
   setRedisForTests(value) { redis = value; },
   setStripeForTests(value) { stripe = value; },
 };

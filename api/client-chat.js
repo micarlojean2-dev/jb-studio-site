@@ -16,25 +16,45 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-// ── In-memory rate limit (30 req/IP/hour) ──────────────────────────────────
-const ipStore = new Map();
-const HOUR_MS = 60 * 60 * 1000;
-const RPH     = 30;
+// ── Centralized Redis rate limit (30 req/IP/hour) ──────────────────────────
+const CHAT_RATE_LIMIT_RPH = 30;
+const CHAT_RATE_LIMIT_WINDOW_SEC = 3600;
 
-function checkRateLimit(ip) {
-  const now = Date.now();
-  if (!ipStore.has(ip)) ipStore.set(ip, { count: 0, ts: now });
-  const d = ipStore.get(ip);
-  if (now - d.ts > HOUR_MS) { d.count = 0; d.ts = now; }
-  return ++d.count <= RPH;
+async function checkRedisRateLimit(redisClient, ip, limit = CHAT_RATE_LIMIT_RPH, windowSec = CHAT_RATE_LIMIT_WINDOW_SEC) {
+  if (!ip || ip === 'unknown' || !redisClient) return { ok: true, count: 1, limit };
+  try {
+    const key = `ratelimit:chat:${ip}`;
+    if (typeof redisClient.incr === 'function') {
+      const count = await redisClient.incr(key);
+      if (count === 1 && typeof redisClient.expire === 'function') {
+        await redisClient.expire(key, windowSec);
+      }
+      return { ok: count <= limit, count, limit, remaining: Math.max(0, limit - count) };
+    }
+    const current = Number(await redisClient.get(key) || 0) + 1;
+    await redisClient.set(key, current, { ex: windowSec });
+    return { ok: current <= limit, count: current, limit, remaining: Math.max(0, limit - current) };
+  } catch (err) {
+    console.error('[api/client-chat] rate limit redis error:', err.message);
+    return { ok: true, count: 1, limit, remaining: limit - 1 };
+  }
 }
 
-let tick = 0;
-function maybeCleanup() {
-  if (++tick < 500) return;
-  tick = 0;
-  const cutoff = Date.now() - HOUR_MS;
-  for (const [ip, d] of ipStore) if (d.ts < cutoff) ipStore.delete(ip);
+// ── Obvious jailbreak patterns filter (saves tokens) ───────────────────────
+const JAILBREAK_PATTERNS = [
+  /\b(?:ignore|forget|disregard|override|bypass)\s+(?:all\s+)?(?:previous|prior|above|system)\s+(?:instructions?|rules?|directives?|prompts?)\b/i,
+  /\b(?:ignora|olvida|descarta|anula)\s+(?:todas?\s+)?(?:las?\s+)?(?:instrucciones|reglas|directivas|prompts?)\s+(?:anteriores|previas|de\s+arriba)\b/i,
+  /\b(?:you\s+are\s+now|act\s+as|pretend\s+to\s+be)\s+(?:DAN|developer\s+mode|jailbreak|unrestricted|an\s+unfiltered)\b/i,
+  /\b(?:ahora\s+eres|act[uú]a\s+como|finge\s+ser)\s+(?:DAN|modo\s+desarrollador|jailbreak|sin\s+restricciones)\b/i,
+  /\b(?:reveal|show|print|output|display)\s+(?:your\s+)?(?:system\s+prompt|initial\s+instructions|base\s+prompt|secret\s+key|api\s+key)\b/i,
+  /\b(?:revela|muestra|imprime|dime)\s+(?:tu\s+)?(?:prompt\s+de\s+sistema|instrucciones\s+iniciales|claves?\s+secretas?|api\s+key)\b/i,
+  /^\s*(?:system|system\s+directive|developer\s+mode)\s*:/i,
+];
+
+function isObviousJailbreak(text) {
+  if (!text) return false;
+  const t = String(text).trim();
+  return JAILBREAK_PATTERNS.some((pattern) => pattern.test(t));
 }
 
 // ── Provider config (OpenAI gpt-4o-mini) ──────────────────────────────────
@@ -689,13 +709,19 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
-  maybeCleanup();
   const queryBypass = req.query?.__bypass || (req.url && new URL(req.url, 'https://jbstudio.app').searchParams.get('__bypass'));
   const headerVal = (req.headers['x-test-bypass'] || '').trim();
   const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
   const isTestBypass = testBypassSecret !== '' && (queryBypass === testBypassSecret || headerVal === testBypassSecret);
-  if (!isTestBypass && !checkRateLimit(ip))
-    return res.status(429).json({ error: 'Too many requests. Please wait before sending more messages.' });
+  if (!isTestBypass) {
+    const rl = await checkRedisRateLimit(redis, ip);
+    if (!rl.ok) {
+      return res.status(429).json({
+        error: 'Too many requests',
+        message: 'Has alcanzado el límite de mensajes por hora. Por favor espera un momento antes de continuar.',
+      });
+    }
+  }
 
   const { clientId, messages, previewToken, language, reservationContext, action, correctionText, preConfirmationContext } = req.body || {};
 
@@ -786,6 +812,17 @@ export default async function handler(req, res) {
 
 IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, dile exactamente esta idea con tus palabras: "No puedo confirmar citas en este momento, pero puedo ayudarte con información del negocio." Si tienes teléfono o correo del negocio, ofrécelo para que se la agenden ahí. Sigue ayudando con servicios, precios, horarios y dudas.\n\nNUNCA des una razón técnica ni menciones sistemas, configuración, instalación, activación, datos que falten, pruebas, demos, ni que algo "estará listo pronto": eso es interno y al cliente no le importa. Nunca pidas datos para una cita ni digas que la has agendado.`;
     }
+
+    const lastUserMsg = [...(messages || [])].reverse().find(m => m?.role === 'user')?.content || '';
+    if (isObviousJailbreak(lastUserMsg)) {
+      return res.status(200).json({
+        text: isEnglish
+          ? 'I can only assist with services, hours, and bookings for this business. How can I help you today?'
+          : 'Solo puedo ayudarte con información de servicios, horarios y reservas de este negocio. ¿En qué te puedo ayudar hoy?',
+        interpretation: emptyInterpretation(),
+      });
+    }
+
     const { text, interpretation } = await callProvider(
       provider, messages, systemPrompt, client, clientId, { activeLanguage },
     );
@@ -981,4 +1018,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, serviceQuestionContext, serviceQuestionInstruction, serviceQuestionAmbiguityText, validCorrection, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock, availabilityContextBlock };
+export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, serviceQuestionContext, serviceQuestionInstruction, serviceQuestionAmbiguityText, validCorrection, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock, availabilityContextBlock, checkRedisRateLimit, isObviousJailbreak };
