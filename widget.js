@@ -1074,7 +1074,7 @@
         var price = document.createElement('div');
         price.className = 'jbw-card-price';
         price.style.color = cfg.color;
-        price.textContent = [item.precio, item.duracion].filter(Boolean).join(' · ');
+        price.textContent = CORE.formatServicePriceAndDuration(item.precio, item.duracion, cfg.language);
         card.appendChild(price);
       }
 
@@ -1125,13 +1125,15 @@
     });
 
     wrap.appendChild(row);
-    if (galleryMode) {
+    if (galleryMode && (!bookingFlow || bookingFlow.getState().step !== FLOW.STEPS.SERVICE_SELECTION)) {
       var continueChat = document.createElement('button');
       continueChat.type = 'button';
       continueChat.className = 'jbw-gallery-more';
       continueChat.textContent = cfg.language === 'en' ? 'Continue chatting' : 'Seguir conversando';
       continueChat.addEventListener('click', function () { wrap.remove(); setWidgetGalleryInputLocked(false); });
       wrap.appendChild(continueChat);
+    } else if (bookingFlow && bookingFlow.getState().step === FLOW.STEPS.SERVICE_SELECTION) {
+      appendWidgetBookingQuestionButton(wrap, bookingFlow.getState(), cfg.language);
     }
     msgsEl.appendChild(wrap);
     // "estaAlFondo" mide contra el scrollHeight actual: justo tras crecer con
@@ -1218,7 +1220,7 @@
         name.className = 'jbw-gallery-name';
         name.textContent = entry.item && entry.item.nombre ? entry.item.nombre : CORE.galleryHeading(cfg.language);
         copy.appendChild(name);
-        var meta = [entry.item && entry.item.precio, entry.item && entry.item.duracion].filter(Boolean).join(' · ');
+        var meta = entry.item ? CORE.formatServicePriceAndDuration(entry.item.precio, entry.item.duracion, cfg.language) : '';
         if (meta) { var details = document.createElement('div'); details.className = 'jbw-gallery-meta'; details.textContent = meta; copy.appendChild(details); }
         card.appendChild(copy);
         grid.appendChild(card);
@@ -1466,6 +1468,20 @@
       .then(function (d) {
         hideWidgetTyping();
         if (d && d.text) addMsg('bot', d.text);
+        if (bookingFlow && CORE.isChangeServiceRequest(text)) {
+          var changeBtnWrap = document.createElement('div');
+          changeBtnWrap.className = 'jbw-quick';
+          var changeBtn = document.createElement('button');
+          changeBtn.type = 'button';
+          changeBtn.className = 'jbw-quick-btn';
+          changeBtn.textContent = (cfg.language === 'en' ? '✏️ Change service' : '✏️ Cambiar servicio');
+          changeBtn.addEventListener('click', function () {
+            changeBtnWrap.remove();
+            bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_SERVICE });
+          });
+          changeBtnWrap.appendChild(changeBtn);
+          msgsEl.appendChild(changeBtnWrap);
+        }
         // La respuesta se agregó después del wrap de botones (SUMMARY/
         // CONFIRMATION), que ya estaba en el DOM desde antes: se reubica al
         // final para que siga la conversación en vez de quedar arriba,
@@ -1775,11 +1791,7 @@
           if (requestedService) {
             if (startWidgetBookingFlowV2(lang, interp.entities)) return;
           } else {
-            addMsg('bot', lang === 'en'
-              ? 'Choose a service to start your booking:'
-              : 'Elige un servicio para comenzar tu reserva:');
-            renderWidgetServicesWithPhotos();
-            return;
+            if (startWidgetBookingFlowV2(lang, null)) return;
           }
           addMsg('bot', lang === 'en'
             ? 'We could not start the booking flow. Please try again in a moment.'

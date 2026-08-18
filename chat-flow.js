@@ -297,7 +297,7 @@
           next.tablePreference = event.tablePreference == null || String(event.tablePreference).trim() === '' ? null : String(event.tablePreference).trim();
           break;
         case EVENTS.EDIT_SERVICE:
-          if ([STEPS.SUMMARY, STEPS.CONFIRMATION].indexOf(next.step) === -1) throw new Error('EDIT_SERVICE solo se permite desde SUMMARY o CONFIRMATION.');
+          if ([STEPS.CONFIRMED].indexOf(next.step) !== -1) throw new Error('EDIT_SERVICE no está permitido en una reserva ya confirmada.');
           next.service = null; next.date = null; next.time = null; next.people = null;
           next.step = STEPS.SERVICE_SELECTION;
           break;

@@ -1248,6 +1248,35 @@ window.JBChatCore = (function () {
     return (isRestaurant ? 'Quiero reservar este plato: ' : 'Quiero reservar: ') + nom;
   }
 
+  function formatServicePrice(precio) {
+    if (precio == null) return '';
+    var s = String(precio).trim();
+    if (!s) return '';
+    if (/^[\$€£]|^(?:USD|MXN|COP|EUR|ARS|CLP|PEN)\b/i.test(s)) return s;
+    return '$' + s;
+  }
+
+  function formatServiceDuration(duracion, lang) {
+    if (duracion == null) return '';
+    var s = String(duracion).trim();
+    if (!s) return '';
+    if (/^\d+$/.test(s)) return s + ' min';
+    return s;
+  }
+
+  function formatServicePriceAndDuration(precio, duracion, lang) {
+    var p = formatServicePrice(precio);
+    var d = formatServiceDuration(duracion, lang);
+    return [p, d].filter(Boolean).join(' · ');
+  }
+
+  function isChangeServiceRequest(text) {
+    if (!text) return false;
+    var t = String(text).trim().toLowerCase();
+    var re = /(?:cambiar|cambio|elegir|otro|otra|seleccionar|modificar)\s+(?:de\s+)?(?:servicio|tratamiento|corte|opci[oó]n)|(?:quiero|deseo|puedo)\s+(?:otro|otra|cambiar)|(?:change|switch|different|another)\s+(?:the\s+)?(?:service|option)|(?:choose|pick)\s+(?:another|different)/i;
+    return re.test(t);
+  }
+
   // Pregunta de "petición especial" del paso de reserva. Vivía duplicada en
   // widget.js y asistente.html; el branch de barbería y el general (belleza)
   // nunca tuvieron versión en inglés, así que un cliente en inglés recibía la
@@ -1523,8 +1552,10 @@ window.JBChatCore = (function () {
     parseCustomerDraft: parseCustomerDraft,
     isGeneralQuestionOrComment: isGeneralQuestionOrComment,
     customerDataHoldMessage: customerDataHoldMessage,
-    missingCustomerField: missingCustomerField,
-    askMissingCustomerField: askMissingCustomerField,
+    formatServicePrice: formatServicePrice,
+    formatServiceDuration: formatServiceDuration,
+    formatServicePriceAndDuration: formatServicePriceAndDuration,
+    isChangeServiceRequest: isChangeServiceRequest,
     isPopular: isPopular,
     galleryHeading: galleryHeading,
     bookServiceLabel: bookServiceLabel,
