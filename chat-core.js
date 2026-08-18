@@ -1282,19 +1282,17 @@ window.JBChatCore = (function () {
     var n = cfg.businessName || (cfg.language === 'en' ? 'this business' : 'este negocio');
     var restaurant = templateId(cfg) === 'restaurant';
     if (cfg.language === 'en') {
-      if (restaurant) return "Hi! 😊 I'm " + n + "'s assistant.\n\nI can help you with:\n\n🍽️ Explore the menu\n" + (puedeReservar ? '📅 Reserve a table\n' : '') + '💰 Check prices\n\nWhat would you like?';
+      if (restaurant) return "Hi! 😊 I'm " + n + "'s assistant.\n\nI can help you with:\n\n🍽️ Explore the menu\n" + (puedeReservar ? '📅 Reserve a table\n' : '') + '\nWhat would you like?';
       return "Hi! 😊 I'm " + n + "'s assistant.\n\nI can help you with:\n\n" +
              '✨ Discover our services\n' +
              (puedeReservar ? '📅 Book an appointment\n' : '') +
-             '💰 Check prices\n\n' +
-             'What do you need?';
+             '\nWhat do you need?';
     }
-    if (restaurant) return '¡Hola! 😊 Soy el asistente de ' + n + '.\n\nPuedo ayudarte con:\n\n🍽️ Conocer el menú\n' + (puedeReservar ? '📅 Reservar una mesa\n' : '') + '💰 Consultar precios\n\n¿Qué te gustaría ver?';
+    if (restaurant) return '¡Hola! 😊 Soy el asistente de ' + n + '.\n\nPuedo ayudarte con:\n\n🍽️ Conocer el menú\n' + (puedeReservar ? '📅 Reservar una mesa\n' : '') + '\n¿Qué te gustaría ver?';
     return '¡Hola! 😊 Soy el asistente de ' + n + '.\n\nPuedo ayudarte con:\n\n' +
            '✨ Conocer nuestros servicios\n' +
            (puedeReservar ? '📅 Reservar una cita\n' : '') +
-           '💰 Consultar precios\n\n' +
-           '¿Qué necesitas?';
+           '\n¿Qué necesitas?';
   }
 
   function accionesRapidas(cfg, puedeReservar) {
@@ -1302,7 +1300,6 @@ window.JBChatCore = (function () {
     if (templateId(cfg) === 'restaurant') {
       var menu = [{ label: en ? '🍽️ See menu' : '🍽️ Ver menú', msg: en ? 'I want to see the menu' : 'Quiero ver el menú' }];
       if (puedeReservar) menu.push({ label: en ? '📅 Reserve table' : '📅 Reservar mesa', msg: en ? 'I want to reserve a table' : 'Quiero reservar una mesa' });
-      menu.push({ label: en ? '💰 Prices' : '💰 Precios', msg: en ? 'What are the menu prices?' : '¿Cuáles son los precios del menú?' });
       return menu;
     }
     var a = [{ label: en ? '✨ See services' : '✨ Ver servicios',
@@ -1311,8 +1308,6 @@ window.JBChatCore = (function () {
       a.push({ label: en ? '📅 Book' : '📅 Reservar',
                msg: en ? 'I want to book an appointment' : 'Quiero reservar una cita' });
     }
-    a.push({ label: en ? '💰 Prices' : '💰 Precios',
-             msg: en ? 'What are your prices?' : '¿Cuáles son los precios?' });
     return a;
   }
 

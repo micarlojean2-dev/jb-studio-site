@@ -210,6 +210,7 @@
   var DRAFT_SESS = SESS + '_customer_draft_v2';
   var customerDraft = { name: null, phone: null, email: null };
   var specialRequestsAsked = false;
+  var customerIntroGiven = false;
 
   function updateWidgetBookingInputState(step) {
     var lang = cfg.language === 'en' ? 'en' : 'es';
@@ -244,6 +245,7 @@
   function resetCustomerDraft() {
     customerDraft = { name: null, phone: null, email: null, pendingSpecialMention: null };
     specialRequestsAsked = false;
+    customerIntroGiven = false;
     if (nameConfirmationWrap && nameConfirmationWrap.parentNode) nameConfirmationWrap.remove();
     nameConfirmationWrap = null;
     try { sessionStorage.removeItem(DRAFT_SESS); } catch (e) {}
@@ -806,9 +808,9 @@
     }
     if (state.step === FLOW.STEPS.SERVICE_SELECTION) {
       if (autoSelectingService) return;
-      addMsg('bot', lang === 'en' ? 'Choose a service.' : 'Elige un servicio.');
-      widgetFlowServices().forEach(function (service) { var name = widgetFlowServiceName(service); if (name) button(name, function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_SERVICE, service: name }); }); });
-      appendWidgetBookingQuestionButton(wrap, state, lang);
+      addMsg('bot', lang === 'en' ? 'Choose a service to continue with your booking:' : 'Elige un servicio para continuar con tu reserva:');
+      renderWidgetServicesWithPhotos();
+      return;
     } else if (state.step === FLOW.STEPS.BARBER_SELECTION) {
       addMsg('bot', lang === 'en' ? 'Choose a barber, or any available barber.' : 'Elige un barbero o cualquiera disponible.');
       button(lang === 'en' ? 'Any available barber' : 'Cualquiera', function () { wrap.remove(); bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_BARBER, barberPreference: null }); });
@@ -857,6 +859,12 @@
       if (widgetFlowActions && widgetFlowActions.parentNode) widgetFlowActions.remove();
       var missingField = CORE.missingCustomerField(customerDraft);
       if (missingField) {
+        if (!customerIntroGiven && !customerDraft.name && !customerDraft.phone && !customerDraft.email) {
+          customerIntroGiven = true;
+          addMsg('bot', lang === 'en'
+            ? 'Now I will ask for a few details for your booking 😊 Don\'t worry if you make a mistake, you\'ll be able to review and change them before confirming.'
+            : 'Ahora te voy a pedir algunos datos para tu reserva 😊 No te preocupes si cometes un error, vas a poder corregirlos al final antes de confirmar.');
+        }
         addMsg('bot', CORE.askMissingCustomerField(missingField, lang));
       } else if (!specialRequestsAsked) {
         if (customerDraft.pendingSpecialMention) {
@@ -1101,6 +1109,10 @@
           return;
         }
         addMsg('user', userMsg);
+        if (bookingFlow && bookingFlow.getState().step === FLOW.STEPS.SERVICE_SELECTION) {
+          bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_SERVICE, service: item.nombre });
+          return;
+        }
         if (!startWidgetBookingFlowV2(cfg.language, { service: item.nombre })) {
           var lang = cfg.language === 'en' ? 'en' : 'es';
           addMsg('bot', lang === 'en'
@@ -1759,7 +1771,16 @@
             save();
             return;
           }
-          if (startWidgetBookingFlowV2(lang, interp ? interp.entities : null)) return;
+          var requestedService = interp && interp.entities && (interp.entities.service || interp.entities.servicio);
+          if (requestedService) {
+            if (startWidgetBookingFlowV2(lang, interp.entities)) return;
+          } else {
+            addMsg('bot', lang === 'en'
+              ? 'Choose a service to start your booking:'
+              : 'Elige un servicio para comenzar tu reserva:');
+            renderWidgetServicesWithPhotos();
+            return;
+          }
           addMsg('bot', lang === 'en'
             ? 'We could not start the booking flow. Please try again in a moment.'
             : 'No pudimos iniciar la reserva. Inténtalo de nuevo en un momento.');
