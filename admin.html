@@ -4798,10 +4798,19 @@ LÍMITES ESTRICTOS:
         ? (c.paymentStatus === 'past_due' || c.paymentStatus === 'failed')
         : c.paymentFailed;
 
+      // Cliente tiene customer_id en Stripe PERO no ha pagado completado
+      // (paymentStatus no es 'paid' ni 'trialing') → necesita regenerar link
+      const needsRegenerateLink = c.stripeCustomerId &&
+        c.paymentStatus &&
+        c.paymentStatus !== 'paid' &&
+        c.paymentStatus !== 'trialing';
+
       const genWrap = document.getElementById('pago-generate-wrap');
       genWrap.innerHTML = '';
       if (failed) {
         genWrap.innerHTML = `<button type="button" class="action-btn ct-pay-action" data-cid="${escHTML(c.id)}" data-plan="${escHTML(c.plan)}" style="margin-top:0;width:100%;">Reintentar cobro</button>`;
+      } else if (needsRegenerateLink) {
+        genWrap.innerHTML = `<button type="button" class="action-btn ct-pay-action" data-cid="${escHTML(c.id)}" data-plan="${escHTML(c.plan)}" style="margin-top:0;width:100%;">Regenerar enlace de pago</button>`;
       } else if (!c.stripeCustomerId) {
         genWrap.innerHTML = `<button type="button" class="action-btn ct-pay-action" data-cid="${escHTML(c.id)}" data-plan="${escHTML(c.plan)}" style="margin-top:0;width:100%;">Generar enlace de pago</button>`;
       }
