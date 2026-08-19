@@ -336,6 +336,12 @@
     '#jbw-fab:active{transform:translateY(0);}',
     '#jbw-fab svg{flex-shrink:0;width:18px;height:18px;}',
 
+    // Animated text inside the FAB
+    '.jbw-fab-text{display:inline-block;opacity:1;',
+    'transition:opacity .35s cubic-bezier(.22,1,.36,1),transform .35s cubic-bezier(.22,1,.36,1);}',
+    '.jbw-fab-text.fade-out{opacity:0;transform:translateY(6px);}',
+    '.jbw-fab-text.fade-in{opacity:1;transform:translateY(0);}',
+
     // Pulso suave cada 4s. Se detiene con el panel abierto y respeta a quien
     // pidio menos movimiento en el sistema.
     // Respiración muy leve cada 5s: se nota por el rabillo del ojo sin
@@ -375,7 +381,7 @@
     '.jbw-dot{width:6px;height:6px;border-radius:50%;background:#4ade80;display:inline-block;}',
 
     '#jbw-msgs{flex:1;overflow-y:auto;padding:18px 16px;display:flex;',
-    'flex-direction:column;gap:14px;background:#fafafa;}',
+    'flex-direction:column;gap:14px;background:#fafafa;overscroll-behavior:contain;}',
     '#jbw-msgs::-webkit-scrollbar{width:4px;}',
     '#jbw-msgs::-webkit-scrollbar-thumb{background:rgba(0,0,0,.14);border-radius:2px;}',
 
@@ -480,7 +486,7 @@
   fab.className = 'jbw-pulsing ' + (SIDE_CSS === 'left' ? 'jbw-left' : 'jbw-right');
   fab.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="white" aria-hidden="true">' +
     '<path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>' +
-    '<span id="jbw-fab-label">Hola 👋</span>';
+    '<span id="jbw-fab-label" class="jbw-fab-text">Asistente</span>';
 
   var panel = document.createElement('div');
   panel.id = 'jbw-panel';
@@ -514,6 +520,9 @@
 
   document.body.appendChild(fab);
   document.body.appendChild(panel);
+
+  // Start FAB text cycling
+  startFabTextCycle();
 
   var msgsEl  = document.getElementById('jbw-msgs');
   var inp     = document.getElementById('jbw-inp');
@@ -1935,12 +1944,50 @@
   }
 
   // ── Toggle open / close ──────────────────────────────────────────────────
+  // FAB text cycling variables
+  var fabTexts = ['Asistente', '¿Te ayudo?'];
+  var fabTextIndex = 0;
+  var fabTextTimer = null;
+
+  function startFabTextCycle() {
+    if (fabTextTimer) clearInterval(fabTextTimer);
+    var label = document.getElementById('jbw-fab-label');
+    if (!label) return;
+    fabTextTimer = setInterval(function () {
+      if (panel.classList.contains('jbw-open')) return;
+      label.classList.add('fade-out');
+      setTimeout(function () {
+        fabTextIndex = (fabTextIndex + 1) % fabTexts.length;
+        label.textContent = fabTexts[fabTextIndex];
+        label.classList.remove('fade-out');
+      }, 350);
+    }, 2000);
+  }
+
+  function stopFabTextCycle() {
+    if (fabTextTimer) {
+      clearInterval(fabTextTimer);
+      fabTextTimer = null;
+    }
+    var label = document.getElementById('jbw-fab-label');
+    if (label) {
+      label.classList.remove('fade-out');
+    }
+  }
+
+  // ── Toggle open / close ──────────────────────────────────────────────────
   function setOpen(next) {
     open = next;
     panel.classList.toggle('jbw-open', open);
     fab.setAttribute('aria-expanded', String(open));
     // Sin pulso mientras el chat está abierto: ya no hay nada que anunciar.
     fab.classList.toggle('jbw-pulsing', !open);
+    // Start/stop text cycling based on panel state
+    if (open) {
+      stopFabTextCycle();
+    } else {
+      startFabTextCycle();
+    }
   }
 
   document.getElementById('jbw-close').addEventListener('click', function () { setOpen(false); });
