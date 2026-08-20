@@ -42,10 +42,15 @@ export default async function handler(req, res) {
     const client = await redis.get(`client:${clientId}`);
     if (!client) return res.status(404).json({ error: 'Client not found' });
 
-    // New clients already have a Stripe Customer and Subscription. Checkout
-    // would create a second subscription, so send them to Stripe's portal to
-    // add a payment method to the existing Customer instead.
-    if (client.stripeCustomerId) {
+    // Determine if client needs a trial (has customer_id but hasn't paid/trialed yet)
+    const needsTrial = client.stripeCustomerId &&
+      client.paymentStatus &&
+      client.paymentStatus !== 'paid' &&
+      client.paymentStatus !== 'trialing';
+
+    // If client has customer_id AND already paid/trialing -> Billing Portal for management
+    // If client has customer_id but hasn't paid/trialed (pending, past_due, failed, cancelled) -> Checkout with trial
+    if (client.stripeCustomerId && !needsTrial) {
       const session = await stripe.billingPortal.sessions.create({
         customer: client.stripeCustomerId,
         return_url: `https://jbstudio.app/reservas/${encodeURIComponent(clientId)}`,

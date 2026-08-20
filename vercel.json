@@ -82,6 +82,10 @@
     {
       "path": "/api/reservations?cron=digest",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/trial-expiry-fallback",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
