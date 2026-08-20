@@ -245,6 +245,21 @@
       text-decoration: none; display: inline-block; flex-shrink: 0;
       transition: background 0.2s ease;
     }
+    #paywall-modal { display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(0,0,0,0.85); justify-content: center; align-items: center; flex-direction: column; font-family: system-ui, -apple-system, sans-serif; }
+    #paywall-modal.visible { display: flex; }
+    .paywall-card { background: #fff; border-radius: 20px; padding: 48px 40px; max-width: 440px; width: 90%; text-align: center; box-shadow: 0 25px 60px rgba(0,0,0,0.4); }
+    .paywall-card .pw-icon { font-size: 48px; margin-bottom: 16px; }
+    .paywall-card .pw-title { font-size: 22px; font-weight: 700; color: #111; margin: 0 0 8px; }
+    .paywall-card .pw-sub { font-size: 14px; color: #666; margin: 0 0 32px; line-height: 1.5; }
+    .paywall-card .pw-plan { background: #f5f5f5; border-radius: 12px; padding: 16px; margin-bottom: 24px; }
+    .paywall-card .pw-plan-name { font-size: 13px; color: #888; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .paywall-card .pw-price { font-size: 36px; font-weight: 800; color: #111; margin: 0; }
+    .paywall-card .pw-price span { font-size: 16px; font-weight: 400; color: #666; }
+    .paywall-card .pw-checkout { display: block; width: 100%; padding: 16px; background: #635bff; color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; text-decoration: none; margin-bottom: 12px; transition: background 0.2s; box-sizing: border-box; }
+    .paywall-card .pw-checkout:hover { background: #514ac4; }
+    .paywall-card .pw-verify { display: block; width: 100%; padding: 12px; background: none; color: #635bff; border: 1.5px solid #635bff; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; transition: background 0.2s; box-sizing: border-box; }
+    .paywall-card .pw-verify:hover { background: #f0f0ff; }
+    .paywall-card .pw-footer { margin-top: 20px; font-size: 12px; color: #aaa; }
   </style>
 </head>
 <body data-sentry-page="client_panel">
@@ -593,7 +608,7 @@
           btnWrapV2.innerHTML = '';
         }
       }
-    } else if (s.paymentStatus === 'paid' || s.active) {
+    } else if (s.paymentStatus === 'paid' || (s.active && s.subscriptionStatus === 'active')) {
       if (bannerV2) bannerV2.style.display = 'none';
       banner.className = 'plan-banner paid';
       icon.textContent = '✅';
@@ -614,6 +629,7 @@
       title.textContent = tr('planInactive');
       sub.textContent = panelLanguage === 'en' ? 'No active subscription' : 'Sin suscripción activa';
       btnWrap.innerHTML = '';
+      if (s.checkoutUrl) showPaywall(s.checkoutUrl);
     }
   }
 
@@ -1045,7 +1061,7 @@
           btnWrapV2.innerHTML = '';
         }
       }
-    } else if (s.paymentStatus === 'paid' || s.active) {
+    } else if (s.paymentStatus === 'paid' || (s.active && s.subscriptionStatus === 'active')) {
       if (bannerV2) bannerV2.style.display = 'none';
       banner.className = 'plan-banner paid';
       icon.textContent = '✅';
@@ -1068,6 +1084,65 @@
       btnWrap.innerHTML = '';
     }
   }
+
+  function showPaywall(checkoutUrl) {
+    var modal = document.getElementById('paywall-modal');
+    if (!modal) return;
+    var card = modal.querySelector('.paywall-card');
+    var btn = modal.querySelector('.pw-checkout');
+    var biz = (window.clientId || '').replace(/-/g, ' ');
+    var planLabel = card.querySelector('.pw-plan-name');
+    var title = card.querySelector('.pw-title');
+    if (planLabel) planLabel.textContent = (biz.charAt(0).toUpperCase() + biz.slice(1)) + ' — Plan Pro';
+    if (title) title.textContent = panelLanguage === 'en' ? 'Complete your subscription' : 'Completa tu suscripción';
+    if (btn && checkoutUrl) {
+      btn.style.display = 'block';
+      btn.onclick = function() { window.location.href = checkoutUrl; };
+    } else if (btn) {
+      btn.style.display = 'none';
+    }
+    modal.classList.add('visible');
+  }
+
+  function hidePaywall() {
+    var modal = document.getElementById('paywall-modal');
+    if (modal) modal.classList.remove('visible');
+  }
+
+  function verifyPaymentAndReload() {
+    hidePaywall();
+    fetch('/api/client-config?clientId=' + encodeURIComponent(window.clientId) + '&token=' + encodeURIComponent(window.panelToken))
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.subscriptionStatus === 'active' || d.paymentStatus === 'paid') {
+          window.location.reload();
+        } else {
+          showPaywall(d.checkoutUrl || null);
+        }
+      })
+      .catch(function() { showPaywall(null); });
+  }
+
+  function openCheckout(checkoutUrl) {
+    if (checkoutUrl) window.location.href = checkoutUrl;
+  }
 </script>
+
+<!-- Paywall Modal -->
+<div id="paywall-modal">
+  <div class="paywall-card">
+    <div class="pw-icon">🔒</div>
+    <h2 class="pw-title">Completa tu suscripción</h2>
+    <p class="pw-sub">Para acceder a tu panel de gestión necesitas una suscripción activa.</p>
+    <div class="pw-plan">
+      <div class="pw-plan-name">JB Studio — Plan Pro</div>
+      <div class="pw-price">$65 <span>/mes</span></div>
+    </div>
+    <button class="pw-checkout" id="pw-checkout-btn">Contratar ahora</button>
+    <button class="pw-verify" id="pw-verify-btn" onclick="verifyPaymentAndReload()">Ya pagué — verificar</button>
+    <div class="pw-footer">Proceso 100% seguro · Cancela cuando quieras</div>
+  </div>
+</div>
+
 </body>
 </html>

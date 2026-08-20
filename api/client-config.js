@@ -477,8 +477,9 @@ export function createReservationsListApiHandler({ redis: store } = {}) {
   };
 }
 
-function createClientStatusHandler({ redis: store } = {}) {
+function createClientStatusHandler({ redis: store, stripe: stripeInstance } = {}) {
   const dataStore = store || redis;
+  const stripe = stripeInstance || new Stripe(process.env.STRIPE_SECRET_KEY);
   return async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin',  '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -503,6 +504,66 @@ function createClientStatusHandler({ redis: store } = {}) {
         ? new Date(Number(client.trial_end) * 1000).toISOString()
         : null;
 
+      let subscriptionStatus = null;
+      if (client.stripeSubscriptionId) {
+        try {
+          const sub = await stripe.subscriptions.retrieve(client.stripeSubscriptionId);
+          subscriptionStatus = sub.status;
+        } catch (_) {
+          subscriptionStatus = null;
+        }
+      }
+
+      const hasRealSubscription = Boolean(
+        client.stripeSubscriptionId &&
+        subscriptionStatus &&
+        (subscriptionStatus === 'active' || subscriptionStatus === 'trialing')
+      );
+
+      let checkoutUrl = null;
+      if (!hasRealSubscription && client.stripeCustomerId) {
+        if (client.stripeCheckoutSessionId) {
+          try {
+            const existing = await stripe.checkout.sessions.retrieve(client.stripeCheckoutSessionId);
+            if (existing.status === 'open') {
+              checkoutUrl = existing.url;
+            }
+          } catch (_) {
+            checkoutUrl = null;
+          }
+        }
+        if (!checkoutUrl) {
+          try {
+            const PRICE_IDS = {
+              basic: process.env.STRIPE_PRICE_BASIC,
+              pro:   process.env.STRIPE_PRICE_PRO,
+            };
+            const priceId = PRICE_IDS[client.plan];
+            if (priceId) {
+              const session = await stripe.checkout.sessions.create({
+                mode:                 'subscription',
+                payment_method_types: ['card'],
+                payment_method_collection: 'always',
+                line_items:           [{ price: priceId, quantity: 1 }],
+                client_reference_id:  clientId,
+                customer:             client.stripeCustomerId,
+                customer_email:       client.ownerEmail || undefined,
+                metadata:             { clientId },
+                subscription_data:    { metadata: { clientId }, trial_period_days: 10 },
+                success_url: `https://jbstudio.app/success?client=${encodeURIComponent(clientId)}`,
+                cancel_url:  `https://jbstudio.app/reservas/${encodeURIComponent(clientId)}`,
+              });
+              checkoutUrl = session.url;
+              await dataStore.set(`client:${clientId}`, Object.assign({}, client, {
+                stripeCheckoutSessionId: session.id,
+              }));
+            }
+          } catch (_) {
+            checkoutUrl = null;
+          }
+        }
+      }
+
       return res.status(200).json({
         hasPassword:        !!client.passwordHash,
         plan:               client.plan               || null,
@@ -513,8 +574,10 @@ function createClientStatusHandler({ redis: store } = {}) {
         gracePeriodEndsAt:  client.gracePeriodEndsAt  || null,
         stripeCustomerId:   client.stripeCustomerId   || null,
         stripeSubscriptionId: client.stripeSubscriptionId || null,
+        subscriptionStatus,
         cancelAtPeriodEnd:  client.cancelAtPeriodEnd  || false,
         cancelledAt:        client.cancelledAt        || null,
+        checkoutUrl,
       });
     } catch (err) {
       console.error('[api/client-config/__scope=status]', err.message);

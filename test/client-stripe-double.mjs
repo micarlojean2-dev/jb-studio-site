@@ -15,5 +15,13 @@ export function useClientStripeDouble(clientTest) {
         return { id: `sub_test_client_${sequence}` };
       },
     },
+    checkout: {
+      sessions: {
+        async create(params) {
+          sequence += 1;
+          return { id: `cs_test_client_${sequence}`, url: `https://checkout.stripe.com/test_${sequence}` };
+        },
+      },
+    },
   });
 }
