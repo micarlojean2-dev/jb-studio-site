@@ -46,6 +46,15 @@ export function createClientConfigHandler({ redis: store } = {}) {
     const client = await dataStore.get(`client:${id}`);
     if (!client) return res.status(404).json({ error: 'Not found' });
 
+    let subscriptionStatus = null;
+    if (client.stripeSubscriptionId) {
+      try {
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+        const sub = await stripe.subscriptions.retrieve(client.stripeSubscriptionId);
+        subscriptionStatus = sub.status;
+      } catch (_) {}
+    }
+
     // Return only public-safe fields — never expose prompt, panelToken, ownerEmail
     const media = await publicMedia(dataStore, id);
     // findServiceByLinkedItemId (lib/services.js) es la única fuente de este
@@ -78,7 +87,11 @@ export function createClientConfigHandler({ redis: store } = {}) {
       // Additive for older consumers: `language` remains the legacy default.
       languages,
       primaryLanguage,
-      active:       client.active !== false,
+      active: (
+        subscriptionStatus === 'active' ||
+        subscriptionStatus === 'trialing' ||
+        client.paymentStatus === 'paid'
+      ),
       menu,
       // Legacy clients have neither field stored: they keep the original
       // fullscreen / bottom-right behavior.
