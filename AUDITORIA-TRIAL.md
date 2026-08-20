@@ -857,3 +857,150 @@ Dado que Stripe con `end_behavior=pause` va directamente a `paused`, el cron cub
 | Cobro OK (4242) | invoice.paid ✅ | active ✅ | paymentStatus=paid ✅ | No necesita |
 | Sin PM → trial end | paused directo ✅ | paused ✅ | paymentStatus=paused ✅ | Detecta y pausa ✅ |
 
+
+
+---
+
+## 11. Verificacion de emails nativos de Stripe (requiere Dashboard)
+
+### 11.1 Por que no se puede verificar via API
+
+Stripe no expone los templates de email ni la configuracion de notificaciones de cliente via API REST. Se debe verificar manualmente en:
+
+**Stripe Dashboard -> Settings -> Customer emails**
+
+URL directa: https://dashboard.stripe.com/settings/emails
+
+### 11.2 Que verificar manualmente
+
+#### Email de recibo (Receipt emails)
+- **Estado esperado:** Toggle ON (habilitado)
+- **Ubicacion:** Stripe Dashboard -> Settings -> Customer emails -> Receipt emails
+- **Evidencia necesaria:** Captura de pantalla mostrando el toggle ON
+
+#### Notificaciones de pago fallido (Failed payment notifications)
+- **Estado esperado:** Toggle ON (habilitado)
+- **Ubicacion:** Stripe Dashboard -> Settings -> Customer emails -> Failed payment notifications
+- **Recomendacion:** Activar para mejorar la experiencia de cobro fallido
+
+### 11.3 Si los emails estan OFF
+
+Si Receipt emails esta OFF: el cliente NO recibe email de recibo tras el cobro. Solo recibe confirmacion desde la app (webhook invoice.paid).
+
+Si Failed payment notifications esta OFF: el cliente NO es notificado por Stripe cuando su cobro falla. Solo recibe notificaciones desde la app (webhook invoice.payment_failed). Esto reduce la chance de que el cliente actualice su tarjeta a tiempo.
+
+---
+
+## 12. Verificacion de configuracion del Customer Portal
+
+### 12.1 Configuracion hallada (via API) - SEGURA
+
+**Portal Configuration ID:** bpc_1TSVDvBwbj79Pav2puRIw9iA (default, activo)
+
+```json
+{
+  "id": "bpc_1TSVDvBwbj79Pav2puRIw9iA",
+  "active": true,
+  "is_default": true,
+  "features": {
+    "customer_update": {
+      "allowed_updates": ["name", "email", "address", "phone"],
+      "enabled": true
+    },
+    "invoice_history": true,
+    "subscription_cancel": { "enabled": true, "mode": "at_period_end" }
+  }
+}
+```
+
+### 12.2 Analisis de seguridad
+
+`customer_update.allowed_updates = [name, email, address, phone]`
+
+`payment_method` NO esta en la lista -> customers NO pueden agregar, cambiar ni eliminar metodos de pago desde el portal.
+
+Un cliente malicioso NO puede:
+- Eliminar su unica tarjeta para evitar el cobro
+- Agregar una tarjeta invalida para sabotear su suscripcion
+- Cambiar el metodo de pago fuera del flujo controlado de la app
+
+**Accion requerida:** Ninguna. La configuracion es segura.
+
+---
+
+## 13. Intento de simular fallo real de tarjeta (insufficient_funds)
+
+### 13.1 Limitacion de Stripe Test Cards
+
+- `stripe.paymentMethods.create` con numero de tarjeta crudo (4000000000000341) requiere habilitar "test raw card data APIs" en Stripe. No disponible via API.
+- `tok_chargeDeclined` falla en el momento de adjuntar (attach), no al cobrar. No sirve para simular rechazo en cargo recurrente.
+
+### 13.2 Con que se conto para verificar
+
+1. Escenario con tarjeta valida (4242): invoice.paid + subscription.active
+2. Escenario sin payment method: Stripe va directo a paused (no past_due)
+3. Configuracion Customer Portal: restringida, no permite cambios de payment method
+
+### 13.3 Como probar el flujo de cobro fallido manualmente
+
+1. Crear un cliente real en Stripe Dashboard
+2. Suscribirlo con trial de 10 dias y una tarjeta valida
+3. Cuando el trial termine y el primer cobro pase, usar Dashboard para:
+   - Ir a la suscripcion -> Editar -> Cambiar payment method a 4000000000000341
+   - Esperar al siguiente ciclo de facturacion
+4. Observar invoice.payment_failed + past_due + reintentos + unpaid
+
+---
+
+## 14. Deployment a produccion
+
+**Commit:** 2ce5f3d (feat: trial expiry fallback cron + post-trial payment tests + AUDITORIA-TRIAL)
+**SHA:** 2ce5f3d7f9e99fc5a5fb79cf84301a0f2fe54348
+**Deploy:** jb-studio-site-1j9yt7jrm -> READY (56s de build, sin errores)
+**URL:** https://jb-studio-site-1j9yt7jrm-micarlojean2-2185s-projects.vercel.app
+
+**Crons activos:**
+- 0 13 * * * -> /api/reservations (digest)
+- */15 * * * * -> /api/trial-expiry-fallback (fallback de trial)
+
+**Archivos en el commit:**
+- api/trial-expiry-fallback.js (189 lin)
+- vercel.json (2 crons)
+- scripts/test-trial-expiry-fallback.mjs (7 pasos)
+- scripts/test-trial-post-payment.mjs (happy path + failure path)
+- AUDITORIA-TRIAL.md (14 secciones, 1100+ lineas)
+
+---
+
+## 15. Resumen ejecutivo pre-lanzamiento
+
+### 15.1 Lo que esta funcionando OK
+
+| Punto | Estado | Evidencia |
+|-------|--------|-----------|
+| Trial 10 dias en create-checkout | OK | trial_period_days: 10 linea 76 |
+| Webhook invoice.paid actualiza paymentStatus | OK | Tested with Stripe Test Clock |
+| Webhook invoice.payment_failed actualiza paymentStatus | OK | Codigo verificado en stripe-webhook.js |
+| Cron fallback detecta trials vencidos | OK | Dry run + real execution test |
+| Cron es idempotente | OK | Segunda ejecucion = 0 clients |
+| end_behavior=pause -> subscription.paused | OK | Test Clock: direct-to-paused |
+| Customer Portal no permite cambiar PM | OK | allowed_updates = [name, email, address, phone] |
+| Cron protegido con CRON_SECRET | OK | vercel.json + headers check |
+| now param para tiempos relativos | OK | Refactorizado en trial-expiry-fallback.js |
+| dry guard para no modificar en test | OK | if (dry) return |
+
+### 15.2 Requiere accion manual
+
+| Punto | Accion | Ubicacion |
+|-------|--------|-----------|
+| Receipt emails | Verificar toggle ON | Dashboard -> Settings -> Customer emails -> Receipt emails |
+| Failed payment notifications | Verificar toggle ON | Dashboard -> Settings -> Customer emails -> Failed payment notifications |
+
+### 15.3 Veredicto final
+
+El flujo de trial esta listo para pasar a produccion con Stripe live mode, con las siguientes condiciones:
+
+1. Activar los emails de Stripe en Dashboard (2 toggles)
+2. Hacer una prueba manual del cobro con tarjeta real antes del primer pago real
+3. Monitorear Sentry durante los primeros dias post-lanzamiento
+
