@@ -528,7 +528,8 @@ function createClientStatusHandler({ redis: store, stripe: stripeInstance } = {}
             if (existing.status === 'open') {
               checkoutUrl = existing.url;
             }
-          } catch (_) {
+          } catch (err) {
+            console.error('[client-status] retrieve session error:', err.message);
             checkoutUrl = null;
           }
         }
@@ -539,6 +540,9 @@ function createClientStatusHandler({ redis: store, stripe: stripeInstance } = {}
               pro:   process.env.STRIPE_PRICE_PRO,
             };
             const priceId = PRICE_IDS[client.plan];
+            if (!priceId) {
+              console.error('[client-status] no priceId — plan:', client.plan, '| STRIPE_PRICE_PRO:', process.env.STRIPE_PRICE_PRO, '| STRIPE_PRICE_BASIC:', process.env.STRIPE_PRICE_BASIC);
+            }
             if (priceId) {
               const session = await stripe.checkout.sessions.create({
                 mode:                 'subscription',
@@ -558,7 +562,8 @@ function createClientStatusHandler({ redis: store, stripe: stripeInstance } = {}
                 stripeCheckoutSessionId: session.id,
               }));
             }
-          } catch (_) {
+          } catch (err) {
+            console.error('[client-status] create session error:', err.message);
             checkoutUrl = null;
           }
         }
