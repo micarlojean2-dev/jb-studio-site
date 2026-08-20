@@ -972,9 +972,9 @@
   }
 
   function loadPlanStatus() {
-    fetch(API + '/api/client-status?clientId=' + encodeURIComponent(clientId) + '&token=' + encodeURIComponent(currentToken))
+    fetch(API + '/api/client-config?__scope=status&clientId=' + encodeURIComponent(clientId) + '&token=' + encodeURIComponent(currentToken))
       .then(function(r) { if (!r.ok) return null; return r.json(); })
-      .then(function(s) { if (s) renderPlanBanner(s); })
+      .then(function(s) { if (s) renderPlanBannerFromData(s); })
       .catch(function() {});
   }
 
