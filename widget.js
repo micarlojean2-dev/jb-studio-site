@@ -975,6 +975,7 @@
       setTimeout(function () {
         if (bookingFlow && bookingFlow.getState().step === FLOW.STEPS.CONFIRMED) {
           bookingFlow.reset();
+          bookingFlow = null;
         }
       }, BOT_MESSAGE_DELAY_MS * 2 + 200);
       return;
