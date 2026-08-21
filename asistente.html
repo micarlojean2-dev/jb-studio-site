@@ -2130,6 +2130,18 @@
         var saved = storedLanguage();
         if (saved) cfg.language = saved;
       }
+      // Detección automática del idioma del navegador (Objetivo 1, regla 5):
+      // solo se ejecuta cuando el negocio ofrece ambos idiomas y no hay
+      // preferencia guardada en esta sesión. navigator.languages[0] es el
+      // idioma más preferido del navegador; se normaliza a 'en'/'es' y se
+      // usa solo si el negocio lo soporta.
+      if (hasLanguageChoice() && !storedLanguage()) {
+        var navLang = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+        var detected = /^en/i.test(navLang) ? 'en' : /^es/i.test(navLang) ? 'es' : '';
+        if (detected && cfg.languages && cfg.languages.indexOf(detected) !== -1) {
+          setLanguage(detected);
+        }
+      }
       loadingEl.style.display = 'none';
       appEl.style.display = 'flex';
       paint();
