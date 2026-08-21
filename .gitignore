@@ -30,3 +30,29 @@ playwright-report/
 test-results/
 /blob-report/
 .playwright/
+
+# ── Auditorías y pruebas: output temporal ──────────────────────────────────
+# Carpetas de capturas de pantalla generadas por sesiones de auditoría.
+auditoria-capturas-*/
+auditoria-conversaciones-*/
+auditoria-e2e-*/
+auditoria-chatbot-*/
+# Directorios de logs de agentes de IA.
+strix_runs/
+# Reportes y reportes de pruebas generados automáticamente.
+REPORTE_*.md
+PRUEBA_*.md
+prueba-*.md
+# Otros archivos temporales de auditoría/documentación suelta.
+CLONACION_*.md
+SEPARACION_*.md
+PLAN-*.md
+# Scripts de debug/inspect de una sola vez (no son tests permanentes).
+scripts/debug-*.mjs
+scripts/inspect-*.mjs
+scripts/run-*-battery.mjs
+scripts/test-banner-render.mjs
+scripts/test-email-render.mjs
+# Herramientas temporales de investigación que no son parte del proyecto.
+fix_active.mjs
+test-widget.html
