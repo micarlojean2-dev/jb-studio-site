@@ -263,7 +263,7 @@ function businessInfoBlock(client, activeLanguage) {
 function serviceQuestionContext(client, messages) {
   const last = [...messages].reverse().find(message => message?.role === 'user');
   const question = String(last?.content || '');
-  if (!/[?¿]|\b(?:qué|que|incluye|duele|dura|precio|cuánto|how|what|include|hurt|long|price)\b/i.test(question)) return null;
+  if (!/[?¿]|\b(?:qué|que|incluye|duele|dura|precio|cuánto|tienen|ofrecen|hay|how|what|include|hurt|long|price|have|offer)\b/i.test(question)) return null;
   const items = Array.isArray(client?.services) && client.services.length ? client.services : (client?.menu || []);
   const normalizedQuestion = question.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const genericWords = new Set(['servicio', 'servicios', 'masaje', 'tratamiento', 'tratamientos', 'sesion', 'sesiones', 'service', 'services', 'treatment', 'treatments']);
@@ -279,6 +279,7 @@ function serviceQuestionContext(client, messages) {
   const service = matches[0];
   if (!service) return null;
   return {
+    serviceCardName: String(service.nombre).trim(),
     nombre: spaOneLine(service.nombre, 80),
     descripcionLarga: String(service.descripcionLarga || '').replace(/[\r\n]+/g, '\n').trim().slice(0, 5000),
     precio: spaOneLine(service.precio, 30),
@@ -835,6 +836,7 @@ IMPORTANTE AHORA MISMO: no puedes confirmar citas. Si alguien quiere reservar, d
       precio: serviceQuestion.precio,
       duracion: serviceQuestion.duracion,
     };
+    if (serviceQuestion) responsePayload.serviceCardName = serviceQuestion.serviceCardName;
 
     if (availabilityRes.slots && availabilityRes.slots.length > 0) {
       responsePayload.slots = availabilityRes.slots;

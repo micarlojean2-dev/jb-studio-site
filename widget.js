@@ -1056,9 +1056,15 @@
   }
 
   // ── Render menu card carousel ─────────────────────────────────────────────
-  function renderMenu() {
+  function renderMenu(serviceCardName) {
     var galleryMode = renderingServicePhotoGallery;
     var items = Array.isArray(cfg.menu) ? cfg.menu : [];
+    if (serviceCardName) {
+      var wantedService = String(serviceCardName).trim().toLowerCase();
+      items = items.filter(function (item) {
+        return String(item && item.nombre || '').trim().toLowerCase() === wantedService;
+      });
+    }
     if (!items.length) return;
 
     var wrap = document.createElement('div');
@@ -1828,6 +1834,7 @@
           var showMenu    = /\[MOSTRAR_MENU\]/.test(d.text);
           var showGallery = /\[MOSTRAR_GALERIA\]/.test(d.text);
           var showServicePhotos = /\[MOSTRAR_SERVICIOS_CON_FOTOS\]/.test(d.text);
+          var serviceCardName = typeof d.serviceCardName === 'string' ? d.serviceCardName : '';
           var cleanText  = CORE.limpiarMarcadores(d.text);
           if (d.serviceFacts) {
             var facts = [];
@@ -1868,6 +1875,7 @@
           if (showServicePhotos) renderServicesWithPhotos();
           else {
             if (showMenu) renderServicesWithPhotos();
+            else if (serviceCardName) renderMenu(serviceCardName);
             if (showGallery) {
               var galleryService = galleryServiceFor(interp, t);
               if (window.__galleryAmbiguousServices && window.__galleryAmbiguousServices.length >= 2) {
