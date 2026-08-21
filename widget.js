@@ -395,6 +395,9 @@
     '.jbw-r.jbw-bot .jbw-b{background:#fff;color:#16181d;',
     'border-radius:18px 18px 18px 5px;',
     'box-shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.05);}',
+    '.jbw-r.jbw-system{justify-content:center;}',
+    '.jbw-r.jbw-system .jbw-b{background:#fff3e0;color:#934800;border:1px solid #f4b56b;',
+    'border-radius:12px;box-shadow:none;font-size:13px;text-align:center;}',
     '.jbw-r.jbw-u .jbw-b{color:#fff;border-radius:18px 18px 5px 18px;',
     'box-shadow:0 2px 10px rgba(0,0,0,.10);}',
     '.jbw-ba{width:24px;height:24px;border-radius:50%;display:flex;',
@@ -636,7 +639,7 @@
   // ── Render helpers ───────────────────────────────────────────────────────
   function addMsg(role, text) {
     var row = document.createElement('div');
-    row.className = 'jbw-r ' + (role === 'user' ? 'jbw-u' : 'jbw-bot');
+    row.className = 'jbw-r ' + (role === 'user' ? 'jbw-u' : role === 'system' ? 'jbw-system' : 'jbw-bot');
 
     var bub = document.createElement('div');
     bub.className   = 'jbw-b';
@@ -652,14 +655,16 @@
         if (!bub.isConnected) return;
         bub.classList.remove('jbw-ty');
         bub.textContent = text;
+        CORE.revelarElemento(msgsEl, row);
       }, BOT_MESSAGE_DELAY_MS);
     } else {
       bub.textContent = text;
-      bub.style.background = cfg.color;
+      if (role === 'user') bub.style.background = cfg.color;
     }
     row.appendChild(bub);
     msgsEl.appendChild(row);
-    CORE.irAlFondo(msgsEl, role === 'user');   // tu propio mensaje siempre te lleva abajo
+    if (role === 'user') CORE.irAlFondo(msgsEl, true);
+    else CORE.revelarElemento(msgsEl, row);
     return row;
   }
 
@@ -986,7 +991,7 @@
         });
       }
       bookingFlow = createWidgetBookingFlow();
-      addMsg('bot', lang === 'en'
+      addMsg('system', lang === 'en'
         ? 'You are now in booking mode. If you have another question unrelated to booking, use the button below and I will help you.'
         : 'Ahora estás en modo reserva. Si tienes otra duda que no tenga que ver con reservar, pulsa el botón de abajo para que te ayude.');
       if (matched) {
@@ -1515,7 +1520,7 @@
         // fuera de vista, tras cada pregunta. Se reinserta el mismo nodo
         // (no uno nuevo) para no perder los event listeners de los botones.
         // [FIX 1 — botones siguen la conversación]
-        if (widgetFlowActions) { msgsEl.appendChild(widgetFlowActions); CORE.irAlFondo(msgsEl, true); }
+        if (finalReview && widgetFlowActions) { msgsEl.appendChild(widgetFlowActions); CORE.irAlFondo(msgsEl, true); }
         // addMsg('bot', ...) solo agrega la burbuja con los puntos de
         // "escribiendo…" — el texto real (que la agranda) se escribe recién
         // BOT_MESSAGE_DELAY_MS después, dentro de su propio setTimeout. El
@@ -1523,7 +1528,7 @@
         // que queda corto; se repite acá, ya con la burbuja en su alto
         // final. [FIX 1 — corrección de timing]
         setTimeout(function () {
-          if (widgetFlowActions) { msgsEl.appendChild(widgetFlowActions); CORE.irAlFondo(msgsEl, true); }
+          if (finalReview && widgetFlowActions) { msgsEl.appendChild(widgetFlowActions); CORE.irAlFondo(msgsEl, true); }
         }, BOT_MESSAGE_DELAY_MS);
       })
       .catch(function () {

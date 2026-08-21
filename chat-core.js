@@ -1359,6 +1359,19 @@ window.JBChatCore = (function () {
     if (forzar || estaAlFondo(el)) el.scrollTop = el.scrollHeight;
   }
 
+  function revelarElemento(el, item) {
+    if (!el || !item) return;
+    var itemBox = item.getBoundingClientRect();
+    var viewBox = el.getBoundingClientRect();
+    if (itemBox.top >= viewBox.top && itemBox.bottom <= viewBox.bottom) return;
+    var delta = itemBox.bottom > viewBox.bottom
+      ? itemBox.bottom - viewBox.bottom + 16
+      : itemBox.top - viewBox.top - 16;
+    var nextTop = Math.max(0, el.scrollTop + delta);
+    if (typeof el.scrollTo === 'function') el.scrollTo({ top: nextTop, behavior: 'smooth' });
+    else el.scrollTop = nextTop;
+  }
+
   // ¿El mensaje es una confirmación natural del resumen ("sí", "todo
   // correcto", "confirmar")? Se normaliza (sin acentos ni puntuación) y se
   // rechaza si hay señales de cambio, para que "sí, mejor a la 1" NO confirme.
@@ -1552,6 +1565,8 @@ window.JBChatCore = (function () {
     parseCustomerDraft: parseCustomerDraft,
     isGeneralQuestionOrComment: isGeneralQuestionOrComment,
     customerDataHoldMessage: customerDataHoldMessage,
+    missingCustomerField: missingCustomerField,
+    askMissingCustomerField: askMissingCustomerField,
     formatServicePrice: formatServicePrice,
     formatServiceDuration: formatServiceDuration,
     formatServicePriceAndDuration: formatServicePriceAndDuration,
@@ -1570,5 +1585,6 @@ window.JBChatCore = (function () {
     configuredStaff: configuredStaff,
     estaAlFondo: estaAlFondo,
     irAlFondo: irAlFondo,
+    revelarElemento: revelarElemento,
   };
 })();
