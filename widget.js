@@ -663,8 +663,7 @@
     }
     row.appendChild(bub);
     msgsEl.appendChild(row);
-    if (role === 'user') CORE.irAlFondo(msgsEl, true);
-    else CORE.revelarElemento(msgsEl, row);
+    CORE.revelarElemento(msgsEl, row);
     return row;
   }
 
