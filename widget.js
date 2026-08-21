@@ -962,7 +962,23 @@
           saveReserva(); captureWidgetBookingV2Event('confirmation_success', confirmed); wrap.remove();
         }).catch(function (error) { captureWidgetError(error, 'booking_v2_confirm'); captureWidgetBookingV2Event('confirmation_failed', bookingFlow.getState(), 'network'); addMsg('bot', lang === 'en' ? 'We could not confirm your reservation. Please try again.' : 'No pudimos confirmar tu reserva. Inténtalo de nuevo.'); confirmButton.disabled = false; });
       });
-    } else if (state.step === FLOW.STEPS.CONFIRMED) { captureWidgetBookingV2Event('completed', state); addMsg('bot', lang === 'en' ? 'Your reservation is confirmed! ✅' : '¡Tu reserva quedó confirmada! ✅'); addMsg('bot', lang === 'en' ? 'For last-minute changes (cancel or reschedule), use the link in your confirmation email 📧' : 'Para cambios de último momento (cancelar o reagendar), usa el enlace de tu correo de confirmación 📧'); return; }
+    } else if (state.step === FLOW.STEPS.CONFIRMED) {
+      captureWidgetBookingV2Event('completed', state);
+      addMsg('bot', lang === 'en' ? 'Your reservation is confirmed! ✅' : '¡Tu reserva quedó confirmada! ✅');
+      addMsg('bot', lang === 'en' ? 'For last-minute changes (cancel or reschedule), use the link in your confirmation email 📧' : 'Para cambios de último momento (cancelar o reagendar), usa el enlace de tu correo de confirmación 📧');
+      // BUG 1 fix: CONFIRMED es un paso terminal — sin este reset el input queda
+      // deshabilitado para siempre (updateWidgetBookingInputState no incluye
+      // CONFIRMED en su lista de pasos habilitados, y ninguna otra rama de este
+      // switch se ejecuta después). Se difiere el reset para que el usuario
+      // primero vea los dos mensajes de arriba, y para evitar reentrancia dentro
+      // del dispatch() que disparó este render.
+      setTimeout(function () {
+        if (bookingFlow && bookingFlow.getState().step === FLOW.STEPS.CONFIRMED) {
+          bookingFlow.reset();
+        }
+      }, BOT_MESSAGE_DELAY_MS * 2 + 200);
+      return;
+    }
     msgsEl.appendChild(wrap); CORE.irAlFondo(msgsEl, true);
   }
 
@@ -1036,6 +1052,14 @@
       bookingFlow = createWidgetBookingFlow();
       var restored = bookingFlow.init();
       if (restored.step === FLOW.STEPS.CHAT) { resetCustomerDraft(); bookingFlow = null; return false; }
+      // BUG 1 fix: una reserva que ya quedó CONFIRMED en una sesión anterior no
+      // debe revivirse como flujo activo al recargar — eso es lo que causaba
+      // el chat congelado tras F5 y los mensajes de "reserva confirmada"
+      // duplicados en el historial. bookingFlow.reset() ya limpia el borrador
+      // del cliente vía el listener de RESET_FLOW en createWidgetBookingFlow,
+      // pero se llama resetCustomerDraft() explícitamente también por
+      // consistencia con la rama de CHAT de arriba.
+      if (restored.step === FLOW.STEPS.CONFIRMED) { bookingFlow.reset(); resetCustomerDraft(); bookingFlow = null; return false; }
       syncCustomerDraftFromState(restored);
       bookingFlowIdempotencyKey = CORE.genIdempotencyKey();
       greeted = true;
