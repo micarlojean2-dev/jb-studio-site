@@ -70,6 +70,10 @@ if (existsSync(envFile)) {
   }
 }
 process.env.ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'test-admin-token';
+// Permite que el import de api/clients.js no lance antes de que el test pueda
+// ejecutar su assertion.  El handler de clientes llama a Stripe solo cuando
+// realmente necesita crear/checkout una sesión (y ahí el test mockea redis).
+process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_fake';
 
 // ── 3) Sin token / token incorrecto → 401 (nunca 500) ───────────────────────
 let r = await callClients('GET', {});

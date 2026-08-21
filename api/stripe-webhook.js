@@ -235,12 +235,6 @@ export default async function handler(req, res) {
         // sesión — "no marcar como pagado solo porque se abrió Checkout".
         // Si no, el estado lo termina de resolver invoice.paid /
         // customer.subscription.updated cuando llegue.
-        if (session.payment_status === 'paid' || session.payment_status === 'no_payment_required') {
-          patch.active            = true;
-          patch.paymentStatus     = 'paid';
-          patch.paymentFailed     = false;
-          patch.gracePeriodEndsAt = null;
-        }
 
         await updateClient(clientId, patch);
         console.log(`[stripe-webhook] Client ${clientId} checkout completed (payment_status=${session.payment_status})`);
@@ -425,20 +419,6 @@ export default async function handler(req, res) {
           paymentFailed: false,
         });
         console.log(`[stripe-webhook] Client ${clientId} → subscription paused`);
-        break;
-      }
-
-      case 'customer.subscription.resumed': {
-        const sub = event.data.object;
-        const clientId = sub.metadata?.clientId;
-        if (!clientId) { console.warn('[stripe-webhook] subscription.resumed: no clientId'); break; }
-        await updateClient(clientId, {
-          active:            true,
-          paymentStatus:     sub.status === 'trialing' ? 'trialing' : 'paid',
-          paymentFailed:     false,
-          gracePeriodEndsAt: null,
-        });
-        console.log(`[stripe-webhook] Client ${clientId} → subscription resumed`);
         break;
       }
 

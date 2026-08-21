@@ -5,7 +5,6 @@ import { faltaConfig, necesitaSetup } from '../lib/setup.js';
 import { loadClientMedia } from '../lib/media.js';
 import { findServiceByLinkedItemId } from '../lib/services.js';
 import { initSentry, captureApiException } from '../lib/sentry.js';
-import { sendBillingAlertEmail } from '../lib/reservation-emails.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 
 initSentry();
@@ -671,67 +670,6 @@ export default async function handler(req, res) {
   if (scope === 'reservations') {
     if (!reservationsHandler) reservationsHandler = createReservationsListApiHandler();
     return reservationsHandler(req, res);
-  }
-  if (scope === 'test-billing-email') {
-    const token = req.headers['x-admin-token'] || req.query?.token;
-    if (token !== process.env.ADMIN_TOKEN && token !== 'test_resend_trigger_2026') {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const clientId = req.query?.clientId || 'test-client';
-    const type = req.query?.type || 'subscription_paused';
-    const overrideEmail = req.query?.overrideEmail || 'delivered@resend.dev';
-    const result = await sendBillingAlertEmail({ id: clientId, businessName: 'Spa Trial Test Auto', ownerEmail: overrideEmail }, type, { clientId, gracePeriodEndsAt: '2026-08-20' });
-    return res.status(200).json({ clientId, type, ownerEmail: overrideEmail, result });
-  }
-  if (scope === 'init-test-client') {
-    const clientId = req.query?.clientId || urlObj.searchParams.get('clientId') || urlObj.searchParams.get('id') || 'restaurante-e2e-intenso';
-    if (clientId !== 'restaurante-e2e-intenso') {
-      return res.status(403).json({ error: 'This test endpoint only supports restaurante-e2e-intenso' });
-    }
-
-    const existing = await redis.get(`client:${clientId}`);
-    if (existing) return res.status(200).json({ ok: true, clientId, client: existing });
-
-    const client = {
-      id: clientId,
-      businessName: 'Restaurante E2E Intenso',
-      templateId: 'restaurant',
-      active: true,
-      plan: 'pro',
-      ownerEmail: 'mikestandlyjeanbaptiste@gmail.com',
-      language: 'es',
-      languages: ['es', 'en'],
-      timezone: 'America/Los_Angeles',
-      capacityPerSlot: 4,
-      reservationIntervalMinutes: 30,
-      businessHours: {
-        monday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-        tuesday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-        wednesday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-        thursday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-        friday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-        saturday: { enabled: true, unknown: false, ranges: [{ start: '11:00', end: '23:00' }] },
-        sunday: { enabled: false, unknown: false, ranges: [] }
-      },
-      menu: [
-        { id: 'svc_rest_1', nombre: 'Mesa para 2 personas', precio: '$0', descripcion: 'Mesa estándar en salón principal.', duracion: '90 min' },
-        { id: 'svc_rest_2', nombre: 'Mesa VIP Terraza', precio: '$25', descripcion: 'Reserva exclusiva en la terraza con vista.', duracion: '120 min' }
-      ]
-    };
-    await redis.set(`client:${clientId}`, client);
-    return res.status(200).json({ ok: true, clientId, client });
-  }
-  if (scope === 'set-owner-email') {
-    const clientId = req.query?.clientId || 'spa';
-    const ownerEmail = req.query?.email || req.query?.ownerEmail || 'mikestandlyjeanbaptiste@gmail.com';
-    const client = await redis.get(`client:${clientId}`);
-    if (client) {
-      client.active = true;
-      client.ownerEmail = ownerEmail;
-      await redis.set(`client:${clientId}`, client);
-      return res.status(200).json({ ok: true, clientId, ownerEmail, active: true });
-    }
-    return res.status(404).json({ error: 'Client not found' });
   }
   if (!productionHandler) productionHandler = createClientConfigHandler();
   return productionHandler(req, res);

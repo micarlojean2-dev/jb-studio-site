@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-08-13T20:31:03.571Z",
+  "caso1": {
+    "status": "FALLÓ"
+  },
+  "caso2": {
+    "status": "REQUIERE_DEPLOY_PRESELECCION",
+    "askedServiceAgain": true,
+    "showedDatesDirectly": false,
+    "buttonsDisplayed": [
+      "✨ Ver servicios",
+      "📅 Reservar",
+      "💰 Precios",
+      "Masaje relajante",
+      "Masaje de piedras calientes",
+      "Facial hidratante",
+      "Exfoliación corporal",
+      "Manicura spa",
+      "Pedicura spa"
+    ]
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 429 ()",
+    "Failed to load resource: the server responded with a status of 429 ()",
+    "[booking-flow-v2] slots failed Error: La consulta de horarios falló.\n    at https://jbstudio.app/asistente?id=spa:614:31"
+  ],
+  "networkErrors": [
+    "429  at https://jbstudio.app/api/reservations",
+    "429  at https://jbstudio.app/api/reservations"
+  ],
+  "transcript": [
+    {
+      "sender": "cliente",
+      "text": "Hola, quiero hacer una reserva"
+    },
+    {
+      "sender": "cliente",
+      "action": "click",
+      "button": "Masaje relajante"
+    },
+    {
+      "sender": "cliente",
+      "action": "click",
+      "button": "Jueves 13 de agosto"
+    },
+    {
+      "sender": "cliente",
+      "action": "click",
+      "button": "10:00 AM"
+    },
+    {
+      "sender": "cliente",
+      "text": "Carlos Jean, 5551234567, carlos.e2e@example.com, sin alergias"
+    },
+    {
+      "sender": "cliente",
+      "action": "click",
+      "button": "Continuar"
+    },
+    {
+      "sender": "cliente",
+      "action": "click",
+      "button": "Confirmar"
+    }
+  ]
+}

@@ -1,0 +1,333 @@
+2026-08-18 21:42:16.022 INFO    host-docker-internal-4175_50b5 - strix.core.runner: Starting Strix scan host-docker-internal-4175_50b5 (image=ghcr.io/usestrix/strix-sandbox:1.3.0, max_turns=120, interactive=False, run_dir=/Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5)
+2026-08-18 21:42:16.022 INFO    host-docker-internal-4175_50b5 - strix.core.runner: LLM model resolved: deepseek/deepseek-v4-flash
+2026-08-18 21:42:16.022 INFO    host-docker-internal-4175_50b5 - strix.core.runner: Bringing up sandbox session for scan host-docker-internal-4175_50b5
+2026-08-18 21:42:16.022 DEBUG   host-docker-internal-4175_50b5 - strix.runtime.backends: Selected sandbox backend: docker
+2026-08-18 21:42:16.022 INFO    host-docker-internal-4175_50b5 - strix.runtime.session_manager: Creating sandbox session for scan host-docker-internal-4175_50b5 (backend=docker, image=ghcr.io/usestrix/strix-sandbox:1.3.0)
+2026-08-18 21:42:16.101 DEBUG   host-docker-internal-4175_50b5 - strix.runtime.docker_client: Creating sandbox container: image=ghcr.io/usestrix/strix-sandbox:1.3.0 caps=['NET_ADMIN', 'NET_RAW'] exposed_ports=[48080]
+2026-08-18 21:42:16.139 INFO    host-docker-internal-4175_50b5 - strix.runtime.docker_client: Sandbox container created: id=57edf247fa91 image=ghcr.io/usestrix/strix-sandbox:1.3.0
+2026-08-18 21:42:16.344 DEBUG   host-docker-internal-4175_50b5 - strix.runtime.session_manager: Caido host endpoint resolved: http://127.0.0.1:62725
+2026-08-18 21:42:16.344 INFO    host-docker-internal-4175_50b5 - strix.runtime.caido_bootstrap: Bootstrapping Caido client (host=http://127.0.0.1:62725, container=http://127.0.0.1:48080)
+2026-08-18 21:42:16.475 INFO    host-docker-internal-4175_50b5 - strix.runtime.caido_bootstrap: Caido project selected: 74172062-cfd1-4d07-b676-29ba5965b5ae
+2026-08-18 21:42:16.475 INFO    host-docker-internal-4175_50b5 - strix.runtime.session_manager: Sandbox session for scan host-docker-internal-4175_50b5 ready and cached
+2026-08-18 21:42:16.475 INFO    host-docker-internal-4175_50b5 - strix.core.runner: Sandbox ready for scan host-docker-internal-4175_50b5
+2026-08-18 21:42:16.478 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: scan_modes/quick -> quick
+2026-08-18 21:42:16.480 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: tooling/agent_browser -> agent_browser
+2026-08-18 21:42:16.482 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: tooling/python -> python
+2026-08-18 21:42:16.484 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: coordination/root_agent -> root_agent
+2026-08-18 21:42:16.485 DEBUG   host-docker-internal-4175_50b5 - strix.skills: load_skills: 4 skill(s) resolved
+2026-08-18 21:42:16.512 DEBUG   host-docker-internal-4175_50b5 - strix.agents.prompt: render_system_prompt: scan_mode=quick root=True whitebox=False skills=4 prompt_len=74135
+2026-08-18 21:42:16.512 INFO    host-docker-internal-4175_50b5 - strix.agents.factory: Built root agent 'Root Agent' (skills=0, tools=30, scan_mode=quick, whitebox=False)
+2026-08-18 21:42:16.512 INFO    host-docker-internal-4175_50b5 - strix.core.agents: agent.register c590b1bb (Root Agent) parent=-
+2026-08-18 21:42:16.518 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating trace
+2026-08-18 21:42:16.519 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Setting current trace: no-op
+2026-08-18 21:42:16.519 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:16.540 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:16.540 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 1, current_agent=Root Agent
+2026-08-18 21:42:16.541 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:16.546 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:42:16.546 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:16.549 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:42:16.857 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:16.858 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:16.859 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:16.860 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:17.071 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:17.087 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:17.098 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:17.099 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:22.522 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:42:22.522 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:42:22.522 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:42:22.522 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:42:22.522 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:22.522 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:22.523 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:22.523 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:22.523 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Invoking tool create_todo
+2026-08-18 21:42:22.524 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tool create_todo completed.
+2026-08-18 21:42:22.609 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 1 complete, next_step type=NextStepRunAgain
+2026-08-18 21:42:22.613 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 2, current_agent=Root Agent
+2026-08-18 21:42:22.613 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:22.613 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:42:22.614 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:22.614 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:42:25.088 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:42:25.088 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:42:25.089 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:42:25.089 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:42:25.089 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:25.089 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:25.089 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Invoking tool view_agent_graph
+2026-08-18 21:42:25.089 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tool view_agent_graph completed.
+2026-08-18 21:42:25.090 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 2 complete, next_step type=NextStepRunAgain
+2026-08-18 21:42:25.097 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 3, current_agent=Root Agent
+2026-08-18 21:42:25.097 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:25.098 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:42:25.098 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:25.098 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:42:32.676 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:42:32.678 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:42:32.678 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:32.678 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:32.679 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Invoking tool create_agent
+2026-08-18 21:42:32.681 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: reconnaissance/asset_discovery -> asset_discovery
+2026-08-18 21:42:32.682 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: tooling/katana -> katana
+2026-08-18 21:42:32.683 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: tooling/httpx -> httpx
+2026-08-18 21:42:32.684 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: tooling/ffuf -> ffuf
+2026-08-18 21:42:32.685 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: tooling/agent_browser -> agent_browser
+2026-08-18 21:42:32.686 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: scan_modes/quick -> quick
+2026-08-18 21:42:32.687 DEBUG   host-docker-internal-4175_50b5 - strix.skills: Loaded skill: tooling/python -> python
+2026-08-18 21:42:32.687 DEBUG   host-docker-internal-4175_50b5 - strix.skills: load_skills: 7 skill(s) resolved
+2026-08-18 21:42:32.694 DEBUG   host-docker-internal-4175_50b5 - strix.agents.prompt: render_system_prompt: scan_mode=quick root=False whitebox=False skills=7 prompt_len=92022
+2026-08-18 21:42:32.694 INFO    host-docker-internal-4175_50b5 - strix.agents.factory: Built child agent 'Recon-Mapper' (skills=5, tools=30, scan_mode=quick, whitebox=False)
+2026-08-18 21:42:32.695 INFO    host-docker-internal-4175_50b5 - strix.core.agents: agent.register 42fdf193 (Recon-Mapper) parent=c590b1bb
+2026-08-18 21:42:32.696 INFO    host-docker-internal-4175_50b5 - strix.tools.agents_graph.tools: create_agent: spawned 42fdf193 (Recon-Mapper) parent=c590b1bb skills=5 task_len=2576
+2026-08-18 21:42:32.696 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tool create_agent completed.
+2026-08-18 21:42:32.696 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 3 complete, next_step type=NextStepRunAgain
+2026-08-18 21:42:32.704 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 4, current_agent=Root Agent
+2026-08-18 21:42:32.704 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:32.705 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:42:32.705 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:32.706 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:42:32.710 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:32.720 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:32.720 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 1, current_agent=Recon-Mapper
+2026-08-18 21:42:32.721 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:32.721 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:42:32.721 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:32.721 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:42:33.378 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:33.379 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:33.389 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:33.391 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:33.392 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:33.394 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:33.395 DEBUG   - - strix.telemetry.posthog: posthog event sent: skill_loaded
+2026-08-18 21:42:33.849 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:33.870 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:33.895 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:33.908 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:33.908 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:33.916 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:33.922 DEBUG   - - strix.telemetry.scarf: scarf event sent: skill_loaded
+2026-08-18 21:42:34.590 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:42:34.591 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:42:34.591 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:42:34.591 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:42:34.591 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:34.592 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:34.592 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Invoking tool wait_for_agents
+2026-08-18 21:42:34.592 INFO    host-docker-internal-4175_50b5 - strix.core.agents: agent.status c590b1bb=waiting
+2026-08-18 21:42:38.661 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:42:38.661 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:42:38.661 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:42:38.661 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:42:38.661 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:38.661 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:38.661 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:38.661 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:38.661 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:38.661 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:38.662 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Invoking tool create_todo
+2026-08-18 21:42:38.663 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tool create_todo completed.
+2026-08-18 21:42:38.768 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 1 complete, next_step type=NextStepRunAgain
+2026-08-18 21:42:38.772 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 2, current_agent=Recon-Mapper
+2026-08-18 21:42:38.772 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:38.772 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:42:38.772 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:38.773 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:42:46.304 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:42:46.304 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:42:46.305 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:42:46.305 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:42:46.305 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:46.305 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:46.601 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 2 complete, next_step type=NextStepRunAgain
+2026-08-18 21:42:46.607 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 3, current_agent=Recon-Mapper
+2026-08-18 21:42:46.608 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:46.609 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:42:46.609 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:46.610 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:42:49.324 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:42:49.325 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:42:49.325 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:42:49.325 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:49.326 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:49.411 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 3 complete, next_step type=NextStepRunAgain
+2026-08-18 21:42:49.415 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 4, current_agent=Recon-Mapper
+2026-08-18 21:42:49.415 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:49.416 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:42:49.416 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:49.417 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:42:54.590 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:42:54.590 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:42:54.590 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:42:54.590 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:42:54.590 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:54.591 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:54.933 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 4 complete, next_step type=NextStepRunAgain
+2026-08-18 21:42:54.937 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 5, current_agent=Recon-Mapper
+2026-08-18 21:42:54.937 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:54.938 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:42:54.938 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:54.938 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:42:59.284 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:42:59.284 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:42:59.285 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:42:59.285 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:42:59.285 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:59.507 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 5 complete, next_step type=NextStepRunAgain
+2026-08-18 21:42:59.513 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 6, current_agent=Recon-Mapper
+2026-08-18 21:42:59.513 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:59.514 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:42:59.514 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:42:59.515 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:43:01.749 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:43:01.751 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:43:01.752 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:43:01.752 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:01.752 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:01.817 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 6 complete, next_step type=NextStepRunAgain
+2026-08-18 21:43:01.821 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 7, current_agent=Recon-Mapper
+2026-08-18 21:43:01.821 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:01.822 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:43:01.822 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:01.823 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:43:05.902 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:43:05.903 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:43:05.903 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:43:05.903 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:43:05.903 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:05.904 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:06.041 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 7 complete, next_step type=NextStepRunAgain
+2026-08-18 21:43:06.044 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 8, current_agent=Recon-Mapper
+2026-08-18 21:43:06.044 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:06.045 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:43:06.045 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:06.046 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:43:12.779 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:43:12.781 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:43:12.782 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:43:12.782 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:43:12.782 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:12.782 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:12.782 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:12.782 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:12.946 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 8 complete, next_step type=NextStepRunAgain
+2026-08-18 21:43:12.953 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 9, current_agent=Recon-Mapper
+2026-08-18 21:43:12.953 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:12.954 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:43:12.954 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:12.956 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:43:21.610 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:43:21.613 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:43:21.613 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:43:21.613 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:43:21.613 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:21.613 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:21.614 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:21.614 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:21.722 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 9 complete, next_step type=NextStepRunAgain
+2026-08-18 21:43:21.726 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 10, current_agent=Recon-Mapper
+2026-08-18 21:43:21.726 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:21.727 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:43:21.727 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:21.728 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:43:36.203 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:43:36.204 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:43:36.205 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:43:36.205 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:43:36.205 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:36.205 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:36.205 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:36.205 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:36.506 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 10 complete, next_step type=NextStepRunAgain
+2026-08-18 21:43:36.511 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 11, current_agent=Recon-Mapper
+2026-08-18 21:43:36.511 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:36.512 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:43:36.512 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:36.513 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:43:39.751 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:43:39.752 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:43:39.753 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:43:39.753 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:39.753 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:39.851 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 11 complete, next_step type=NextStepRunAgain
+2026-08-18 21:43:39.855 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 12, current_agent=Recon-Mapper
+2026-08-18 21:43:39.855 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:39.856 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:43:39.856 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:39.857 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:43:51.679 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:43:51.680 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:43:51.680 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:43:51.680 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:43:51.680 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:51.680 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:43:51.681 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:43:51.681 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:01.694 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 12 complete, next_step type=NextStepRunAgain
+2026-08-18 21:44:01.703 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 13, current_agent=Recon-Mapper
+2026-08-18 21:44:01.703 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:01.703 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:44:01.704 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:01.704 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:44:09.715 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:44:09.715 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:44:09.716 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:44:09.716 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:44:09.716 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:44:09.716 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:44:09.716 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:09.716 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:19.725 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 13 complete, next_step type=NextStepRunAgain
+2026-08-18 21:44:19.737 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 14, current_agent=Recon-Mapper
+2026-08-18 21:44:19.737 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:19.739 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:44:19.739 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:19.740 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:44:23.014 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:44:23.015 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:44:23.016 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:44:23.016 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:44:23.016 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:23.059 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 14 complete, next_step type=NextStepRunAgain
+2026-08-18 21:44:23.065 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 15, current_agent=Recon-Mapper
+2026-08-18 21:44:23.066 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:23.067 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:44:23.067 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:23.069 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:44:39.937 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:44:39.938 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:44:39.938 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:44:39.938 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:44:39.938 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:44:39.938 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:39.996 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 15 complete, next_step type=NextStepRunAgain
+2026-08-18 21:44:40.005 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 16, current_agent=Recon-Mapper
+2026-08-18 21:44:40.005 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:40.006 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:44:40.006 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:40.007 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:44:43.171 INFO    host-docker-internal-4175_50b5 - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:44:43.172 INFO    host-docker-internal-4175_50b5 - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:44:43.172 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=reasoning class=ResponseReasoningItem
+2026-08-18 21:44:43.172 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=message class=ResponseOutputMessage
+2026-08-18 21:44:43.172 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:44:43.172 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Processing output item type=function_call class=ResponseFunctionToolCall
+2026-08-18 21:44:43.173 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:43.173 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:43.270 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Turn 16 complete, next_step type=NextStepRunAgain
+2026-08-18 21:44:43.278 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Starting turn 17, current_agent=Recon-Mapper
+2026-08-18 21:44:43.278 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:43.278 DEBUG   host-docker-internal-4175_50b5 - openai.agents: No conversation_id available for request
+2026-08-18 21:44:43.278 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Tracing is disabled. Not creating span
+2026-08-18 21:44:43.279 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Calling LLM
+2026-08-18 21:52:11.960 INFO    - - strix.report.sarif: Wrote SARIF 2.1.0 report: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5/findings.sarif (0 results)
+2026-08-18 21:52:11.971 INFO    - - strix.report.state: Essential scan data saved to: /Users/mike/jb-studio-site/strix_runs/host-docker-internal-4175_50b5
+2026-08-18 21:52:11.975 INFO    host-docker-internal-4175_50b5 - strix.core.runner: Scan host-docker-internal-4175_50b5 interrupted by the user
+2026-08-18 21:52:11.975 INFO    host-docker-internal-4175_50b5 - strix.core.agents: agent.status c590b1bb=running
+2026-08-18 21:52:11.976 DEBUG   host-docker-internal-4175_50b5 - openai.agents: Resetting current trace
+2026-08-18 21:52:11.977 INFO    host-docker-internal-4175_50b5 - strix.core.runner: Tearing down sandbox session for scan host-docker-internal-4175_50b5
+2026-08-18 21:52:12.199 INFO    host-docker-internal-4175_50b5 - strix.runtime.session_manager: Cleaned up sandbox session for scan host-docker-internal-4175_50b5
+2026-08-18 21:52:12.200 INFO    host-docker-internal-4175_50b5 - strix.core.runner: Strix scan host-docker-internal-4175_50b5 done

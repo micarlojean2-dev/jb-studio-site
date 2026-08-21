@@ -1,0 +1,651 @@
+{
+  "runId": "2026-08-13T20-42-59-958Z",
+  "startedAt": "2026-08-13T20:42:59.960Z",
+  "url": "https://jbstudio.app/asistente.html?id=spa",
+  "testCustomer": {
+    "name": "E2E TEST 2026-08-13",
+    "phone": "2025550147",
+    "email": "[redacted in summary]",
+    "requests": "E2E TEST - cancelar al terminar"
+  },
+  "cases": [
+    {
+      "name": "case-1-normal-booking",
+      "status": "failed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "Quiero reservar",
+          "at": "2026-08-13T20:43:03.479Z"
+        },
+        {
+          "type": "click",
+          "value": "✨ Ver servicios",
+          "at": "2026-08-13T20:43:06.641Z"
+        },
+        {
+          "type": "click",
+          "value": "Masaje relajante",
+          "at": "2026-08-13T20:43:07.376Z"
+        },
+        {
+          "type": "click",
+          "value": "Jueves 13 de agosto",
+          "at": "2026-08-13T20:43:08.143Z"
+        },
+        {
+          "type": "message",
+          "value": "E2E TEST 2026-08-13, 2025550147, e2e-test-1786653779958@example.invalid, E2E TEST - cancelar al terminar",
+          "at": "2026-08-13T20:43:08.874Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "Quiero reservar",
+        "Elige un servicio.",
+        "Quiero ver los servicios",
+        "Usa las opciones de reserva mostradas arriba.",
+        "Buscando fechas disponibles...",
+        "Buscando horarios disponibles...",
+        "E2E TEST 2026-08-13, 2025550147, e2e-test-1786653779958@example.invalid, E2E TEST - cancelar al terminar",
+        "Usa las opciones de reserva mostradas arriba."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-1-normal-booking-failed.png"
+      ],
+      "errors": [
+        {
+          "message": "Summary continue button did not appear",
+          "probableSource": "asistente.html"
+        }
+      ],
+      "startedAt": "2026-08-13T20:43:00.122Z",
+      "loadMs": 2431,
+      "buttonsAtEnd": [
+        "10:00 AM",
+        "10:30 AM",
+        "11:00 AM",
+        "11:30 AM",
+        "12:00 PM",
+        "12:30 PM",
+        "1:00 PM",
+        "1:30 PM",
+        "2:00 PM",
+        "2:30 PM",
+        "3:00 PM",
+        "3:30 PM",
+        "4:00 PM",
+        "4:30 PM",
+        "5:00 PM",
+        "5:30 PM",
+        "6:00 PM",
+        "6:30 PM",
+        "7:00 PM",
+        "7:30 PM",
+        "8:00 PM"
+      ],
+      "finishedAt": "2026-08-13T20:43:09.667Z"
+    },
+    {
+      "name": "case-2-named-service",
+      "status": "failed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "Quiero reservar: Masaje relajante",
+          "at": "2026-08-13T20:43:12.443Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "Quiero reservar: Masaje relajante",
+        "Elige un servicio.",
+        "Buscando fechas disponibles...",
+        "No pudimos cargar fechas. Inténtalo de nuevo."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-2-named-service-failed.png"
+      ],
+      "errors": [
+        {
+          "message": "Expected direct date selection after named service, found buttons: ✨ Ver servicios | 📅 Reservar | 💰 Precios | Masaje relajante | Masaje de piedras calientes | Facial hidratante | Exfoliación corporal | Manicura spa | Pedicura spa",
+          "probableSource": "chat-flow.js or api/reservations.js"
+        }
+      ],
+      "startedAt": "2026-08-13T20:43:09.667Z",
+      "loadMs": 1994,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios",
+        "Masaje relajante",
+        "Masaje de piedras calientes",
+        "Facial hidratante",
+        "Exfoliación corporal",
+        "Manicura spa",
+        "Pedicura spa"
+      ],
+      "finishedAt": "2026-08-13T20:43:14.751Z"
+    },
+    {
+      "name": "case-3-language-1",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "Me gustaría agendar una cita",
+          "at": "2026-08-13T20:43:17.614Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "Me gustaría agendar una cita",
+        "Elige un servicio."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-3-language-1-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:43:14.751Z",
+      "loadMs": 2066,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios",
+        "Masaje relajante",
+        "Masaje de piedras calientes",
+        "Facial hidratante",
+        "Exfoliación corporal",
+        "Manicura spa",
+        "Pedicura spa"
+      ],
+      "finishedAt": "2026-08-13T20:43:20.213Z"
+    },
+    {
+      "name": "case-3-language-2",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "Necesito una reserva",
+          "at": "2026-08-13T20:43:23.028Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "Necesito una reserva",
+        "Elige un servicio."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-3-language-2-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:43:20.213Z",
+      "loadMs": 2003,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios",
+        "Masaje relajante",
+        "Masaje de piedras calientes",
+        "Facial hidratante",
+        "Exfoliación corporal",
+        "Manicura spa",
+        "Pedicura spa"
+      ],
+      "finishedAt": "2026-08-13T20:43:25.185Z"
+    },
+    {
+      "name": "case-3-language-3",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "Quiero una cita para mañana",
+          "at": "2026-08-13T20:43:28.128Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "Quiero una cita para mañana",
+        "Elige un servicio."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-3-language-3-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:43:25.185Z",
+      "loadMs": 2136,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios",
+        "Masaje relajante",
+        "Masaje de piedras calientes",
+        "Facial hidratante",
+        "Exfoliación corporal",
+        "Manicura spa",
+        "Pedicura spa"
+      ],
+      "finishedAt": "2026-08-13T20:43:30.036Z"
+    },
+    {
+      "name": "case-4-incomplete-1",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "Quiero reservar mañana",
+          "at": "2026-08-13T20:43:32.844Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "Quiero reservar mañana",
+        "Elige un servicio."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-4-incomplete-1-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:43:30.036Z",
+      "loadMs": 2002,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios",
+        "Masaje relajante",
+        "Masaje de piedras calientes",
+        "Facial hidratante",
+        "Exfoliación corporal",
+        "Manicura spa",
+        "Pedicura spa"
+      ],
+      "finishedAt": "2026-08-13T20:43:34.636Z"
+    },
+    {
+      "name": "case-4-incomplete-2",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "Quiero una cita",
+          "at": "2026-08-13T20:43:37.526Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "Quiero una cita",
+        "Elige un servicio."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-4-incomplete-2-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:43:34.636Z",
+      "loadMs": 2105,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios",
+        "Masaje relajante",
+        "Masaje de piedras calientes",
+        "Facial hidratante",
+        "Exfoliación corporal",
+        "Manicura spa",
+        "Pedicura spa"
+      ],
+      "finishedAt": "2026-08-13T20:43:39.152Z"
+    },
+    {
+      "name": "case-5-unusual-1",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "hola",
+          "at": "2026-08-13T20:43:41.929Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "hola",
+        "¡Hola! 😊 ¿En qué puedo ayudarte hoy?"
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-5-unusual-1-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:43:39.152Z",
+      "loadMs": 1973,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios"
+      ],
+      "finishedAt": "2026-08-13T20:43:43.513Z"
+    },
+    {
+      "name": "case-5-unusual-2",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "precio",
+          "at": "2026-08-13T20:43:46.378Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "precio",
+        "¡Claro! 😊 Aquí tienes los precios de nuestros servicios: \n• Masaje relajante: $70 (60 min)\n• Masaje de piedras calientes: $95 (75 min)\n• Facial hidratante: $80 (60 min)\n• Exfoliación corporal: $65 (45 min)\n• Manicura spa: $45 (45 min)\n• Pedicura spa: $55 (60 min)\n\n¿Te gustaría saber más sobre algún servicio en particular o reservar una cita?"
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-5-unusual-2-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:43:43.513Z",
+      "loadMs": 2061,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios"
+      ],
+      "finishedAt": "2026-08-13T20:43:49.378Z"
+    },
+    {
+      "name": "case-5-unusual-3",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "asdfasdf",
+          "at": "2026-08-13T20:43:52.228Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "asdfasdf",
+        "Parece que no entendí tu mensaje. ¿Podrías darme más detalles sobre lo que necesitas? Estoy aquí para ayudarte."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-5-unusual-3-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:43:49.378Z",
+      "loadMs": 2044,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios"
+      ],
+      "finishedAt": "2026-08-13T20:43:54.189Z"
+    },
+    {
+      "name": "case-5-unusual-4",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "mañana",
+          "at": "2026-08-13T20:43:56.960Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "mañana",
+        "Elige un servicio."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-5-unusual-4-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:43:54.189Z",
+      "loadMs": 1983,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios",
+        "Masaje relajante",
+        "Masaje de piedras calientes",
+        "Facial hidratante",
+        "Exfoliación corporal",
+        "Manicura spa",
+        "Pedicura spa"
+      ],
+      "finishedAt": "2026-08-13T20:43:59.115Z"
+    },
+    {
+      "name": "case-6-invalid-details",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "Quiero reservar",
+          "at": "2026-08-13T20:44:01.877Z"
+        },
+        {
+          "type": "click",
+          "value": "✨ Ver servicios",
+          "at": "2026-08-13T20:44:03.975Z"
+        },
+        {
+          "type": "click",
+          "value": "Masaje relajante",
+          "at": "2026-08-13T20:44:04.709Z"
+        },
+        {
+          "type": "message",
+          "value": "Juan",
+          "at": "2026-08-13T20:44:05.441Z"
+        },
+        {
+          "type": "message",
+          "value": "123",
+          "at": "2026-08-13T20:44:06.191Z"
+        },
+        {
+          "type": "message",
+          "value": "correo",
+          "at": "2026-08-13T20:44:06.941Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "Quiero reservar",
+        "Elige un servicio.",
+        "Quiero ver los servicios",
+        "Usa las opciones de reserva mostradas arriba.",
+        "Buscando fechas disponibles...",
+        "No pudimos cargar fechas. Inténtalo de nuevo.",
+        "Juan",
+        "Usa las opciones de reserva mostradas arriba.",
+        "123",
+        "Usa las opciones de reserva mostradas arriba.",
+        "correo",
+        "Usa las opciones de reserva mostradas arriba."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-6-invalid-details-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:43:59.115Z",
+      "loadMs": 1972,
+      "buttonsAtEnd": [],
+      "finishedAt": "2026-08-13T20:44:07.734Z"
+    },
+    {
+      "name": "case-7-duplicate-intent",
+      "status": "passed",
+      "actions": [
+        {
+          "type": "click",
+          "value": "🇪🇸 Español"
+        },
+        {
+          "type": "message",
+          "value": "quiero reservar",
+          "at": "2026-08-13T20:44:10.645Z"
+        },
+        {
+          "type": "message",
+          "value": "quiero reservar",
+          "at": "2026-08-13T20:44:12.694Z"
+        },
+        {
+          "type": "message",
+          "value": "quiero reservar",
+          "at": "2026-08-13T20:44:13.444Z"
+        }
+      ],
+      "transcript": [
+        "Selecciona tu idioma / Choose your language",
+        "🇪🇸 Español",
+        "¡Hola! 😊 Soy el asistente de Spa.\n\nPuedo ayudarte con:\n\n✨ Conocer nuestros servicios\n📅 Reservar una cita\n💰 Consultar precios\n\n¿Qué necesitas?",
+        "quiero reservar",
+        "Elige un servicio.",
+        "quiero reservar",
+        "Usa las opciones de reserva mostradas arriba.",
+        "quiero reservar",
+        "Usa las opciones de reserva mostradas arriba."
+      ],
+      "screenshots": [
+        "/Users/mike/jb-studio-site/auditoria-e2e-produccion/2026-08-13T20-42-59-958Z/screenshots/case-7-duplicate-intent-passed.png"
+      ],
+      "errors": [],
+      "startedAt": "2026-08-13T20:44:07.734Z",
+      "loadMs": 2100,
+      "buttonsAtEnd": [
+        "✨ Ver servicios",
+        "📅 Reservar",
+        "💰 Precios",
+        "Masaje relajante",
+        "Masaje de piedras calientes",
+        "Facial hidratante",
+        "Exfoliación corporal",
+        "Manicura spa",
+        "Pedicura spa"
+      ],
+      "finishedAt": "2026-08-13T20:44:14.234Z"
+    }
+  ],
+  "console": [
+    {
+      "scenario": "case-2-named-service",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 429 ()",
+      "at": "2026-08-13T20:43:14.547Z"
+    },
+    {
+      "scenario": "case-6-invalid-details",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 429 ()",
+      "at": "2026-08-13T20:44:04.914Z"
+    }
+  ],
+  "network": [
+    {
+      "scenario": "case-2-named-service",
+      "status": 429,
+      "url": "https://jbstudio.app/api/reservations",
+      "at": "2026-08-13T20:43:14.547Z"
+    },
+    {
+      "scenario": "case-6-invalid-details",
+      "status": 429,
+      "url": "https://jbstudio.app/api/reservations",
+      "at": "2026-08-13T20:44:04.914Z"
+    }
+  ],
+  "findings": [
+    {
+      "case": "case-1-normal-booking",
+      "error": "Summary continue button did not appear",
+      "probableSource": "asistente.html"
+    },
+    {
+      "case": "case-2-named-service",
+      "error": "Expected direct date selection after named service, found buttons: ✨ Ver servicios | 📅 Reservar | 💰 Precios | Masaje relajante | Masaje de piedras calientes | Facial hidratante | Exfoliación corporal | Manicura spa | Pedicura spa",
+      "probableSource": "chat-flow.js or api/reservations.js"
+    }
+  ],
+  "finishedAt": "2026-08-13T20:44:14.246Z",
+  "summary": {
+    "passed": 11,
+    "failed": 2,
+    "consoleErrors": 2,
+    "networkErrors": 2
+  }
+}

@@ -28,7 +28,8 @@ let redis = new Redis({
   url:   process.env.UPSTASH_REDIS_REST_URL,
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
-let stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_mock');
+if (!process.env.STRIPE_SECRET_KEY) throw new Error('STRIPE_SECRET_KEY env var not set');
+let stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 import { timingSafeEqual } from 'node:crypto';
 
