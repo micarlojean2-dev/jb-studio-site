@@ -45,6 +45,10 @@
     {
       "source": "/asistente/:id",
       "destination": "/asistente"
+    },
+    {
+      "source": "/cancelar-reserva/:id",
+      "destination": "/cancelar-reserva"
     }
   ],
   "headers": [

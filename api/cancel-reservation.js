@@ -12,17 +12,28 @@ let redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
 
-// ── Rate limit: 5 cancelaciones/IP/hora ─────────────────────────────────────
-const ipStore = new Map();
-const HOUR_MS = 60 * 60 * 1000;
+// ── Rate limit: 5 cancelaciones/IP/hora (Redis, no Map en memoria) ────────
+// El Map en memoria no es confiable en Vercel: cada invocación puede correr en
+// una instancia serverless distinta y el estado no persiste entre ellas. Se usa
+// un contador en Redis, mismo espíritu que el lock con SET NX más abajo.
+const HOUR_SEC = 3600;
 const RPH     = 5;
 
-function checkRateLimit(ip) {
-  const now = Date.now();
-  if (!ipStore.has(ip)) ipStore.set(ip, { count: 0, ts: now });
-  const d = ipStore.get(ip);
-  if (now - d.ts > HOUR_MS) { d.count = 0; d.ts = now; }
-  return ++d.count <= RPH;
+// Fail-open a propósito: si Redis falla aquí, NO se bloquea la cancelación.
+// A diferencia del resto del archivo (donde los fallos de Redis responden
+// storage_unavailable porque son operaciones core), un rate limiter caído no
+// debe impedir una cancelación legítima — se loguea y se deja pasar.
+async function checkRateLimit(ip) {
+  if (!ip || ip === 'unknown') return true;
+  try {
+    const key = `cancel-rate:${ip}`;
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, HOUR_SEC);
+    return count <= RPH;
+  } catch (err) {
+    console.error(`[api/cancel-reservation] rate limit check failed, allowing request: ${err.message}`);
+    return true;
+  }
 }
 
 function actionTokenHash(token) {
@@ -100,10 +111,10 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
-  if (!checkRateLimit(ip))
+  if (!(await checkRateLimit(ip)))
     return res.status(429).json({ error: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.' });
 
-  const { clientId, actionToken, selectedReservationId } = req.body || {};
+  const { clientId, actionToken, selectedReservationId, actorRole } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });
@@ -195,7 +206,10 @@ export default async function handler(req, res) {
       migrateLegacyActionToken(match, actionToken, client.timezone);
       match.actionTokenUsedAt = fechaCancelacion;
     }
-    match.cancelledBy = 'cliente';
+    // Etiqueta de quién canceló para el registro/panel. Solo un allow-list
+    // estricto: 'dueño' o 'cliente' (cualquier otro valor cae a 'cliente').
+    // El actionToken sigue siendo la única autorización real para cancelar.
+    match.cancelledBy = actorRole === 'dueño' ? 'dueño' : 'cliente';
     try {
       await redis.set(matchKey, match);
     } catch (err) {
@@ -236,4 +250,4 @@ export default async function handler(req, res) {
   }
 }
 
-export const __test = { actionTokenHash, tokenMatches, actionTokenState, actionTokenExpiry, migrateLegacyActionToken, sameChatContact, setRedisForTests(value) { redis = value; } };
+export const __test = { actionTokenHash, tokenMatches, actionTokenState, actionTokenExpiry, migrateLegacyActionToken, sameChatContact, checkRateLimit, setRedisForTests(value) { redis = value; } };

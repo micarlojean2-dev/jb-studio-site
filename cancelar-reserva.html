@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Cancelar reserva — JB Studio</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: #eef0f3;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  .card {
+    width: 100%;
+    max-width: 480px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.10);
+    overflow: hidden;
+  }
+  .head {
+    padding: 24px 28px;
+  }
+  .head h1 {
+    font-size: 20px;
+    color: #fff;
+    margin: 4px 0 0;
+  }
+  .head .kicker {
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.72);
+  }
+  .body { padding: 24px 28px; }
+  .meta { margin: 0 0 20px; }
+  .meta .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid #eef0f3;
+    font-size: 14px;
+  }
+  .meta .row:last-child { border-bottom: 0; }
+  .meta .label { color: #6b7280; }
+  .meta .value { color: #111827; font-weight: 600; text-align: right; }
+  .status { margin: 0 0 20px; }
+  .status p { font-size: 14.5px; line-height: 1.6; color: #212529; }
+  .status .err { color: #b23b3b; }
+  .status .ok { color: #17633f; }
+  .btn {
+    display: block;
+    width: 100%;
+    border: 0;
+    border-radius: 8px;
+    padding: 13px 24px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #fff;
+  }
+  .btn-cancel { background: #b23b3b; }
+  .btn-cancel:hover { background: #9c3333; }
+  .btn-cancel:disabled { background: #c9b4b4; cursor: not-allowed; }
+  .note {
+    margin-top: 16px;
+    font-size: 12.5px;
+    color: #6b7280;
+    text-align: center;
+    line-height: 1.5;
+  }
+  .hidden { display: none; }
+  .loading { text-align: center; color: #6b7280; font-size: 14px; padding: 20px 0; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="head" id="head">
+      <div class="kicker" id="kicker">JB Studio</div>
+      <h1 id="title">Cancelar reserva</h1>
+    </div>
+    <div class="body">
+      <div class="loading" id="loading">Cargando…</div>
+      <div class="status hidden" id="status"></div>
+      <div class="meta hidden" id="meta"></div>
+      <button class="btn btn-cancel hidden" id="btn" type="button">Cancelar reserva</button>
+      <p class="note hidden" id="note"></p>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Textos (dos diccionarios cortos, como L en reservation-emails.js) ──
+  var T = {
+    es: {
+      title: 'Cancelar reserva',
+      loading: 'Cargando…',
+      invalidTitle: 'Enlace no válido',
+      invalid: 'Este enlace ya no es válido. Puede estar vencido, ya fue usado o no corresponde a ninguna reserva activa.',
+      summaryTitle: 'Reserva encontrada',
+      service: 'Servicio',
+      date: 'Fecha',
+      time: 'Hora',
+      customer: 'Cliente',
+      alreadyCancelled: 'Esta reserva ya fue cancelada.',
+      btn: 'Cancelar reserva',
+      confirmTitle: '¿Seguro?',
+      confirmMsg: 'Esta acción cancelará la reserva de forma definitiva. ¿Deseas continuar?',
+      okTitle: 'Reserva cancelada',
+      ok: 'La reserva fue cancelada correctamente.',
+      usedTitle: 'Enlace ya usado',
+      used: 'Este enlace ya fue utilizado. Si necesitas otra acción, contacta con tu cliente directamente.',
+      errTitle: 'No se pudo cancelar',
+      err: 'Ocurrió un error al intentar cancelar la reserva. Inténtalo de nuevo en unos minutos.',
+      cancel: 'Cancelar',
+    },
+    en: {
+      title: 'Cancel reservation',
+      loading: 'Loading…',
+      invalidTitle: 'Invalid link',
+      invalid: 'This link is no longer valid. It may be expired, already used, or not related to any active reservation.',
+      summaryTitle: 'Reservation found',
+      service: 'Service',
+      date: 'Date',
+      time: 'Time',
+      customer: 'Customer',
+      alreadyCancelled: 'This reservation was already cancelled.',
+      btn: 'Cancel reservation',
+      confirmTitle: 'Are you sure?',
+      confirmMsg: 'This will permanently cancel the reservation. Do you want to continue?',
+      okTitle: 'Reservation cancelled',
+      ok: 'The reservation was cancelled successfully.',
+      usedTitle: 'Link already used',
+      used: 'This link has already been used. If you need a different action, please contact your customer directly.',
+      errTitle: 'Could not cancel',
+      err: 'Something went wrong trying to cancel the reservation. Please try again in a few minutes.',
+      cancel: 'Cancel',
+    },
+  };
+
+  var lang = 'es';
+  function t(key) { return (T[lang] && T[lang][key]) || T.es[key]; }
+  function applyLang() {
+    document.getElementById('title').textContent = t('title');
+    document.getElementById('loading').textContent = t('loading');
+    document.documentElement.lang = lang;
+  }
+
+  // ── Leer clientId (ruta) y token (fragmento, nunca query string) ─────────
+  function resolveClientId() {
+    // /cancelar-reserva/{id} → ['cancelar-reserva', '{id}']
+    var parts = window.location.pathname.split('/').filter(Boolean);
+    var idx = parts.indexOf('cancelar-reserva');
+    var seg = idx !== -1 ? (parts[idx + 1] || '') : (parts[1] || '');
+    var v = String(seg || '').trim().toLowerCase();
+    return /^[a-z0-9-]{1,80}$/.test(v) ? v : '';
+  }
+  function resolveToken() {
+    try {
+      var q = new URLSearchParams(window.location.hash.slice(1) || window.location.search);
+      var token = q.get('token') || '';
+      return /^[A-Za-z0-9-]{8,128}$/.test(String(token).trim()) ? String(token).trim() : '';
+    } catch (e) { return ''; }
+  }
+
+  var clientId = resolveClientId();
+  var token = resolveToken();
+  var API = window.location.origin;
+
+  var loadingEl = document.getElementById('loading');
+  var statusEl = document.getElementById('status');
+  var metaEl = document.getElementById('meta');
+  var btnEl = document.getElementById('btn');
+  var noteEl = document.getElementById('note');
+
+  function show(el) { el.classList.remove('hidden'); }
+  function hide(el) { el.classList.add('hidden'); }
+  function setStatus(html, className) {
+    statusEl.innerHTML = html;
+    statusEl.className = 'status' + (className ? ' ' + className : '');
+    show(statusEl);
+  }
+  function setMeta(reservation) {
+    var rows = [
+      ['service', reservation.servicio],
+      ['date', reservation.fecha],
+      ['time', reservation.hora],
+      ['customer', reservation.nombre],
+    ].map(function (pair) {
+      return '<div class="row"><span class="label">' + t(pair[0]) + '</span><span class="value">' + escapeHtml(pair[1] || '—') + '</span></div>';
+    }).join('');
+    metaEl.innerHTML = '<h3 style="font-size:15px;margin:0 0 12px">' + t('summaryTitle') + '</h3>' + rows;
+    show(metaEl);
+  }
+  function escapeHtml(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ── Lookup (POST /api/reservations, endpoint ya existente, solo lectura) ──
+  async function lookup() {
+    var res = await fetch(API + '/api/reservations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: clientId, action: 'lookup', actionToken: token }),
+    });
+    return res.json();
+  }
+
+  // ── Cancelar (POST /api/cancel-reservation) ──────────────────────────────
+  async function doCancel() {
+    btnEl.disabled = true;
+    btnEl.textContent = t('loading');
+    try {
+      var res = await fetch(API + '/api/cancel-reservation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId: clientId, actionToken: token, actorRole: 'dueño' }),
+      });
+      var data = await res.json();
+      if (res.status === 429) {
+        setStatus('<p class="err">' + t('err') + '</p>', 'err');
+        btnEl.disabled = false;
+        btnEl.textContent = t('btn');
+        return;
+      }
+      if (data && data.found === true && data.ok !== false) {
+        hide(metaEl);
+        setStatus('<p class="ok"><strong>' + t('okTitle') + '</strong><br>' + t('ok') + '</p>', 'ok');
+        hide(btnEl);
+      } else if (data && data.found === false) {
+        hide(metaEl);
+        setStatus('<p class="err"><strong>' + t('usedTitle') + '</strong><br>' + t('used') + '</p>', 'err');
+        hide(btnEl);
+      } else {
+        setStatus('<p class="err"><strong>' + t('errTitle') + '</strong><br>' + t('err') + '</p>', 'err');
+        btnEl.disabled = false;
+        btnEl.textContent = t('btn');
+      }
+    } catch (e) {
+      setStatus('<p class="err"><strong>' + t('errTitle') + '</strong><br>' + t('err') + '</p>', 'err');
+      btnEl.disabled = false;
+      btnEl.textContent = t('btn');
+    }
+  }
+
+  // ── Flujo principal ──────────────────────────────────────────────────────
+  async function main() {
+    applyLang();
+    if (!clientId || !token) {
+      hide(loadingEl);
+      setStatus('<p class="err"><strong>' + t('invalidTitle') + '</strong><br>' + t('invalid') + '</p>', 'err');
+      return;
+    }
+    try {
+      var data = await lookup();
+      if (!data || data.found !== true || !data.reservation) {
+        hide(loadingEl);
+        setStatus('<p class="err"><strong>' + t('invalidTitle') + '</strong><br>' + t('invalid') + '</p>', 'err');
+        return;
+      }
+      var r = data.reservation;
+      // El lookup devuelve language (es/en) del cliente; si no, español.
+      if (r.language === 'en' || r.language === 'es') lang = r.language;
+      else lang = 'es';
+      applyLang();
+
+      hide(loadingEl);
+      if (r.estado === 'cancelada') {
+        setStatus('<p class="err"><strong>' + t('alreadyCancelled') + '</strong></p>', 'err');
+        return;
+      }
+      setMeta(r);
+      btnEl.textContent = t('btn');
+      show(btnEl);
+      btnEl.addEventListener('click', function () {
+        if (!window.confirm(t('confirmMsg'))) return;
+        doCancel();
+      });
+    } catch (e) {
+      hide(loadingEl);
+      setStatus('<p class="err"><strong>' + t('errTitle') + '</strong><br>' + t('err') + '</p>', 'err');
+    }
+  }
+
+  main();
+})();
+</script>
+</body>
+</html>
