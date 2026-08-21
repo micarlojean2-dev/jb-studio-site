@@ -3291,7 +3291,17 @@ LÍMITES ESTRICTOS:
     // `paymentStatus` (lo pone el servidor — ver api/clients.js / el webhook
     // de Stripe). Clientes antiguos (formulario manual, ej. Barbería Prueba)
     // no lo tienen — para esos se mantiene exactamente la lógica de siempre.
+    function trialStatusInfo(c) {
+      const trialEnd = Number(c.trial_end);
+      if (!c.active || !Number.isFinite(trialEnd) || trialEnd * 1000 <= Date.now()) return null;
+      if (['past_due', 'failed', 'cancelled', 'paused'].includes(c.paymentStatus)) return null;
+      const daysLeft = Math.max(1, Math.ceil((trialEnd * 1000 - Date.now()) / 86400000));
+      return { label: `Trial activo (${daysLeft} ${daysLeft === 1 ? 'día restante' : 'días restantes'})`, cls: 'st-yellow' };
+    }
+
     function paymentStatusInfo(c) {
+      const trial = trialStatusInfo(c);
+      if (trial) return trial;
       if (c.paymentStatus) {
         const today = new Date().toISOString().slice(0, 10);
         switch (c.paymentStatus) {
@@ -3318,6 +3328,8 @@ LÍMITES ESTRICTOS:
     }
 
     function chatbotStatusInfo(c) {
+      const trial = trialStatusInfo(c);
+      if (trial) return trial;
       if (!c.active && c.paymentStatus === 'pending') return { label: 'Esperando pago', cls: 'st-yellow' };
       return c.active ? { label: 'Activo', cls: 'st-green' } : { label: 'Pausado', cls: 'st-gray' };
     }
