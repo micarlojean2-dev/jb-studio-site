@@ -17,14 +17,16 @@ let redis  = new Redis({
 
 const FROM = 'reservas@jbstudio.app';
 
-// ── Centralized Redis rate limit: 5 reservas/IP/hora ────────────────────────
+// ── Centralized Redis rate limits ───────────────────────────────────────────
 const RESERVATION_RATE_LIMIT_RPH = 5;
 const RESERVATION_RATE_LIMIT_WINDOW_SEC = 3600;
+const AVAILABILITY_RATE_LIMIT_RPH = 60;
+const AVAILABILITY_RATE_LIMIT_WINDOW_SEC = 3600;
 
-async function checkRedisReservationRateLimit(redisClient, ip, limit = RESERVATION_RATE_LIMIT_RPH, windowSec = RESERVATION_RATE_LIMIT_WINDOW_SEC) {
+async function checkRedisReservationRateLimit(redisClient, ip, limit = RESERVATION_RATE_LIMIT_RPH, windowSec = RESERVATION_RATE_LIMIT_WINDOW_SEC, scope = 'mutations') {
   if (!ip || ip === 'unknown' || !redisClient) return { ok: true, count: 1, limit };
   try {
-    const key = `ratelimit:reservations:${ip}`;
+    const key = `ratelimit:reservations:${scope}:${ip}`;
     if (typeof redisClient.incr === 'function') {
       const count = await redisClient.incr(key);
       if (count === 1 && typeof redisClient.expire === 'function') {
@@ -1041,18 +1043,22 @@ export default async function handler(req, res) {
   const testBypassSecret = process.env.TEST_BYPASS_SECRET || '';
   const isTestBypass = testBypassSecret !== '' && (queryBypass === testBypassSecret || headerVal === testBypassSecret);
 
+  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, selectedReservationId, idempotencyKey, language, previewToken, service, date, people } = req.body || {};
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+  const isAvailabilityRead = action === 'slots' || action === 'dates';
   if (!isTestBypass) {
-    const rl = await checkRedisReservationRateLimit(redis, ip);
+    const rl = isAvailabilityRead
+      ? await checkRedisReservationRateLimit(redis, ip, AVAILABILITY_RATE_LIMIT_RPH, AVAILABILITY_RATE_LIMIT_WINDOW_SEC, 'availability')
+      : await checkRedisReservationRateLimit(redis, ip);
     if (!rl.ok) {
       return res.status(429).json({
-        error: 'Too many requests',
-        message: 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.',
+        error: isAvailabilityRead ? 'availability_rate_limited' : 'Too many requests',
+        message: isAvailabilityRead
+          ? 'Se hicieron demasiadas consultas de disponibilidad. Espera un momento y vuelve a intentarlo.'
+          : 'Demasiadas solicitudes. Por favor espera antes de intentar de nuevo.',
       });
     }
   }
-
-  const { clientId, nombre, telefono, email, contacto, fecha, hora, servicio, personas, partySize, tablePreference, barberPreference, nota, notes, specialRequests, foodPreferences, action, actionToken, selectedReservationId, idempotencyKey, language, previewToken, service, date, people } = req.body || {};
 
   if (!clientId || !/^[a-z0-9-]+$/.test(clientId))
     return res.status(400).json({ error: 'Invalid clientId' });

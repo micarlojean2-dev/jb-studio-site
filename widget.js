@@ -702,7 +702,14 @@
     if (state.barberPreference !== null) body.barberPreference = state.barberPreference;
     if (previewToken) body.previewToken = previewToken;
     return fetch(API + '/api/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (response) { if (!response.ok) throw new Error('dates request failed'); return response.json(); })
+      .then(function (response) {
+        if (!response.ok) {
+          var error = new Error(response.status === 429 ? 'availability_rate_limited' : 'dates request failed');
+          error.code = response.status === 429 ? 'availability_rate_limited' : 'availability_dates_failed';
+          throw error;
+        }
+        return response.json();
+      })
       .then(function (data) { if (!data || !data.ok || !Array.isArray(data.dates)) throw new Error('dates contract invalid'); return data.dates; });
   }
 
@@ -712,7 +719,14 @@
     if (state.barberPreference !== null) body.barberPreference = state.barberPreference;
     if (previewToken) body.previewToken = previewToken;
     return fetch(API + '/api/reservations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (response) { if (!response.ok) throw new Error('slots request failed'); return response.json(); })
+      .then(function (response) {
+        if (!response.ok) {
+          var error = new Error(response.status === 429 ? 'availability_rate_limited' : 'slots request failed');
+          error.code = response.status === 429 ? 'availability_rate_limited' : 'availability_slots_failed';
+          throw error;
+        }
+        return response.json();
+      })
       .then(function (data) { if (!data || !data.ok || !Array.isArray(data.slots)) throw new Error('slots contract invalid'); return data.slots; });
   }
 
@@ -864,7 +878,12 @@
             handleWidgetBookingDateText(pendingText, true);
           }
         }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - datePromptStartedAt)));
-      }).catch(function (error) { captureWidgetError(error, 'booking_v2_dates'); addMsg('bot', lang === 'en' ? 'Sorry, we could not load the dates. Please try again.' : 'Perdón, no pudimos cargar las fechas. Inténtalo de nuevo.'); });
+      }).catch(function (error) {
+        captureWidgetError(error, 'booking_v2_dates');
+        addMsg('bot', error && error.code === 'availability_rate_limited'
+          ? (lang === 'en' ? 'There have been too many availability checks. Please wait a moment and try again.' : 'Se hicieron demasiadas consultas de disponibilidad. Espera un momento y vuelve a intentarlo.')
+          : (lang === 'en' ? 'Sorry, we could not load the dates. Please try again.' : 'Perdón, no pudimos cargar las fechas. Inténtalo de nuevo.'));
+      });
       return;
     } else if (state.step === FLOW.STEPS.TIME_SELECTION) {
       var timePromptStartedAt = Date.now();
@@ -878,7 +897,12 @@
           appendWidgetBookingQuestionButton(slotWrap, state, lang);
           msgsEl.appendChild(slotWrap); CORE.irAlFondo(msgsEl, true);
         }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - timePromptStartedAt)));
-      }).catch(function (error) { captureWidgetError(error, 'booking_v2_slots'); addMsg('bot', lang === 'en' ? 'Sorry, we could not load the times. Please try again.' : 'Perdón, no pudimos cargar los horarios. Inténtalo de nuevo.'); });
+      }).catch(function (error) {
+        captureWidgetError(error, 'booking_v2_slots');
+        addMsg('bot', error && error.code === 'availability_rate_limited'
+          ? (lang === 'en' ? 'There have been too many availability checks. Please wait a moment and try again.' : 'Se hicieron demasiadas consultas de disponibilidad. Espera un momento y vuelve a intentarlo.')
+          : (lang === 'en' ? 'Sorry, we could not load the times. Please try again.' : 'Perdón, no pudimos cargar los horarios. Inténtalo de nuevo.'));
+      });
       return;
     } else if (state.step === FLOW.STEPS.CUSTOMER_DATA) {
       if (widgetFlowActions && widgetFlowActions.parentNode) widgetFlowActions.remove();

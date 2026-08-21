@@ -734,7 +734,11 @@
     return fetch(API + '/api/reservations', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }).then(function (response) {
-      if (!response.ok) throw new Error('La consulta de fechas falló.');
+      if (!response.ok) {
+        var error = new Error(response.status === 429 ? 'availability_rate_limited' : 'La consulta de fechas falló.');
+        error.code = response.status === 429 ? 'availability_rate_limited' : 'availability_dates_failed';
+        throw error;
+      }
       return response.json();
     }).then(function (data) {
       if (!data || !data.ok || !Array.isArray(data.dates)) throw new Error('El contrato de fechas no es válido.');
@@ -750,7 +754,11 @@
     return fetch(API + '/api/reservations', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     }).then(function (response) {
-      if (!response.ok) throw new Error('La consulta de horarios falló.');
+      if (!response.ok) {
+        var error = new Error(response.status === 429 ? 'availability_rate_limited' : 'La consulta de horarios falló.');
+        error.code = response.status === 429 ? 'availability_rate_limited' : 'availability_slots_failed';
+        throw error;
+      }
       return response.json();
     }).then(function (data) {
       if (!data || !data.ok || !Array.isArray(data.slots)) throw new Error('El contrato de horarios no es válido.');
@@ -933,8 +941,11 @@
             handleBookingDateText(pendingText, true);
           }
         }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - datePromptStartedAt)));
-      }).catch(function () {
-        addMsg('bot', lang === 'en' ? 'Sorry, we could not load the dates. Please try again.' : 'Perdón, no pudimos cargar las fechas. Inténtalo de nuevo.');
+      }).catch(function (error) {
+        captureBookingV2Event('availability_dates_failed', bookingFlow.getState(), error && error.code || 'unknown');
+        addMsg('bot', error && error.code === 'availability_rate_limited'
+          ? (lang === 'en' ? 'There have been too many availability checks. Please wait a moment and try again.' : 'Se hicieron demasiadas consultas de disponibilidad. Espera un momento y vuelve a intentarlo.')
+          : (lang === 'en' ? 'Sorry, we could not load the dates. Please try again.' : 'Perdón, no pudimos cargar las fechas. Inténtalo de nuevo.'));
       });
       return;
     } else if (state.step === window.JBChatFlow.STEPS.PEOPLE_SELECTION) {
@@ -962,7 +973,10 @@
         }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - timePromptStartedAt)));
       }).catch(function (error) {
         console.error('[booking-flow-v2] slots failed', error);
-        addMsg('bot', lang === 'en' ? 'Sorry, we could not load the times. Please try again.' : 'Perdón, no pudimos cargar los horarios. Inténtalo de nuevo.');
+        captureBookingV2Event('availability_slots_failed', bookingFlow.getState(), error && error.code || 'unknown');
+        addMsg('bot', error && error.code === 'availability_rate_limited'
+          ? (lang === 'en' ? 'There have been too many availability checks. Please wait a moment and try again.' : 'Se hicieron demasiadas consultas de disponibilidad. Espera un momento y vuelve a intentarlo.')
+          : (lang === 'en' ? 'Sorry, we could not load the times. Please try again.' : 'Perdón, no pudimos cargar los horarios. Inténtalo de nuevo.'));
       });
       return;
     } else if (state.step === window.JBChatFlow.STEPS.CUSTOMER_DATA) {
