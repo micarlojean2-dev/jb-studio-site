@@ -1282,6 +1282,21 @@ window.JBChatCore = (function () {
     return [p, d].filter(Boolean).join(' · ');
   }
 
+  // Convierte "HH:MM" (24h) a "h:mm AM/PM" (12h) para mostrar en el resumen
+  // de la reserva (y en general en texto visible al cliente). Si el formato
+  // no matchea, devuelve el valor tal cual — nunca rompe ni inventa.
+  // [auditoría — hora en 12h en el resumen de reserva]
+  function formatTime12h(hhmm) {
+    var m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/);
+    if (!m) return hhmm;
+    var h = +m[1];
+    var min = +m[2];
+    var suf = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12;
+    if (h12 === 0) h12 = 12;
+    return h12 + ':' + String(min).padStart(2, '0') + ' ' + suf;
+  }
+
   function isChangeServiceRequest(text) {
     if (!text) return false;
     var t = String(text).trim().toLowerCase();
@@ -1610,6 +1625,7 @@ window.JBChatCore = (function () {
     formatServiceDuration: formatServiceDuration,
     formatServicePriceAndDuration: formatServicePriceAndDuration,
     isChangeServiceRequest: isChangeServiceRequest,
+    formatTime12h: formatTime12h,
     isChangeDateRequest: isChangeDateRequest,
     isChangeTimeRequest: isChangeTimeRequest,
     isChangeCustomerRequest: isChangeCustomerRequest,

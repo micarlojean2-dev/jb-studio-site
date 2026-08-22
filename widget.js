@@ -680,7 +680,7 @@
   function widgetBookingSummaryText(state, lang) {
     var en = lang === 'en';
     var text = (en ? '📋 Your reservation summary' : '📋 Resumen de tu reserva') + '\n' +
-      '💆 ' + state.service + '\n📅 ' + state.date + '\n🕐 ' + state.time + '\n👤 ' + state.customer.name + '\n📞 ' + state.customer.phone + '\n✉️ ' + state.customer.email;
+      '💆 ' + state.service + '\n📅 ' + state.date + '\n🕐 ' + (CORE.formatTime12h ? CORE.formatTime12h(state.time) : state.time) + '\n👤 ' + state.customer.name + '\n📞 ' + state.customer.phone + '\n✉️ ' + state.customer.email;
     if (state.specialRequests && state.specialRequests !== 'No') {
       text += '\n📝 ' + (en ? 'Special requests' : 'Peticiones especiales') + ': ' + state.specialRequests;
     }
