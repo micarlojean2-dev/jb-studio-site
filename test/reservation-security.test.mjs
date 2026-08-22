@@ -337,4 +337,61 @@ console.log('12. Chat selection shares the five-per-IP-per-hour reservation rate
   assert.equal((await call(reservationHandler, req)).statusCode, 429);
 }
 
+console.log('13. A reservation can only be rescheduled once (reagendado_limite)');
+{
+  const redis = fakeRedis();
+  const token = 'one-reschedule-token';
+  const key = 'reservations:secure-spa:one-reschedule';
+  redis.data.set('client:secure-spa', client);
+  redis.data.set(key, {
+    clientId: 'secure-spa', estado: 'confirmada', nombre: 'Uno', fecha: '2040-07-20', fechaISO: '2040-07-20', hora: '10:00', horaISO: '10:00', servicio: 'Masaje', duracion: 60,
+    email: '', actionTokenHash: reservationTest.actionTokenHash(token), actionTokenExpiresAt: '2040-07-21T23:59:59.999Z', actionTokenUsedAt: null,
+  });
+  reservationTest.setRedisForTests(redis);
+
+  const first = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'one-reschedule-a.test' }, body: { clientId: 'secure-spa', action: 'reschedule', actionToken: token, fecha: '2040-07-20', hora: '12:00' } });
+  assert.equal(first.body.ok, true, 'first reschedule succeeds');
+  assert.equal(redis.data.get(key).estado, 'reprogramada', 'reservation becomes reprogramada');
+  assert.ok(redis.data.get(key).fechaReprogramacion, 'fechaReprogramacion is set after first reschedule');
+  // El primer reagendado rota el token; la segunda llamada debe rechazarse por
+  // el límite, no por token inválido. Usamos un token fresco que aún matchea
+  // el hash rotado para aislar el motivo.
+  const rotated = first.body.reservation.actionToken;
+  assert.ok(rotated && rotated !== token, 'token rotated after reschedule');
+  const second = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'one-reschedule-b.test' }, body: { clientId: 'secure-spa', action: 'reschedule', actionToken: rotated, fecha: '2040-07-20', hora: '14:00' } });
+  assert.equal(second.body.ok, false, 'second reschedule is rejected');
+  assert.equal(second.body.motivo, 'reagendado_limite', 'rejection reason is reagendado_limite');
+  assert.equal(redis.data.get(key).hora, '12:00', 'the second reschedule does not change the time');
+}
+
+console.log('14. Reagendar por calendario excluye la reserva propia de dates/slots');
+{
+  const redis = fakeRedis();
+  const cap2 = { ...client, capacityPerSlot: 2 };
+  const token = 'reschedule-self-token';
+  const selfKey = 'reservations:secure-spa:self';
+  const otherKey = 'reservations:secure-spa:other';
+  redis.data.set('client:secure-spa', cap2);
+  redis.data.set(selfKey, {
+    clientId: 'secure-spa', estado: 'confirmada', nombre: 'Self', fecha: '2040-07-20', fechaISO: '2040-07-20', hora: '10:00', horaISO: '10:00', servicio: 'Masaje', duracion: 60,
+    email: '', actionTokenHash: reservationTest.actionTokenHash(token), actionTokenExpiresAt: '2040-07-21T23:59:59.999Z', actionTokenUsedAt: null,
+  });
+  // Otra reserva en el mismo horario: con capacityPerSlot=2, sin excluir la
+  // propia habría 2/2 ocupados y 10:00 no aparecería; excluyéndola queda 1/2
+  // y el slot debe seguir visible.
+  redis.data.set(otherKey, {
+    clientId: 'secure-spa', estado: 'confirmada', nombre: 'Other', fecha: '2040-07-20', fechaISO: '2040-07-20', hora: '10:00', horaISO: '10:00', servicio: 'Masaje', duracion: 60, email: '',
+  });
+  reservationTest.setRedisForTests(redis);
+
+  const slotsWithToken = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'self-slots.test' }, body: { clientId: 'secure-spa', action: 'slots', service: 'Masaje', date: '2040-07-20', actionToken: token } });
+  assert.equal(slotsWithToken.statusCode, 200);
+  assert.equal(slotsWithToken.body.ok, true);
+  assert.ok(slotsWithToken.body.slots.some((s) => s.value === '10:00'), 'self reservation excluded: 10:00 remains available with capacityPerSlot=2');
+
+  const slotsWithoutToken = await call(reservationHandler, { method: 'POST', headers: { 'x-forwarded-for': 'plain-slots.test' }, body: { clientId: 'secure-spa', action: 'slots', service: 'Masaje', date: '2040-07-20' } });
+  assert.equal(slotsWithoutToken.body.ok, true);
+  assert.ok(!slotsWithoutToken.body.slots.some((s) => s.value === '10:00'), 'without exclusion, 10:00 is full (2/2)');
+}
+
 console.log('Reservation security handler tests verified');

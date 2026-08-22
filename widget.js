@@ -965,7 +965,7 @@
     } else if (state.step === FLOW.STEPS.CONFIRMED) {
       captureWidgetBookingV2Event('completed', state);
       addMsg('bot', lang === 'en' ? 'Your reservation is confirmed! ✅' : '¡Tu reserva quedó confirmada! ✅');
-      addMsg('bot', lang === 'en' ? 'For last-minute changes (cancel or reschedule), use the link in your confirmation email 📧' : 'Para cambios de último momento (cancelar o reagendar), usa el enlace de tu correo de confirmación 📧');
+      addMsg('system', lang === 'en' ? 'For last-minute changes (cancel or reschedule), use the link in your confirmation email 📧' : 'Para cambios de último momento (cancelar o reagendar), usa el enlace de tu correo de confirmación 📧');
       // BUG 1 fix: CONFIRMED es un paso terminal — sin este reset el input queda
       // deshabilitado para siempre (updateWidgetBookingInputState no incluye
       // CONFIRMED en su lista de pasos habilitados, y ninguna otra rama de este

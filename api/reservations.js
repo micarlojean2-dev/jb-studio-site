@@ -1106,6 +1106,13 @@ export default async function handler(req, res) {
         captureApiException(err, { clientId, feature: 'reservation_slots', route: '/api/reservations' });
         return res.status(503).json({ error: 'storage_unavailable', retryable: true });
       }
+      // Cuando el calendario/horarios vienen del flujo de reagendar (rescheduleMode),
+      // se excluye la reserva que se está reagendando para que su propio horario
+      // no cuente como ocupado en el cálculo de disponibilidad. [CAMBIO 1]
+      if (actionToken) {
+        const selfIndex = items.findIndex((item) => actionTokenIsActive(item, actionToken));
+        if (selfIndex >= 0) items = items.filter((item, i) => item && i !== selfIndex);
+      }
       const availabilityClient = barberPreference === undefined ? client : { ...client, __reservationBarberPreference: barberPreference };
       return res.status(200).json(getAvailableSlots(
         availabilityClient, date, service, people, items, undefined,
@@ -1120,6 +1127,12 @@ export default async function handler(req, res) {
       } catch (err) {
         captureApiException(err, { clientId, feature: 'reservation_dates', route: '/api/reservations' });
         return res.status(503).json({ error: 'storage_unavailable', retryable: true });
+      }
+      // Misma exclusión que en `slots`: en modo reagendar la reserva propia no
+      // debe ocupar un lugar en las fechas disponibles. [CAMBIO 1]
+      if (actionToken) {
+        const selfIndex = items.findIndex((item) => actionTokenIsActive(item, actionToken));
+        if (selfIndex >= 0) items = items.filter((item, i) => item && i !== selfIndex);
       }
       const availabilityClient = barberPreference === undefined ? client : { ...client, __reservationBarberPreference: barberPreference };
       return res.status(200).json(getAvailableDates(availabilityClient, service, people, items, undefined));
@@ -1233,6 +1246,17 @@ export default async function handler(req, res) {
       if (!activa(existing)) return chatSelection
         ? res.status(200).json({ found: false })
         : res.status(409).json({ error: 'Reservation is not active' });
+      // Límite antiabuso: una reserva solo se reagenda UNA vez (por cualquier
+      // vía: correo, chat o panel). `fechaReprogramacion` se setea en la rama
+      // de abajo al aceptar el primer reagendado, así que un valor previo
+      // significa que ya se usó. [CAMBIO 2 — límite de 1 reagendado]
+      if (existing.fechaReprogramacion) {
+        return res.status(200).json({
+          ok: false,
+          motivo: 'reagendado_limite',
+          mensaje: 'Esta reserva ya fue reagendada una vez. Para otro cambio, contacta directamente al negocio.',
+        });
+      }
       const candidate = {
         ...existing,
         fecha: String(fecha).slice(0, 60),

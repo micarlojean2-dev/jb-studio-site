@@ -523,6 +523,10 @@
       return token && (action === 'cancel' || action === 'reschedule') ? { action: action, token: token } : null;
     } catch (e) { return null; }
   })();
+  // Modo reagendar por enlace de correo: usa el calendario y los botones de
+  // horario (nunca texto libre) y, al elegir hora, cancela vía submitEmailAction
+  // con los datos de la reserva ya autenticada. [CAMBIO 1]
+  var rescheduleMode = false;
 
 
   if (emailAction) {
@@ -730,6 +734,9 @@
     var body = { action: 'dates', clientId: clientId, service: state.service };
     if (state.people !== null) body.people = state.people;
     if (state.barberPreference !== null) body.barberPreference = state.barberPreference;
+    // En modo reagendar se excluye la reserva propia del cálculo de fechas.
+    // [CAMBIO 1]
+    if (rescheduleMode && emailAction) body.actionToken = emailAction.token;
     if (previewToken) body.previewToken = previewToken;
     return fetch(API + '/api/reservations', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -750,6 +757,9 @@
     var body = { action: 'slots', clientId: clientId, service: state.service, date: state.date };
     if (state.people !== null) body.people = state.people;
     if (state.barberPreference !== null) body.barberPreference = state.barberPreference;
+    // En modo reagendar se excluye la reserva propia del cálculo de horarios.
+    // [CAMBIO 1]
+    if (rescheduleMode && emailAction) body.actionToken = emailAction.token;
     if (previewToken) body.previewToken = previewToken;
     return fetch(API + '/api/reservations', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -980,6 +990,9 @@
       });
       return;
     } else if (state.step === window.JBChatFlow.STEPS.CUSTOMER_DATA) {
+      // En modo reagendar la hora ya se envió (submitEmailAction en onMessage):
+      // esta pantalla de captura de datos no aplica, no renderizar nada.
+      if (rescheduleMode) return;
       if (bookingFlowActions && bookingFlowActions.parentNode) bookingFlowActions.remove();
       var missingField = CORE.missingCustomerField(customerDraft);
       if (missingField) {
@@ -1061,7 +1074,7 @@
     } else if (state.step === window.JBChatFlow.STEPS.CONFIRMED) {
       captureBookingV2Event('completed', state);
       addMsg('bot', lang === 'en' ? 'Your reservation is confirmed! ✅' : '¡Tu reserva quedó confirmada! ✅');
-      addMsg('bot', lang === 'en' ? 'For last-minute changes (cancel or reschedule), use the link in your confirmation email 📧' : 'Para cambios de último momento (cancelar o reagendar), usa el enlace de tu correo de confirmación 📧');
+      addMsg('system', lang === 'en' ? 'For last-minute changes (cancel or reschedule), use the link in your confirmation email 📧' : 'Para cambios de último momento (cancelar o reagendar), usa el enlace de tu correo de confirmación 📧');
       // BUG 1 fix: CONFIRMED es un paso terminal — sin este reset el input queda
       // deshabilitado para siempre (updateBookingInputState no incluye CONFIRMED
       // en su lista de pasos habilitados, y ninguna otra rama de este switch se
@@ -1144,6 +1157,58 @@
       console.error('[booking-flow-v2] start failed', error);
       captureBookingV2Event('fallback', null, 'start_failed');
       bookingFlow = null;
+      return false;
+    }
+  }
+
+  // Reagendar desde el enlace del correo: inicializa el flujo directo en
+  // DATE_SELECTION con el servicio ya puesto (no pasa por SERVICE_SELECTION),
+  // para que el calendario y los horarios se rendericen con la UI existente.
+  // Al elegir hora, el onMessage intercepta SELECT_TIME y llama submitEmailAction
+  // con los datos ya autenticados por el actionToken — nunca se vuelven a pedir
+  // nombre/teléfono/email. [CAMBIO 1]
+  function startRescheduleFlowV2(lang, reservation) {
+    if (!window.JBChatFlow || typeof window.JBChatFlow.createBookingFlow !== 'function') return false;
+    try {
+      rescheduleMode = true;
+      bookingFlowIdempotencyKey = CORE.genIdempotencyKey();
+      resetCustomerDraft();
+      bookingFlow = window.JBChatFlow.createBookingFlow({
+        config: { clientId: clientId, templateId: cfg.templateId || cfg.vertical, staff: bookingFlowStaff(), storageNamespace: 'jba' }, storage: sessionStorage,
+        render: { render: renderBookingFlow },
+        request: { availableDates: bookingFlowRequestDates, slots: bookingFlowRequestSlots, confirmBooking: bookingFlowConfirmBooking },
+        onMessage: function (state, event) {
+          console.debug('[booking-flow-v2][reschedule] transition', event.type, state.step);
+          if (event.type === window.JBChatFlow.EVENTS.SELECT_TIME) {
+            // El cliente eligió hora en el calendario/botones: aplica el cambio
+            // de una sola vez. Los datos de contacto viven en la reserva ya
+            // autenticada; el backend los conserva automáticamente.
+            submitEmailAction({ fecha: state.date, hora: state.time });
+          }
+        },
+      });
+      bookingFlow.setState({
+        version: 2,
+        step: window.JBChatFlow.STEPS.DATE_SELECTION,
+        service: reservation && reservation.servicio ? reservation.servicio : null,
+        date: null,
+        time: null,
+        people: null,
+        customer: { name: null, phone: null, email: null },
+        specialRequests: null,
+        foodPreferences: null,
+        tablePreference: null,
+        barberPreference: null,
+      });
+      // setState no dispara el render (a diferencia de dispatch): el calendario
+      // se pinta explícitamente aquí. [CAMBIO 1]
+      renderBookingFlow(bookingFlow.getState());
+      return true;
+    } catch (error) {
+      console.error('[booking-flow-v2] reschedule start failed', error);
+      captureBookingV2Event('fallback', null, 'reschedule_start_failed');
+      bookingFlow = null;
+      rescheduleMode = false;
       return false;
     }
   }
@@ -1637,6 +1702,12 @@
             ? (lang === 'en' ? '✅ Your reservation has been cancelled.' : '✅ Tu reserva fue cancelada correctamente.')
             : (lang === 'en' ? '✅ Your reservation has been rescheduled.' : '✅ Tu reserva fue reprogramada correctamente.'));
           emailAction = null;
+          // BUG 1 pattern: limpia el flujo de booking tras confirmar para que el
+          // chat no quede atascado ni la reserva activa duplicada. [CAMBIO 1]
+          if (rescheduleMode) {
+            rescheduleMode = false;
+            if (bookingFlow) { bookingFlow.reset(); bookingFlow = null; }
+          }
         } else addMsg('bot', d.motivo
           // Redacción centralizada por idioma y plantilla — antes se filtraba
           // d.mensaje crudo (siempre en español) en este mismo punto, el que
@@ -1644,9 +1715,56 @@
           // [auditoría — tono frío / mensajes centralizados]
           ? CORE.motivoDisponibilidadMensaje(d.motivo, cfg, lang, d.alternativa)
           : (lang === 'en' ? 'That time is not available. Please choose another time.' : 'Ese horario no está disponible. Elige otro horario.'));
+        // En modo reagendar, si el cambio fue rechazado (ej. horario ocupado),
+        // se vuelve a TIME_SELECTION conservando la fecha para elegir otra hora
+        // en vez de dejar el flujo colgado en CUSTOMER_DATA. [CAMBIO 1]
+        if (rescheduleMode && bookingFlow && d && !(d.found || d.ok)) {
+          var prevState = bookingFlow.getState();
+          try {
+            bookingFlow.setState({
+              version: 2,
+              step: window.JBChatFlow.STEPS.TIME_SELECTION,
+              service: prevState.service,
+              date: prevState.date,
+              time: null,
+              people: prevState.people,
+              customer: { name: null, phone: null, email: null },
+              specialRequests: null,
+              foodPreferences: null,
+              tablePreference: null,
+              barberPreference: prevState.barberPreference,
+            });
+            renderBookingFlow(bookingFlow.getState());
+          } catch (e) { console.error('[booking-flow-v2] reschedule retry failed', e); }
+        }
       })
-      .catch(function () { addMsg('bot', lang === 'en' ? 'Sorry, please try again.' : 'No pudimos completar la acción. Inténtalo de nuevo.'); })
-      .finally(function () { busy = false; inp.disabled = false; snd.disabled = false; inp.focus(); });
+      .catch(function () {
+        addMsg('bot', lang === 'en' ? 'Sorry, please try again.' : 'No pudimos completar la acción. Inténtalo de nuevo.');
+        // Mismo reintento ante error de red en modo reagendar. [CAMBIO 1]
+        if (rescheduleMode && bookingFlow) {
+          var st = bookingFlow.getState();
+          try {
+            bookingFlow.setState({
+              version: 2,
+              step: window.JBChatFlow.STEPS.TIME_SELECTION,
+              service: st.service, date: st.date, time: null, people: st.people,
+              customer: { name: null, phone: null, email: null },
+              specialRequests: null, foodPreferences: null, tablePreference: null,
+              barberPreference: st.barberPreference,
+            });
+            renderBookingFlow(bookingFlow.getState());
+          } catch (e) { console.error('[booking-flow-v2] reschedule retry failed', e); }
+        }
+      })
+      .finally(function () {
+        busy = false;
+        // En modo reagendar el input lo controla el flujo (calendario/botones):
+        // no forzarlo abierto aquí, o quedaría editable en TIME_SELECTION.
+        if (rescheduleMode) {
+          if (bookingFlow) updateBookingInputState(bookingFlow.getState().step);
+          else { inp.disabled = false; snd.disabled = false; inp.focus(); }
+        } else { inp.disabled = false; snd.disabled = false; inp.focus(); }
+      });
   }
 
   // Preguntas con IA durante SUMMARY/CONFIRMATION: canal aparte que nunca
@@ -1741,6 +1859,10 @@
     var lang = cfg.language === 'en' ? 'en' : 'es';
 
     if (emailAction) {
+      // En modo reagendar el cliente elige fecha/hora con calendario y botones
+      // (el input queda bloqueado); el texto libre aquí solo aplica al flujo
+      // de cancelación por correo, que sí pide una confirmación sí/no.
+      if (rescheduleMode) return;
       addMsg('user', t);
       if (emailAction.action === 'cancel') {
         if (CORE.esConfirmacion(t, lang)) submitEmailAction({});
@@ -2230,6 +2352,22 @@
             var reservation = d && d.found ? d.reservation : null;
             if (reservation && reservation.language) { cfg.language = reservation.language; paint(); }
             var lang = cfg.language === 'en' ? 'en' : 'es';
+            if (reservation && emailAction.action === 'reschedule') {
+              // Reagendar por correo: activa el calendario (nunca texto libre).
+              // Muestra el contexto de la reserva y arranca el flujo en
+              // DATE_SELECTION con el servicio ya puesto. [CAMBIO 1]
+              var ctx = CORE.emailActionContextoMensaje('reschedule', cfg, lang, reservation);
+              var started = startRescheduleFlowV2(lang, reservation);
+              setTimeout(function () {
+                addMsg('bot', ctx);
+                if (!started) {
+                  addMsg('bot', lang === 'en'
+                    ? 'Please provide the new date and time.'
+                    : 'Indica la nueva fecha y hora.');
+                }
+              }, Math.max(0, BOT_MESSAGE_DELAY_MS - (Date.now() - emailActionPromptStartedAt)));
+              return;
+            }
             var msgText = reservation
               ? CORE.emailActionContextoMensaje(emailAction.action, cfg, lang, reservation)
               : CORE.reservaTextos(lang).notFound;

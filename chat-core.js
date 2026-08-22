@@ -432,7 +432,8 @@ window.JBChatCore = (function () {
       modifyUnavail: en ? 'That change is not available: ' : 'Ese cambio no está disponible: ',
       modifyFail: en ? 'I could not modify it. Please try again.' : 'No pude modificarla. Inténtalo de nuevo.',
       closest: en ? ' Closest time: ' : ' Hora más cercana: ',
-      notFound: en ? 'I could not find your reservation.' : 'No encontré tu reserva.',
+      notFound: en ? "This link is no longer valid — the reservation may have been modified or cancelled from another link, or its deadline may have passed. If you think this is an error, please contact the business directly."
+                    : 'Este enlace ya no es válido — puede que la reserva haya sido modificada o cancelada desde otro enlace, o que ya haya pasado la fecha límite. Si crees que esto es un error, contacta directamente al negocio.',
       duplicateActive: en ? 'You already had this reservation — it is still active. ✅' : 'Ya tenías esta reserva registrada, sigue activa. ✅',
       netFail: en ? "Sorry, that didn't go through 😅" : 'Uy, no se envió 😅',
     };
@@ -480,6 +481,11 @@ window.JBChatCore = (function () {
       return en
         ? (alt ? 'We need a bit more notice. The earliest we can do is ' + alt + '.' : 'We need a bit more notice to get everything ready. Please choose a later time.')
         : (alt ? 'Necesitamos un poco más de anticipación. Lo más pronto que podemos es a las ' + alt + '.' : 'Necesitamos un poco más de anticipación para dejar todo listo. Elige una hora más adelante.');
+    }
+    if (motivo === 'reagendado_limite') {
+      return en
+        ? 'This reservation has already been rescheduled once. For another change, please contact the business directly.'
+        : 'Esta reserva ya fue reagendada una vez. Para otro cambio, contacta directamente al negocio.';
     }
     if (motivo === 'dia_cerrado' || motivo === 'feriado') {
       return en ? 'We are closed that day. Tell me another date and I will check.'
@@ -1152,12 +1158,15 @@ window.JBChatCore = (function () {
 
     var explicitMatch = s.match(/\b(?:me\s+llamo|soy|mi\s+nombre\s+es)\s+([A-Za-zÁÉÍÓÚÑáéíóúñ][A-Za-zÁÉÍÓÚÑáéíóúñ' -]{1,50})/i);
     if (explicitMatch && explicitMatch[1]) {
-      var candExplicit = explicitMatch[1].replace(/\s+(?:y\s+tengo|tengo|pero|con)\b.*$/i, '').replace(/[,;.].*$/, '').trim();
-      if (valorValido('nombre', candExplicit) && candExplicit.split(/\s+/).length <= 4) return candExplicit;
+      // Recorta cláusulas/peticiones que suelen seguir al nombre: "Soy Carlos
+      // y quiero una cita" → "Carlos". [auditoría — edge cases del nombre]
+      var candExplicit = explicitMatch[1].replace(/\s+(?:y\s+)?(?:tengo|pero|con|quiero|necesito|deseo|quisiera|me\s+gustar[ií]a|me\s+gustaria|para|el|la|del|de\s+la)\b.*$/i, '').replace(/[,;.].*$/, '').trim();
+      if (candExplicit && candExplicit !== 'mi nombre es' && candExplicit !== 'me llamo' && candExplicit !== 'soy' &&
+          valorValido('nombre', candExplicit) && candExplicit.split(/\s+/).length <= 4) return candExplicit;
     }
 
     var residual = s.replace(EMAIL_RE2, '').replace(/\+?\d[\d\s().-]{5,}\d/g, '').replace(/[,;]/g, ' ').trim();
-    residual = residual.replace(/\b(?:mi\s+correo\s+es|mi\s+email\s+es|correo|email|mi\s+tel[eé]fono\s+es|tel[eé]fono|celular|m[oó]vil|y|es)\b/gi, ' ').trim();
+    residual = residual.replace(/\b(?:mi\s+nombre\s+es|me\s+llamo|soy|mi\s+correo\s+es|mi\s+email\s+es|correo|email|mi\s+tel[eé]fono\s+es|tel[eé]fono|celular|m[oó]vil|y|es)\b/gi, ' ').trim();
     residual = residual.replace(/\s+/g, ' ');
 
     if (!residual || residual.length < 2 || residual.length > 50) return null;
