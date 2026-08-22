@@ -688,10 +688,13 @@
     return row;
   }
 
-  function selectBookingTime(time, lang) {
+  function selectBookingTime(time, label, lang) {
     if (bookingTimeQuestionMessage && bookingTimeQuestionMessage.parentNode) bookingTimeQuestionMessage.remove();
     bookingTimeQuestionMessage = null;
-    addMsg('bot', (lang === 'en' ? 'Perfect, ' : '¡Perfecto, ') + time + ' ✅');
+    // El texto visible muestra el label formateado ("2:47 AM"), no el valor
+    // crudo en 24h que necesita el dispatch de abajo. [auditoría — formato hora]
+    var mostrar = label || time;
+    addMsg('bot', (lang === 'en' ? 'Perfect, ' : '¡Perfecto, ') + mostrar + ' ✅');
     bookingFlow.dispatch({ type: window.JBChatFlow.EVENTS.SELECT_TIME, time: time });
   }
 
@@ -974,7 +977,7 @@
           slots.forEach(function (slot) {
             var element = document.createElement('button');
             element.type = 'button'; element.className = 'a-quick-btn'; element.textContent = slot.label;
-            element.addEventListener('click', function () { slotsWrap.remove(); selectBookingTime(slot.value, lang); });
+            element.addEventListener('click', function () { slotsWrap.remove(); selectBookingTime(slot.value, slot.label, lang); });
             slotsWrap.appendChild(element);
           });
           bookingFlowActions = slotsWrap;

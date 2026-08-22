@@ -3433,9 +3433,11 @@ LÍMITES ESTRICTOS:
 
     function abrirSetup(c) {
       setupClient = c;
-      document.getElementById('setup-title').textContent = 'Completar — ' + c.businessName;
-      document.getElementById('setup-falta').textContent =
-        'Sin estos datos el asistente no puede agendar citas. Falta: ' + faltaConfigCliente(c).join(', ') + '.';
+      const faltantes = faltaConfigCliente(c);
+      document.getElementById('setup-title').textContent = 'Editar horarios y reservas — ' + c.businessName;
+      document.getElementById('setup-falta').textContent = faltantes.length
+        ? 'Sin estos datos el asistente no puede agendar citas. Falta: ' + faltantes.join(', ') + '.'
+        : 'Configura horarios, capacidad, tiempo de limpieza entre citas y demás reglas de reserva.';
 
       // Restaurante: la duración por plato es opcional, así que en vez de
       // exigirla más abajo (#setup-durs) se pide/precarga la duración de
@@ -3475,6 +3477,10 @@ LÍMITES ESTRICTOS:
       renderSetupEmails(seed);
       document.getElementById('setup-notice').value = Number.isFinite(c.minNoticeHours) ? String(c.minNoticeHours) : '2';
       document.getElementById('setup-cap').value = Number.isFinite(c.capacityPerSlot) ? String(c.capacityPerSlot) : '1';
+      // Tiempo de limpieza entre citas: aplica a las 3 plantillas. Se precarga
+      // el valor guardado; si no existe, 0.
+      var setupBuffer = document.getElementById('setup-buffer');
+      if (setupBuffer) setupBuffer.value = Number.isFinite(c.bufferMinutes) ? String(c.bufferMinutes) : '0';
 
       // Horario: se precarga lo que ya haya guardado; lo que falte, 09:00-19:00
       // y domingo cerrado, que es lo más común. El dueño lo ajusta.
@@ -3584,6 +3590,7 @@ LÍMITES ESTRICTOS:
                 ownerEmail: notificationEmails[0],   // compatibilidad con el campo antiguo
                 minNoticeHours: parseInt(document.getElementById('setup-notice').value, 10),
                 capacityPerSlot: parseInt(document.getElementById('setup-cap').value, 10),
+                bufferMinutes: parseInt(document.getElementById('setup-buffer').value, 10),
                 businessHours: businessHours, services: services,
               }, isRestaurantSetup ? { reservationDuration: reservationDuration } : {})),
             });
@@ -3657,7 +3664,7 @@ LÍMITES ESTRICTOS:
           </td>
           <td><span class="ct-category">${escHTML(categoria)}</span></td>
           <td>${escHTML(PLAN_LABELS[c.plan] || c.plan)}<span class="ct-subline">${planPriceLabelPerMonth(c.plan)}</span></td>
-          <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button><br><a class="ct-link" href="${escHTML(panelUrl)}" target="_blank" rel="noopener noreferrer">📅 Panel del dueño</a><br><button type="button" class="ct-link ct-copy-panel" data-panel-url="${escHTML(panelUrl)}">📋 Copiar enlace del dueño</button>${
+          <td><button type="button" class="ct-link ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button><br><a class="ct-link" href="${escHTML(panelUrl)}" target="_blank" rel="noopener noreferrer">📅 Panel del dueño</a><br><button type="button" class="ct-link ct-copy-panel" data-panel-url="${escHTML(panelUrl)}">📋 Copiar enlace del dueño</button><br><button type="button" class="ct-link ct-setup" data-cid="${escHTML(c.id)}">⚙️ Horarios y reservas</button>${
             faltaConfigCliente(c).length
               ? `<button type="button" class="ct-link ct-setup" data-cid="${escHTML(c.id)}" title="Faltan: ${escHTML(faltaConfigCliente(c).join(', '))}" style="color:#a01b1b;display:block;margin-top:4px">⚠️ Completar</button>`
               : ''
@@ -3693,6 +3700,7 @@ LÍMITES ESTRICTOS:
             <button type="button" class="cc-btn-secondary ct-view-bot" data-cid="${escHTML(c.id)}">Ver chatbot</button>
             <a class="cc-btn-secondary" href="${escHTML(panelUrl)}" target="_blank" rel="noopener noreferrer">📅 Panel del dueño</a>
             <button type="button" class="cc-btn-secondary ct-copy-panel" data-panel-url="${escHTML(panelUrl)}">📋 Copiar enlace</button>
+            <button type="button" class="cc-btn-secondary ct-setup" data-cid="${escHTML(c.id)}">⚙️ Horarios y reservas</button>
             <button type="button" class="cc-btn-primary ct-manage" data-cid="${escHTML(c.id)}">Administrar</button>
           </div>
         </div>`;
@@ -6220,6 +6228,19 @@ LÍMITES ESTRICTOS:
             <option value="5">5</option><option value="8">8</option>
           </select>
         </div>
+        <div>
+          <label class="auto-label">Tiempo de limpieza entre citas</label>
+          <select id="setup-buffer" class="admin-input">
+            <option value="0">0 minutos</option>
+            <option value="5">5 minutos</option>
+            <option value="10">10 minutos</option>
+            <option value="15">15 minutos</option>
+            <option value="20">20 minutos</option>
+            <option value="30">30 minutos</option>
+            <option value="45">45 minutos</option>
+            <option value="60">60 minutos</option>
+          </select>
+        </div>
       </div>
 
       <label class="auto-label">Horario semanal</label>
@@ -6260,8 +6281,8 @@ LÍMITES ESTRICTOS:
           <option value="restaurant">Restaurante</option>
           <option value="barber">Barbería</option>
         </select>
-        <div class="auto-summary-section" id="auto-spa-booking-section" hidden>
-          <h3>Reglas de reserva del Spa</h3>
+        <div class="auto-summary-section" id="auto-spa-booking-section">
+          <h3>Reglas de reserva</h3>
           <label class="auto-label" for="auto-spa-capacity">¿Cuántas citas pueden aceptar al mismo tiempo?</label>
           <input type="number" id="auto-spa-capacity" class="admin-input auto-owner-input" min="1" max="100" step="1" inputmode="numeric" placeholder="Ej: 3">
           <p class="auto-owner-help">Ejemplo: 3 personas trabajando = 3 citas simultáneas.</p>
@@ -6954,10 +6975,9 @@ LÍMITES ESTRICTOS:
 
     if (!minNoticeSelect || minNoticeSelect.value === '') f.push('Anticipación mínima');
 
-    if (spaTemplateSelected()) {
-      if (!spaCapacityValid()) f.push('Capacidad de citas simultáneas');
-      if (!spaBufferValid()) f.push('Tiempo de preparación entre citas');
-    }
+    // Capacidad y buffer aplican a las 3 plantillas (api/reservations.js).
+    if (!spaCapacityValid()) f.push('Capacidad de citas simultáneas');
+    if (!spaBufferValid()) f.push('Tiempo de preparación entre citas');
 
     var svc = generatedConfig.services || [];
     if (!svc.length) f.push('Servicios');
@@ -6988,7 +7008,10 @@ LÍMITES ESTRICTOS:
     posCards.forEach(function (c) { c.classList.toggle('selected', c.dataset.pos === widgetPosition); });
     widgetPreview.classList.toggle('pos-left', widgetPosition === 'bottom-left');
     ownerSection.hidden = !ownerEmailFalta();
-    if (spaBookingSection) spaBookingSection.hidden = !spaTemplateSelected();
+    // Capacidad por horario y tiempo de limpieza entre citas (buffer) aplican
+    // a las 3 plantillas (api/reservations.js los usa para cabinas/barberos/
+    // mesas). Ya no se ocultan para tipos no-Spa.
+    if (spaBookingSection) spaBookingSection.hidden = false;
     // Propuesta según el país que detectó la IA; el admin la confirma o cambia.
     if (tzSelect && !tzSelect.dataset.tocado) {
       var pais = generatedConfig && generatedConfig.business && generatedConfig.business.phoneCountry;
@@ -7074,10 +7097,9 @@ LÍMITES ESTRICTOS:
       widgetPosition: widgetPosition,
       timezone: tzSelect ? tzSelect.value : 'UTC',
       minNoticeHours: minNoticeSelect ? parseInt(minNoticeSelect.value, 10) : 0,
-      ...(spaTemplateSelected() ? {
-        capacityPerSlot: Number(spaCapacityInput.value),
-        bufferMinutes: Number(spaBufferSelect.value),
-      } : {}),
+      // Capacidad y buffer (tiempo de limpieza) aplican a las 3 plantillas.
+      capacityPerSlot: Number(spaCapacityInput.value),
+      bufferMinutes: Number(spaBufferSelect.value),
     };
 
     function doCreate(idToUse) {
@@ -7302,7 +7324,8 @@ LÍMITES ESTRICTOS:
   // Plantillas oficiales reales (GET /api/clients?action=templates) — nunca
   // hardcodeadas aquí. isSpa/isRestaurant reflejan reglas que YA existen y
   // se validan en api/clients.js (missingTemplateFields): la capacidad y el
-  // buffer por horario solo aplican a Spa; la duración de servicio es
+  // buffer (tiempo de limpieza entre citas) aplican a las 3 plantillas desde
+  // bufferMinutesFor() en api/reservations.js; la duración de servicio es
   // obligatoria para Spa/Barbería pero opcional para Restaurante.
   let TEMPLATES = [];
   let selectedTemplate = null;
@@ -7318,12 +7341,10 @@ LÍMITES ESTRICTOS:
       $('spa-type').innerHTML = '<option value="">No se pudieron cargar las plantillas</option>';
     }
   }
-  // capacityPerSlot SÍ aplica a las 3 plantillas -- api/reservations.js lo usa
-  // para "cuántas citas simultáneas admite el negocio (barberos, cabinas,
-  // mesas)" (comentario textual en ese archivo), nunca se oculta. bufferMinutes
-  // SÍ es exclusivo de Spa: spaBufferMinutes() en api/reservations.js lo
-  // ignora para cualquier otra plantilla (`template === 'spa'`), así que ahí
-  // sí no tiene sentido pedirlo.
+  // capacityPerSlot y bufferMinutes aplican a las 3 plantillas --
+  // api/reservations.js los usa para "cuántas citas simultáneas admite el
+  // negocio (barberos, cabinas, mesas)" y "tiempo de limpieza entre citas"
+  // (bufferMinutesFor), así que nunca se ocultan ni se omiten por plantilla.
   const CAPACITY_LABELS = {
     spa: 'Capacidad por horario (cabinas o terapeutas simultáneos)',
     barber: 'Capacidad por horario (barberos simultáneos)',
@@ -7333,7 +7354,10 @@ LÍMITES ESTRICTOS:
     selectedTemplate = TEMPLATES.find(t => t.id === $('spa-type').value) || null;
     const isSpa = selectedTemplate?.id === 'spa';
     const isRestaurant = selectedTemplate?.id === 'restaurant';
-    $('spa-buffer-group').hidden = !isSpa;
+    // El buffer (tiempo de limpieza entre citas) aplica a las 3 plantillas:
+    // bufferMinutesFor() en api/reservations.js lo suma para cualquier tipo.
+    // Solo la duración estándar de reserva es exclusiva de Restaurante.
+    $('spa-buffer-group').hidden = false;
     $('spa-reservation-duration-group').hidden = !isRestaurant;
     $('spa-capacity-label').textContent = CAPACITY_LABELS[selectedTemplate?.id] || 'Capacidad por horario';
     $('spa-duration-hint').textContent = isRestaurant
@@ -7457,12 +7481,11 @@ LÍMITES ESTRICTOS:
     $('spa-timezone').value = '';
     spaTimezoneHint.textContent = 'Escribe la dirección y selecciona el país para detectar la zona horaria.';
   }
-  // capacityPerSlot se valida/envia SIEMPRE (las 3 plantillas: barberos,
-  // cabinas o mesas simultaneas, ver api/reservations.js). bufferMinutes
-  // solo aplica a Spa (spaBufferMinutes() lo ignora para cualquier otra
-  // plantilla). La duracion del servicio deja de ser obligatoria para
-  // Restaurante -- ya lo permite api/clients.js (missingTemplateFields),
-  // esto solo refleja la misma regla en el formulario.
+  // capacityPerSlot y bufferMinutes se validan/envían SIEMPRE (las 3
+  // plantillas: barberos, cabinas o mesas simultáneas, y tiempo de limpieza
+  // entre citas — ver api/reservations.js). La duración del servicio deja de
+  // ser obligatoria para Restaurante -- ya lo permite api/clients.js
+  // (missingTemplateFields), esto solo refleja la misma regla en el formulario.
   function validate() {
     const h = hours(); const s = services(); const errors = [];
     const isSpa = selectedTemplate?.id === 'spa';
@@ -7476,10 +7499,9 @@ LÍMITES ESTRICTOS:
       ['spa-email', v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)],
       ['spa-timezone', validTimezone],
       ['spa-capacity', v => Number.isInteger(+v) && +v >= 1 && +v <= 100],
+      // El buffer (tiempo de limpieza entre citas) aplica a las 3 plantillas.
+      ['spa-buffer', v => Number.isInteger(+v) && +v >= 0 && +v <= 240],
     ];
-    if (isSpa) {
-      fields.push(['spa-buffer', v => Number.isInteger(+v) && +v >= 0 && +v <= 240]);
-    }
     if (isRestaurant) {
       fields.push(['spa-reservation-duration', isValidDurationMinutes]);
     }
@@ -7558,14 +7580,14 @@ LÍMITES ESTRICTOS:
       language: 'es', reservationIntervalMinutes: 15, minNoticeHours: 0, holidays: [],
       displayMode: 'fullscreen', widgetPosition: 'bottom-right',
       // capacityPerSlot va SIEMPRE (barberos/cabinas/mesas simultáneas, las
-      // 3 plantillas lo usan en api/reservations.js). bufferMinutes solo
-      // tiene efecto en Spa, así que solo se manda ahí. reservationDuration
-      // solo tiene efecto en Restaurante (durationFor() en
-      // api/reservations.js la usa como fallback cuando el plato no trae
-      // su propia duración, que ahí es opcional) -- auditoría, contradicción
-      // "Restaurante creado válido pero bloqueado en needsSetup".
+      // 3 plantillas lo usan en api/reservations.js). bufferMinutes (tiempo
+      // de limpieza entre citas) también aplica a las 3 plantillas desde que
+      // bufferMinutesFor() en api/reservations.js lo suma para cualquier
+      // tipo. reservationDuration solo tiene efecto en Restaurante
+      // (durationFor() en api/reservations.js la usa como fallback cuando el
+      // plato no trae su propia duración, que ahí es opcional).
       capacityPerSlot: +$('spa-capacity').value,
-      ...(isSpa ? { bufferMinutes: +$('spa-buffer').value } : {}),
+      bufferMinutes: +$('spa-buffer').value,
       ...(isRestaurant ? { reservationDuration: $('spa-reservation-duration').value.trim() } : {}),
     };
     let id = payload.id;

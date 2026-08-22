@@ -449,17 +449,19 @@ function knownService(client, servicio) {
   return (client.menu || []).some((item) => String(item && item.nombre || '').trim().toLowerCase() === wanted);
 }
 
-function spaBufferMinutes(client) {
-  const template = client && (client.templateId || (client.config && client.config.templateId));
-  // Cualquier entero 0-240 (antes: solo 0/15/30/45), consistente con
+function bufferMinutesFor(client) {
+  // Tiempo de limpieza entre citas: aplica a CUALQUIER tipo de negocio (spa,
+  // barbería, restaurante), no solo spa. Antes esto estaba restringido a
+  // templateId==='spa', lo que hacía que el buffer nunca tuviera efecto en
+  // barberías/restaurantes. Cualquier entero 0-240, consistente con
   // normalizeBufferMinutes/missingTemplateFields en api/clients.js.
   const n = Number(client && client.bufferMinutes);
-  return template === 'spa' && Number.isInteger(n) && n >= 0 && n <= 240 ? n : 0;
+  return Number.isInteger(n) && n >= 0 && n <= 240 ? n : 0;
 }
 
 function occupiedDurationFor(client, servicio, storedDuration) {
   const duration = Number.isFinite(storedDuration) ? storedDuration : durationFor(client, servicio);
-  return duration + spaBufferMinutes(client);
+  return duration + bufferMinutesFor(client);
 }
 
 function rangosDelDia(businessHours, fechaISO) {

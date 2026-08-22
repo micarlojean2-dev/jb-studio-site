@@ -113,5 +113,25 @@ console.log('\n6. Preferencia de barbero en disponibilidad guiada');
   ok(!preferred.slots.some(slot => slot.value === '10:00'), 'La preferencia filtra slots ocupados del barbero elegido');
 }
 
+console.log('\n7. Buffer (tiempo de limpieza) aplica a las 3 plantillas');
+{
+  // El buffer se suma a la duración ocupada para cualquier tipo de negocio,
+  // no solo spa (fix de bufferMinutesFor). Una reserva a las 10:00 con 60 min
+  // de duración + 30 de buffer debe bloquear 10:00-11:30 para los 3.
+  const occupied = [{ estado: 'confirmada', fechaISO: DATE, horaISO: '10:00', servicio: 'S', duracion: 60 }];
+  const casos = [
+    ['spa', { ...base, templateId: 'spa', bufferMinutes: 30, menu: [{ nombre: 'S', duracion: '60 min' }] }],
+    ['barber', { ...base, templateId: 'barber', bufferMinutes: 30, menu: [{ nombre: 'S', duracion: '60 min' }] }],
+    ['restaurant', { ...base, templateId: 'restaurant', bufferMinutes: 30, menu: [{ nombre: 'S', duracion: '60 min' }], reservationDuration: '60 min' }],
+  ];
+  for (const [nombre, client] of casos) {
+    const people = client.templateId === 'restaurant' ? 2 : null;
+    const res = getAvailableSlots(client, DATE, 'S', people, occupied, 0);
+    ok(res.ok, `${nombre}: devuelve slots`);
+    ok(!res.slots.some(s => s.value === '10:00' || s.value === '10:30' || s.value === '11:00'), `${nombre}: bloquea 10:00-11:30 por duración+buffer`);
+    ok(res.slots.some(s => s.value === '11:30'), `${nombre}: ofrece 11:30 (tras duración 60 + buffer 30)`);
+  }
+}
+
 console.log(failures ? `\n❌ ${failures} prueba(s) fallaron` : '\n✅ slots guiados: contratos y disponibilidad autoritativa verificados');
 process.exit(failures ? 1 : 0);

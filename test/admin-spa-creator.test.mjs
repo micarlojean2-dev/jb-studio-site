@@ -42,14 +42,16 @@ assert.doesNotMatch(spaCreatorScript, /templateId:\s*'spa'/, 'templateId ya no p
 assert.match(spaCreatorScript, /templateId:\s*selectedTemplate\.id,\s*templateVersion:\s*selectedTemplate\.version/,
   'templateId/templateVersion deben venir de la plantilla realmente seleccionada, no de un literal');
 
-// capacityPerSlot aplica a las 3 plantillas (api/reservations.js lo usa para
-// "cuántas citas simultáneas admite el negocio: barberos, cabinas, mesas") —
-// nunca debe ocultarse ni omitirse fuera de Spa. bufferMinutes SÍ es
-// exclusivo de Spa (spaBufferMinutes() en api/reservations.js lo ignora para
-// cualquier otra plantilla), así que solo ese campo se oculta/omite.
-assert.match(spaCreatorScript, /capacityPerSlot:\s*\+\$\('spa-capacity'\)\.value,[\s\S]{0,200}?\.\.\.\(isSpa \? \{ bufferMinutes: \+\$\('spa-buffer'\)\.value \} : \{\}\)/,
-  'capacityPerSlot debe ir siempre en el payload; bufferMinutes solo cuando el tipo elegido es Spa');
-assert.match(admin, /id="spa-buffer-group"/, 'solo el grupo del buffer debe poder ocultarse; la capacidad debe seguir visible para todas las plantillas');
+// capacityPerSlot y bufferMinutes aplican a las 3 plantillas
+// (api/reservations.js: "cuántas citas simultáneas admite el negocio" y
+// bufferMinutesFor() que suma el tiempo de limpieza para cualquier tipo).
+// Ambos deben mandarse siempre en el payload y el grupo del buffer debe
+// quedar siempre visible, sin gating por plantilla.
+assert.match(spaCreatorScript, /capacityPerSlot:\s*\+\$\('spa-capacity'\)\.value,[\s\S]{0,200}?bufferMinutes:\s*\+\$\('spa-buffer'\)\.value/,
+  'capacityPerSlot y bufferMinutes deben ir siempre en el payload, sin gating por plantilla');
+assert.match(admin, /id="spa-buffer-group"/, 'el grupo del buffer debe existir');
+assert.doesNotMatch(admin, /\$\('spa-buffer-group'\)\.hidden = !isSpa/, 'el buffer ya no debe ocultarse para plantillas no-Spa');
+assert.doesNotMatch(spaCreatorScript, /\.\.\.\(isSpa \? \{ bufferMinutes: \+\$\('spa-buffer'\)\.value \} : \{\}\)/, 'bufferMinutes ya no debe ir condicionado a isSpa');
 assert.doesNotMatch(admin, /id="spa-capacity"[^>]*hidden|id="spa-reservas-section"/, 'la capacidad (y su sección) ya no deben poder ocultarse por completo');
 
 // Duración de servicio: obligatoria y válida (misma gramática que el backend,
@@ -99,10 +101,10 @@ assert.match(spaCreatorScript, /normalizePhoneNumber/);
 assert.match(spaCreatorScript, /payload = \{[\s\S]*?\bphoneCountry\b[\s\S]*?\bphoneCountryCode\b[\s\S]*?\bphoneNumber\b/,
   'el objeto payload debe incluir phoneCountry, phoneCountryCode y phoneNumber');
 
-// ── Buffer: 0-240, con los 3 atributos HTML exactos ──────────────────────────
-assert.match(admin, /id="spa-buffer"[^>]*min="0"/, 'falta min="0" en spa-buffer');
-assert.match(admin, /id="spa-buffer"[^>]*max="240"/, 'falta max="240" en spa-buffer');
-assert.match(admin, /id="spa-buffer"[^>]*step="1"/, 'falta step="1" en spa-buffer');
+// ── Buffer: select con opciones (0-60) y validación 0-240 ────────────────────
+assert.match(admin, /<select id="spa-buffer"[^>]*>/, 'spa-buffer debe ser un select');
+assert.match(admin, /option value="0">0 minutos/, 'spa-buffer debe ofrecer 0 minutos');
+assert.match(admin, /option value="60">60 minutos/, 'spa-buffer debe ofrecer hasta 60 minutos');
 assert.match(admin, /\+v <= 240/);
 
 // ── Botón desactivado: valores CSS exactos, no solo "la palabra existe" ──────

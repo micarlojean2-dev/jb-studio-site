@@ -667,10 +667,13 @@
     return row;
   }
 
-  function selectWidgetBookingTime(time, lang) {
+  function selectWidgetBookingTime(time, label, lang) {
     if (widgetTimeQuestionMessage && widgetTimeQuestionMessage.parentNode) widgetTimeQuestionMessage.remove();
     widgetTimeQuestionMessage = null;
-    addMsg('bot', (lang === 'en' ? 'Perfect, ' : '¡Perfecto, ') + time + ' ✅');
+    // El texto visible muestra el label formateado ("2:47 AM"), no el valor
+    // crudo en 24h que necesita el dispatch de abajo. [auditoría — formato hora]
+    var mostrar = label || time;
+    addMsg('bot', (lang === 'en' ? 'Perfect, ' : '¡Perfecto, ') + mostrar + ' ✅');
     bookingFlow.dispatch({ type: FLOW.EVENTS.SELECT_TIME, time: time });
   }
 
@@ -892,7 +895,7 @@
         setTimeout(function () {
           var slotWrap = document.createElement('div'); slotWrap.className = 'jbw-quick';
           if (!slots.length) { addMsg('bot', lang === 'en' ? 'There are no available times for that date. Please choose another day.' : 'No hay horarios disponibles para esa fecha. Elige otro día, por favor.'); return; }
-          slots.forEach(function (slot) { var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = slot.label; element.addEventListener('click', function () { slotWrap.remove(); selectWidgetBookingTime(slot.value, lang); }); slotWrap.appendChild(element); });
+          slots.forEach(function (slot) { var element = document.createElement('button'); element.type = 'button'; element.className = 'jbw-quick-btn'; element.textContent = slot.label; element.addEventListener('click', function () { slotWrap.remove(); selectWidgetBookingTime(slot.value, slot.label, lang); }); slotWrap.appendChild(element); });
           widgetFlowActions = slotWrap;
           appendWidgetBookingQuestionButton(slotWrap, state, lang);
           msgsEl.appendChild(slotWrap); CORE.irAlFondo(msgsEl, true);
