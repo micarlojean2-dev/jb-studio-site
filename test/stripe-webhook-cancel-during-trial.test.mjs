@@ -128,7 +128,7 @@ async function runHandler(event, redisStore = {}) {
     patch = { cancelAtPeriodEnd: !!sub.cancel_at_period_end };
     if (sub.status === 'active' || sub.status === 'trialing') {
       patch.active = true;
-      patch.paymentStatus = 'paid';
+      patch.paymentStatus = sub.status === 'trialing' ? 'trialing' : 'paid';
       patch.paymentFailed = false;
       patch.gracePeriodEndsAt = null;
       patch.trial_end = sub.trial_end ? String(sub.trial_end) : null;
@@ -201,7 +201,7 @@ async function testNormalTrial() {
 
   ok(wouldBreak === false, 'handler NO hace break (procesa normalmente)');
   ok(patch.active === true, 'active → true');
-  ok(patch.paymentStatus === 'paid', 'paymentStatus → paid');
+  ok(patch.paymentStatus === 'trialing', 'paymentStatus → trialing (no paid en trial)');
   ok(patch.trial_end !== null, 'trial_end preservado');
 }
 

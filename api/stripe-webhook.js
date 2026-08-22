@@ -254,6 +254,10 @@ export default async function handler(req, res) {
 
         const patch = {
           active:                true,
+          // Default: 'paid' para facturas reales cobradas. Una factura de $0
+          // emitida durante el trial (sub.status === 'trialing') no es un pago
+          // real: se corrige abajo con el status de la suscripción asociada,
+          // mismo criterio que customer.subscription.updated. [BUG]
           paymentStatus:         'paid',
           paymentFailed:         false,
           stripeCustomerId:      invoice.customer,
@@ -267,6 +271,7 @@ export default async function handler(req, res) {
         try {
           const sub = await stripe.subscriptions.retrieve(subscriptionId);
           if (sub.trial_end) patch.trial_end = String(sub.trial_end);
+          if (sub.status === 'trialing') patch.paymentStatus = 'trialing';
         } catch (_) {}
 
         await updateClient(clientId, patch);
@@ -344,7 +349,11 @@ export default async function handler(req, res) {
 
         if (sub.status === 'active' || sub.status === 'trialing') {
           patch.active            = true;
-          patch.paymentStatus     = 'paid';
+          // Un cliente en trial todavía no pagó: etiquetarlo 'paid' desactiva el
+          // cron de respaldo de vencimiento de trial (trial-expiry-fallback se
+          // salta a cualquier paymentStatus==='paid' antes de mirar trial_end) y
+          // rompe la comparación de create-checkout (espera 'trialing'). [BUG]
+          patch.paymentStatus     = sub.status === 'trialing' ? 'trialing' : 'paid';
           patch.paymentFailed     = false;
           patch.gracePeriodEndsAt = null;
           patch.trial_end         = sub.trial_end ? String(sub.trial_end) : null;
