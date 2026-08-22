@@ -948,8 +948,8 @@
       // botones de arriba siguen funcionando durante todo el intercambio.
       // [CAMBIO 3]
       addMsg('bot', lang === 'en'
-        ? 'Now, do you have any questions? Ask me anything. And if you want to change any of your details, use the buttons above 😊'
-        : 'Ahora sí, ¿tienes alguna duda? Preguntame lo que quieras. Y si quieres cambiar algo de tus datos, usa los botones de arriba 😊');
+        ? 'Now, do you have any questions? Ask me anything. And if you want to change anything, just tell me or use the buttons above 😊'
+        : 'Ahora sí, ¿tienes alguna duda? Preguntame lo que quieras. Y si quieres cambiar algo, dímelo o usa los botones de arriba 😊');
     } else if (state.step === FLOW.STEPS.CONFIRMATION) {
       addMsg('bot', lang === 'en' ? 'Any questions before confirming? Ask me anything 😊' : '¿Tienes alguna duda antes de confirmar? Preguntame lo que quieras 😊');
       addMsg('bot', lang === 'en' ? 'Everything looks good. Ready to confirm your reservation?' : 'Todo se ve bien. ¿Listo para confirmar tu reserva?');
@@ -1548,19 +1548,29 @@
       .then(function (d) {
         hideWidgetTyping();
         if (d && d.text) addMsg('bot', d.text);
-        if (bookingFlow && CORE.isChangeServiceRequest(text)) {
-          var changeBtnWrap = document.createElement('div');
-          changeBtnWrap.className = 'jbw-quick';
-          var changeBtn = document.createElement('button');
-          changeBtn.type = 'button';
-          changeBtn.className = 'jbw-quick-btn';
-          changeBtn.textContent = (cfg.language === 'en' ? '✏️ Change service' : '✏️ Cambiar servicio');
-          changeBtn.addEventListener('click', function () {
-            changeBtnWrap.remove();
-            bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_SERVICE });
-          });
-          changeBtnWrap.appendChild(changeBtn);
-          msgsEl.appendChild(changeBtnWrap);
+        if (bookingFlow) {
+          // Detección de intención de editar un campo del resumen: muestra el
+          // botón correspondiente (igual que EDIT_SERVICE ya hacía). Solo uno
+          // a la vez — el que mejor matchee. [auditoría — cambiar por chat]
+          var changeEdit = null;
+          if (CORE.isChangeDateRequest(text)) changeEdit = { label: cfg.language === 'en' ? '✏️ Change date' : '✏️ Cambiar fecha', evt: FLOW.EVENTS.EDIT_DATE };
+          else if (CORE.isChangeTimeRequest(text)) changeEdit = { label: cfg.language === 'en' ? '✏️ Change time' : '✏️ Cambiar hora', evt: FLOW.EVENTS.EDIT_TIME };
+          else if (CORE.isChangeCustomerRequest(text)) changeEdit = { label: cfg.language === 'en' ? '✏️ Change details' : '✏️ Cambiar datos', evt: FLOW.EVENTS.EDIT_CUSTOMER };
+          else if (CORE.isChangeServiceRequest(text)) changeEdit = { label: cfg.language === 'en' ? '✏️ Change service' : '✏️ Cambiar servicio', evt: FLOW.EVENTS.EDIT_SERVICE };
+          if (changeEdit) {
+            var changeBtnWrap = document.createElement('div');
+            changeBtnWrap.className = 'jbw-quick';
+            var changeBtn = document.createElement('button');
+            changeBtn.type = 'button';
+            changeBtn.className = 'jbw-quick-btn';
+            changeBtn.textContent = changeEdit.label;
+            changeBtn.addEventListener('click', function () {
+              changeBtnWrap.remove();
+              bookingFlow.dispatch({ type: changeEdit.evt });
+            });
+            changeBtnWrap.appendChild(changeBtn);
+            msgsEl.appendChild(changeBtnWrap);
+          }
         }
         // La respuesta se agregó después del wrap de botones (SUMMARY/
         // CONFIRMATION), que ya estaba en el DOM desde antes: se reubica al

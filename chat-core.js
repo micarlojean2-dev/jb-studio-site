@@ -528,8 +528,11 @@ window.JBChatCore = (function () {
       return saludo + ' ' + (en ? 'I found ' + itemFrase + '.' : 'Encontré ' + itemFrase + '.') + cuando +
         ' ' + (en ? 'Do you want me to cancel it?' : '¿Confirmas que quieres cancelarla?');
     }
+    // El reagendado se elige con el calendario y los botones de horario, nunca
+    // texto libre (ver startRescheduleFlowV2). El mensaje lo anuncia para que
+    // el cliente sepa que debe tocar el calendario. [auditoría — reagendar]
     return saludo + ' ' + (en ? "Let's reschedule " + itemFrase + '.' : 'Vamos a reagendar ' + itemFrase + '.') + cuando +
-      ' ' + (en ? 'What new date and time would you prefer?' : '¿Qué nueva fecha y hora prefieres?');
+      ' ' + (en ? 'Pick the new date from the calendar below.' : 'Elige la nueva fecha en el calendario de abajo.');
   }
 
   // Devuelve { hora } resuelta, { ambigua: n, mm } si hay que preguntar, o
@@ -1286,6 +1289,33 @@ window.JBChatCore = (function () {
     return re.test(t);
   }
 
+  // ── Detección de intención de cambiar fecha/hora/datos durante el resumen ──
+  // Mismo patrón que isChangeServiceRequest: cada uno detecta si el texto del
+  // cliente expresa ganas de editar UN campo concreto, para ofrecer el botón
+  // correspondiente (EDIT_DATE/EDIT_TIME/EDIT_CUSTOMER) en vez de dejar que la
+  // IA solo conteste con texto. Se ordenan de más específica a menos para no
+  // solaparse: "cambiar de hora" debe caer en hora, no en servicio. [auditoría]
+  function isChangeDateRequest(text) {
+    if (!text) return false;
+    var t = String(text).trim().toLowerCase();
+    var re = /(?:cambiar|cambio|elegir|otra|modificar|mover|quisiera|cambie)\s+(?:de\s+|el\s+|la\s+)?(?:fecha|d[ií]a|dia)|(?:otro|otra|distinto|diferente)\s+(?:d[ií]a|dia|fecha)|(?:quiero|deseo|puedo|puedes|necesito|quisiera)\s+(?:cambiar|mover|adelantar|atrasar|cambie)\s+(?:la\s+)?(?:fecha|cita|de\s+d[ií]a)|(?:change|move|pick|choose)\s+(?:the\s+)?(?:date|day)|(?:different|another)\s+(?:day|date)/i;
+    return re.test(t);
+  }
+
+  function isChangeTimeRequest(text) {
+    if (!text) return false;
+    var t = String(text).trim().toLowerCase();
+    var re = /(?:cambiar|cambio|elegir|otra|modificar|mover|quisiera|cambie)\s+(?:de\s+|el\s+|la\s+)?(?:hora|horario)|(?:otra|distinta|diferente)\s+(?:hora|horario)|(?:quiero|deseo|puedo|puedes|necesito|quisiera)\s+(?:cambiar|mover|adelantar|atrasar|cambie)\s+(?:la\s+)?(?:hora|horario)|(?:change|move|pick|choose)\s+(?:the\s+)?(?:time|slot)|(?:different|another)\s+(?:time|slot)/i;
+    return re.test(t);
+  }
+
+  function isChangeCustomerRequest(text) {
+    if (!text) return false;
+    var t = String(text).trim().toLowerCase();
+    var re = /(?:cambiar|cambio|modificar|corregir)\s+(?:mis\s+|mi\s+)?(?:datos|informaci[oó]n|nombre|tel[eé]fono|correo|email|contacto)|(?:mi\s+)?(?:nombre|tel[eé]fono|correo|email|datos)\s+(?:est[aá]|es|qued[oó]|fue)\s+(?:mal|equivocad|incorrect)|(?:my\s+)?(?:name|phone|email|details|info|information)\s+(?:is|are|was)\s+(?:wrong|incorrect|off)|(?:change|update|fix|edit)\s+(?:my\s+)?(?:details|info|information|name|phone|email)/i;
+    return re.test(t);
+  }
+
   // Pregunta de "petición especial" del paso de reserva. Vivía duplicada en
   // widget.js y asistente.html; el branch de barbería y el general (belleza)
   // nunca tuvieron versión en inglés, así que un cliente en inglés recibía la
@@ -1580,6 +1610,9 @@ window.JBChatCore = (function () {
     formatServiceDuration: formatServiceDuration,
     formatServicePriceAndDuration: formatServicePriceAndDuration,
     isChangeServiceRequest: isChangeServiceRequest,
+    isChangeDateRequest: isChangeDateRequest,
+    isChangeTimeRequest: isChangeTimeRequest,
+    isChangeCustomerRequest: isChangeCustomerRequest,
     isPopular: isPopular,
     galleryHeading: galleryHeading,
     bookServiceLabel: bookServiceLabel,
