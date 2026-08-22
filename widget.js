@@ -826,10 +826,25 @@
 
   function widgetFlowRecover(result, lang) {
     var motivo = result && result.motivo;
+    // Mensaje explicativo del backend si lo trae (los motivos de validarReserva
+    // usan `mensaje`; el rate limit 429 usa `message`). Si no hay motivo
+    // reconocido, se muestra un genérico — NUNCA se redirige el flujo a otro
+    // paso en silencio. [auditoría — confirmación sin explicación]
+    function explicar() {
+      var raw = (result && (result.mensaje || result.message)) || '';
+      if (raw) { addMsg('bot', raw); return; }
+      addMsg('bot', lang === 'en'
+        ? 'That time is no longer available. Please choose another one.'
+        : 'Ese horario ya no está disponible. Por favor elige otro.');
+    }
     if (motivo === 'duplicada') { addMsg('bot', lang === 'en' ? 'It looks like you already have a reservation with these details.' : 'Veo que ya tienes una reserva con estos datos.'); return; }
     if (motivo === 'needs_setup' || motivo === 'reservas_desactivadas') { addMsg('bot', (result && result.mensaje) || (lang === 'en' ? 'Reservations are not available right now. Please try again a little later.' : 'Las reservas no están disponibles ahora. Inténtalo de nuevo un poco más tarde.')); return; }
-    if (motivo === 'servicio_invalido') { bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_SERVICE }); return; }
-    if (motivo === 'fecha_invalida' || motivo === 'dia_cerrado' || motivo === 'feriado') { bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_DATE }); return; }
+    if (motivo === 'servicio_invalido') { explicar(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_SERVICE }); return; }
+    if (motivo === 'fecha_invalida' || motivo === 'dia_cerrado' || motivo === 'feriado') { explicar(); bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_DATE }); return; }
+    // Fallback: sin_disponibilidad, barbero_no_disponible, poca_anticipacion,
+    // fuera_de_horario, no_cabe_antes_del_cierre, max_active_reservations,
+    // reagendado_limite, reagendado_desactivado, rate limit 429, etc.
+    explicar();
     bookingFlow.dispatch({ type: FLOW.EVENTS.EDIT_TIME });
   }
 

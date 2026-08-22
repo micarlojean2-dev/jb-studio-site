@@ -200,6 +200,20 @@ function spaOneLine(v, max) {
   return String(v || '').replace(/[\r\n]+/g, ' ').trim().slice(0, max || 200);
 }
 
+// Convierte "HH:MM" (24h) a "h:mm AM/PM" (12h) para el texto que ve la IA y
+// el usuario. Si el formato no matchea, devuelve el valor tal cual — nunca
+// rompe ni inventa. [auditoría — horarios en 12h en respuestas de texto libre]
+function to12h(hhmm) {
+  const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return hhmm;
+  const h = +m[1];
+  const min = +m[2];
+  const suf = h >= 12 ? 'PM' : 'AM';
+  let h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  return h12 + ':' + String(min).padStart(2, '0') + ' ' + suf;
+}
+
 function spaBusinessHoursText(businessHours, lang) {
   const labels = SPA_DAY_LABELS[lang] || SPA_DAY_LABELS.es;
   const closedWord = (SPA_INFO_LABELS[lang] || SPA_INFO_LABELS.es).closed;
@@ -207,7 +221,7 @@ function spaBusinessHoursText(businessHours, lang) {
     const d = businessHours[day];
     const label = labels[day];
     if (!d || !d.enabled || !Array.isArray(d.ranges) || !d.ranges.length) return `${label}: ${closedWord}`;
-    const ranges = d.ranges.filter(r => r && r.start && r.end).map(r => `${r.start}–${r.end}`).join(', ');
+    const ranges = d.ranges.filter(r => r && r.start && r.end).map(r => `${to12h(r.start)}–${to12h(r.end)}`).join(', ');
     return `${label}: ${ranges || closedWord}`;
   }).join('\n');
 }
@@ -1020,4 +1034,4 @@ export function markerDecisions(lastUserMsg, options) {
   };
 }
 
-export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, serviceQuestionContext, serviceQuestionInstruction, serviceQuestionAmbiguityText, validCorrection, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock, availabilityContextBlock, checkRedisRateLimit, isObviousJailbreak };
+export const __test = { menuDecision, galleryDecision, markerDecisions, langDirectiveFor, detectLanguage, isMeaningfulMessage, languageForMessages, hasLanguageChoice, businessInfoBlock, serviceQuestionContext, serviceQuestionInstruction, serviceQuestionAmbiguityText, validCorrection, buildSystemPrompt, confirmedMedia, INTERPRETER_MAX_TOKENS, INTERPRETER_TEMPERATURE, sanitizeReservationContext, reservationTruthBlock, availabilityContextBlock, checkRedisRateLimit, isObviousJailbreak, to12h, spaBusinessHoursText };
